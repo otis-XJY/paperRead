@@ -8,39 +8,54 @@ from openai import OpenAI
 from pyzotero import zotero
 
 # ================= 🚀 灵活配置区 =================
+# ================= 🚀 灵活配置区 (针对 UAV/MARL/人形机器人 优化) =================
 CONFIG = {
     "categories": {
-        "RAG": {
-            # 支持 ArXiv 高级检索语法：ti(标题), abs(摘要), cat(分类)
+        "UAV_VLN": {
+            # 关注无人机视角下的视觉语言导航
             "keywords": [
-                'ti:"Retrieval-Augmented Generation"', 
-                'abs:"Vector Database"', 
-                'abs:"RAG"'
+                'ti:"Vision-Language Navigation"', 
+                'abs:"UAV" AND abs:"Navigation"', 
+                'abs:"Drone" AND abs:"Language"',
+                'ti:"Aerial" AND abs:"VLN"'
             ],
-            "desc": "关注检索增强生成、向量数据库及长文本处理"
+            "desc": "关注无人机(UAV/Drone)环境下的视觉语言导航、跨模态空间感知、自然语言指令执行及机载实时导航算法。"
         },
-        "Agents": {
+        "MultiAgent_Game_Theory": {
+            # 关注多智能体决策、博弈论、规划
             "keywords": [
-                'ti:"Agent"', 
-                'cat:cs.AI AND "Multi-Agent"', 
-                'abs:"Planning"'
+                'ti:"Game Theory" AND abs:"Multi-agent"', 
+                'ti:"Decision Making" AND cat:cs.MA', 
+                'abs:"Nash Equilibrium" AND abs:"Planning"',
+                'ti:"Adversarial" AND abs:"Decision"'
             ],
-            "desc": "关注智能体架构、任务规划和多智能体协同"
+            "desc": "关注多智能体决策规划、博弈论在协同与对抗中的应用、纳什均衡计算以及动态环境下的多机战略博弈。"
         },
-        "LLM_Reasoning": {
+        "MARL": {
+            # 关注多智能体强化学习
             "keywords": [
-                'ti:"Reasoning"', 
-                'abs:"Chain of Thought"', 
-                'cat:cs.CL AND "In-context Learning"'
+                'ti:"Multi-Agent Reinforcement Learning"', 
+                'abs:"MARL"', 
+                'abs:"CTDE"',  # Centralized Training Decentralized Execution
+                'ti:"Cooperative" AND abs:"Reinforcement Learning"'
             ],
-            "desc": "关注大模型的逻辑推理、复杂指令遵循和思维链技术"
+            "desc": "关注多智能体强化学习(MARL)的核心算法，如协作机制(CTDE)、信用分配、通信协议以及大规模多智能体训练的稳定性。"
+        },
+        "Humanoid_Manipulation": {
+            # 关注人形机器人操作
+            "keywords": [
+                'ti:"Humanoid" AND abs:"Manipulation"', 
+                'abs:"Dexterous Hand"', 
+                'ti:"Whole-body Control"',
+                'cat:cs.RO AND "Humanoid Robot"'
+            ],
+            "desc": "关注人形机器人的上肢操作、灵巧手抓取、全身协调控制(WBC)、触觉反馈以及模仿学习在人形操作中的应用。"
         }
     },
-    "comparison_depth": 5,  # 提取该分类下最近5篇已读论文进行对比
+    "comparison_depth": 5, 
     "llm_model": "Qwen/Qwen3.5-35B-A3B", 
     "base_url": "https://api-inference.modelscope.cn/v1/" 
 }
-
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
 ZOTERO_API_KEY = os.getenv("ZOTERO_API_KEY")
