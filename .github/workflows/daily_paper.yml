@@ -1,0 +1,41 @@
+name: Zotero AI Daily Papers
+
+on:
+  schedule:
+    # 每天早上 7:00 运行 (北京时间 = UTC+8，所以这里写 UTC 时间前一天的 23:00)
+    - cron: '0 23 * * *'
+  workflow_dispatch: # 允许你随时在网页上点按钮手动运行测试
+
+jobs:
+  run-auto-paper:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 允许 GitHub Actions 将 history.json 传回仓库以实现去重
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run AI Automation
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
+          ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
+        run: python main.py
+
+      - name: Commit and Push History
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add history.json
+          # 如果有新论文导致 history.json 更新了，则提交回仓库保存记忆
+          git diff-index --quiet HEAD || (git commit -m "chore: update history.json" && git push)
