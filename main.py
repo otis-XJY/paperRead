@@ -65,6 +65,7 @@ def get_or_create_collection(name):
     return resp['successful']['0']['key']
 
 def process_to_zotero(paper, ai_result):
+    print(f"AI 的评价是: {ai_result['category']} | 理由: {ai_result['review'][:50]}...")
     if ai_result["category"] == "可跳过":
         return
 
