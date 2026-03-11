@@ -19,8 +19,8 @@ if not all([OPENAI_API_KEY, ZOTERO_USER_ID, ZOTERO_API_KEY]):
 
 # 启用 Gemini 的 OpenAI 兼容接口
 client = OpenAI(
-    api_key=OPENAI_API_KEY, 
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    api_key=OPENAI_API_KEY,
+    base_url="https://api.deepseek.com"
 )
 zot = zotero.Zotero(ZOTERO_USER_ID, 'user', ZOTERO_API_KEY)
 
@@ -47,9 +47,9 @@ def analyze_with_ai(papers):
     论文数据：{json.dumps(papers)}
     """
     response = client.chat.completions.create(
-            model="gemini-2.0-flash", # 改为使用 Gemini 模型
+            model="deepseek-chat", # deepseek-chat 即最新的 DeepSeek-V3 模型
             messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"} # DeepSeek 完美支持 JSON 模式
         )
     return json.loads(response.choices[0].message.content)["results"]
 
