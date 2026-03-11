@@ -19,8 +19,8 @@ if not all([OPENAI_API_KEY, ZOTERO_USER_ID, ZOTERO_API_KEY]):
 
 # 启用 Gemini 的 OpenAI 兼容接口
 client = OpenAI(
-    api_key=OPENAI_API_KEY,
-    base_url="https://api.deepseek.com"
+    api_key=OPENAI_API_KEY, # 请替换成您的ModelScope Access Token
+    base_url="https://api-inference.modelscope.cn/v1/"
 )
 zot = zotero.Zotero(ZOTERO_USER_ID, 'user', ZOTERO_API_KEY)
 
@@ -47,10 +47,11 @@ def analyze_with_ai(papers):
     论文数据：{json.dumps(papers)}
     """
     response = client.chat.completions.create(
-            model="deepseek-chat", # deepseek-chat 即最新的 DeepSeek-V3 模型
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"} # DeepSeek 完美支持 JSON 模式
-        )
+        model="Qwen/Qwen3.5-35B-A3B", # ModelScope Model-Id
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"}
+    )
+
     return json.loads(response.choices[0].message.content)["results"]
 
 # ================= 4. 写入 Zotero (聚合所有笔记功能) =================
