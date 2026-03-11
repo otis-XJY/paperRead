@@ -12,50 +12,47 @@ from pyzotero import zotero
 CONFIG = {
     "categories": {
         "UAV_VLN": {
-            # 关注无人机视角下的视觉语言导航
             "keywords": [
                 'ti:"Vision-Language Navigation"', 
-                'abs:"UAV" AND abs:"Navigation"', 
-                'abs:"Drone" AND abs:"Language"',
-                'ti:"Aerial" AND abs:"VLN"'
+                '(abs:UAV AND abs:Navigation)', 
+                '(abs:Drone AND abs:Language)',
+                '(ti:Aerial AND abs:VLN)'
             ],
-            "desc": "关注无人机(UAV/Drone)环境下的视觉语言导航、跨模态空间感知、自然语言指令执行及机载实时导航算法。"
+            "desc": "关注无人机(UAV/Drone)环境下的视觉语言导航、跨模态空间感知及指令执行。"
         },
         "MultiAgent_Game_Theory": {
-            # 关注多智能体决策、博弈论、规划
             "keywords": [
-                'ti:"Game Theory" AND abs:"Multi-agent"', 
-                'ti:"Decision Making" AND cat:cs.MA', 
-                'abs:"Nash Equilibrium" AND abs:"Planning"',
-                'ti:"Adversarial" AND abs:"Decision"'
+                '(ti:"Game Theory" AND abs:Multi-agent)', 
+                '(ti:"Decision Making" AND cat:cs.MA)', 
+                '(abs:"Nash Equilibrium" AND abs:Planning)',
+                '(ti:Adversarial AND abs:Decision)'
             ],
-            "desc": "关注多智能体决策规划、博弈论在协同与对抗中的应用、纳什均衡计算以及动态环境下的多机战略博弈。"
+            "desc": "关注多智能体决策规划、博弈论应用及动态博弈。"
         },
         "MARL": {
-            # 关注多智能体强化学习
             "keywords": [
                 'ti:"Multi-Agent Reinforcement Learning"', 
-                'abs:"MARL"', 
-                'abs:"CTDE"',  # Centralized Training Decentralized Execution
-                'ti:"Cooperative" AND abs:"Reinforcement Learning"'
+                'all:MARL', 
+                'all:CTDE', 
+                '(ti:Cooperative AND abs:"Reinforcement Learning")'
             ],
-            "desc": "关注多智能体强化学习(MARL)的核心算法，如协作机制(CTDE)、信用分配、通信协议以及大规模多智能体训练的稳定性。"
+            "desc": "关注多智能体强化学习算法、协作机制及通信协议。"
         },
         "Humanoid_Manipulation": {
-            # 关注人形机器人操作
             "keywords": [
-                'ti:"Humanoid" AND abs:"Manipulation"', 
+                '(ti:Humanoid AND abs:Manipulation)', 
                 'abs:"Dexterous Hand"', 
                 'ti:"Whole-body Control"',
-                'cat:cs.RO AND "Humanoid Robot"'
+                '(cat:cs.RO AND all:"Humanoid Robot")'
             ],
-            "desc": "关注人形机器人的上肢操作、灵巧手抓取、全身协调控制(WBC)、触觉反馈以及模仿学习在人形操作中的应用。"
+            "desc": "关注人形机器人操作、灵巧手抓取及全身协调控制。"
         }
     },
     "comparison_depth": 5, 
     "llm_model": "Qwen/Qwen3.5-35B-A3B", 
     "base_url": "https://api-inference.modelscope.cn/v1/" 
 }
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
 ZOTERO_API_KEY = os.getenv("ZOTERO_API_KEY")
@@ -82,21 +79,25 @@ def get_existing_papers_in_category(collection_key):
 import urllib.parse  # 必须在文件顶部添加这个导入
 
 async def fetch_arxiv(session, keywords):
-    # 1. 动态计算日期。注意：arXiv 在周末不更新，建议调试时可以用 days=2 或 3
-    # 如果抓不到，建议先改成 days=3 测试，确认逻辑通了再改回 1
+    # 获取日期
     yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
     
-    # 2. 构建查询字符串并进行 URL 编码
-    query_string = " OR ".join([f"({kw})" for kw in keywords])
-    encoded_query = urllib.parse.quote(query_string)
+    # 构造查询字符串：确保每个括号组之间有明确的 OR
+    # arXiv 并不总是需要外层大括号，我们尝试更简洁的组合
+    query_string = " OR ".join(keywords)
+    
+    # 使用 quote_plus 会将空格转为 +，这在 arXiv API 中更稳定
+    encoded_query = urllib.parse.quote_plus(query_string, safe='():"')
     
     url = f"http://export.arxiv.org/api/query?search_query={encoded_query}&sortBy=submittedDate&sortOrder=desc&max_results=30"
     
-    print(f"📡 正在请求 arXiv: {url}") # 方便在 GitHub 日志里看到生成的 URL
+    print(f"📡 正在请求 arXiv: {url}")
 
     async with session.get(url) as response:
         if response.status != 200:
-            print(f"❌ arXiv API 请求失败，状态码: {response.status}")
+            # 如果还是 400，打印出详情
+            error_text = await response.text()
+            print(f"❌ arXiv API 请求失败，状态码: {response.status}, 原因: {error_text[:200]}")
             return []
             
         raw_data = await response.text()
@@ -104,28 +105,17 @@ async def fetch_arxiv(session, keywords):
         
         papers = []
         for e in feed.entries:
-            # 3. 防御性检查：确保 entry 中有我们需要的所有字段
-            # arXiv 的错误返回有时会包含 id 为 "Error" 的条目，它们没有 published 属性
             pub_date = e.get('published', '')
-            entry_id = e.get('id', '')
-            title = e.get('title', '')
-            summary = e.get('summary', '')
-
-            if not pub_date or not entry_id:
-                continue
-
-            # 4. 日期过滤
             if pub_date.startswith(yesterday):
                 papers.append({
-                    "id": entry_id.split('/')[-1],
-                    "title": title.replace('\n',' ').strip(),
-                    "summary": summary.replace('\n',' ').strip(),
+                    "id": e.get('id', '').split('/')[-1],
+                    "title": e.get('title', '').replace('\n',' ').strip(),
+                    "summary": e.get('summary', '').replace('\n',' ').strip(),
                     "published": pub_date
                 })
         
         print(f"✅ 该分类找到 {len(papers)} 篇昨日新论文")
         return papers
-
 # ================= 🧠 AI 差量分析模块 =================
 def analyze_paper_with_context(paper, category_name, context_titles):
     prompt = f"""
