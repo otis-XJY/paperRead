@@ -3,154 +3,212 @@ import aiohttp
 import feedparser
 import json
 import os
+from datetime import datetime, timedelta
 from openai import OpenAI
 from pyzotero import zotero
 
-# ================= 1. 从环境变量获取配置 (适配 GitHub Actions) =================
+# ================= 🚀 灵活配置区 =================
+CONFIG = {
+    "categories": {
+        "RAG": {
+            # 支持 ArXiv 高级检索语法：ti(标题), abs(摘要), cat(分类)
+            "keywords": [
+                'ti:"Retrieval-Augmented Generation"', 
+                'abs:"Vector Database"', 
+                'abs:"RAG"'
+            ],
+            "desc": "关注检索增强生成、向量数据库及长文本处理"
+        },
+        "Agents": {
+            "keywords": [
+                'ti:"Agent"', 
+                'cat:cs.AI AND "Multi-Agent"', 
+                'abs:"Planning"'
+            ],
+            "desc": "关注智能体架构、任务规划和多智能体协同"
+        },
+        "LLM_Reasoning": {
+            "keywords": [
+                'ti:"Reasoning"', 
+                'abs:"Chain of Thought"', 
+                'cat:cs.CL AND "In-context Learning"'
+            ],
+            "desc": "关注大模型的逻辑推理、复杂指令遵循和思维链技术"
+        }
+    },
+    "comparison_depth": 5,  # 提取该分类下最近5篇已读论文进行对比
+    "llm_model": "Qwen/Qwen3.5-35B-A3B", 
+    "base_url": "https://api-inference.modelscope.cn/v1/" 
+}
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
 ZOTERO_API_KEY = os.getenv("ZOTERO_API_KEY")
 
-KEYWORDS = ["large language models", "retrieval augmented generation", "agentic workflow"]
-HISTORY_FILE = "history.json"
-
-if not all([OPENAI_API_KEY, ZOTERO_USER_ID, ZOTERO_API_KEY]):
-    raise ValueError("缺少必要的环境变量，请检查 GitHub Secrets 配置！")
-
-# 启用 Gemini 的 OpenAI 兼容接口
-client = OpenAI(
-    api_key=OPENAI_API_KEY, # 请替换成您的ModelScope Access Token
-    base_url="https://api-inference.modelscope.cn/v1/"
-)
+client = OpenAI(api_key=OPENAI_API_KEY, base_url=CONFIG["base_url"])
 zot = zotero.Zotero(ZOTERO_USER_ID, 'user', ZOTERO_API_KEY)
 
-# ================= 2. 抓取模块 =================
-async def fetch_arxiv(session, keyword):
-    keyword_query = keyword.replace(' ', '+')
-    url = f"http://export.arxiv.org/api/query?search_query=all:%22{keyword_query}%22&sortBy=submittedDate&sortOrder=desc&max_results=5"
-    async with session.get(url) as response:
-        text = await response.text()
-        feed = feedparser.parse(text)
-        return [{"id": entry.id.split('/')[-1], "title": entry.title, "summary": entry.summary.replace('\n', ' ')} for entry in feed.entries]
-
-# ================= 3. AI 分析模块 =================
-def analyze_with_ai(papers):
-    prompt = f"""
-    你是顶尖AI研究员。请阅读以下 {len(papers)} 篇最新论文的标题和摘要。
-    任务：
-    1. 分类为：【必读】、【值得看】、【可跳过】。
-    2. 为【必读】和【值得看】写一段锐评（创新点与局限性）。
-    3. 为【必读】论文提取3-5个核心概念（术语）。
-    返回严格的 JSON 格式：
-    {{"results":[{{"id": "论文id", "category": "分类", "review": "锐评", "concepts":["概念1"]}}]}}
-    
-    论文数据：{json.dumps(papers)}
-    """
-    response = client.chat.completions.create(
-        model="Qwen/Qwen3.5-35B-A3B", # ModelScope Model-Id
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"}
-    )
-
-    return json.loads(response.choices[0].message.content)["results"]
-
-# ================= 4. 写入 Zotero (聚合所有笔记功能) =================
-def get_or_create_collection(name):
-    collections = zot.collections()
-    for c in collections:
-        if c['data']['name'] == name:
+# ================= 📦 Zotero 操作辅助 =================
+def get_or_create_collection(name, parent_key=None):
+    colls = zot.collections()
+    for c in colls:
+        if c['data']['name'] == name and c['data'].get('parentCollection') == parent_key:
             return c['key']
-    # 如果不存在则创建
-    resp = zot.create_collections([{'name': name}])
+    resp = zot.create_collections([{'name': name, 'parentCollection': parent_key}])
     return resp['successful']['0']['key']
 
-def process_to_zotero(paper, ai_result):
-    print(f"AI 的评价是: {ai_result['category']} | 理由: {ai_result['review'][:50]}...")
-    if ai_result["category"] == "可跳过":
-        return
+def get_existing_papers_in_category(collection_key):
+    """提取该分类下已有的论文标题，用于 AI 比较"""
+    items = zot.collection_items(collection_key, limit=CONFIG["comparison_depth"])
+    titles = [i['data'].get('title') for i in items if i['data']['itemType'] == 'preprint']
+    return titles
 
-    print(f"[{ai_result['category']}] 正在推送到 Zotero: {paper['title']}")
+# ================= 🔍 抓取模块 (支持高级语法) =================
+async def fetch_arxiv(session, keywords):
+    # 算“昨天”的日期，arXiv 延迟通常为 1-2 天，建议调试时可以用 days=2
+    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
     
-    # 获取或创建 DailyPapers 分类
-    daily_coll_key = get_or_create_collection("DailyPapers")
+    # 构建复杂的查询字符串
+    # 示例: (ti:"Reasoning") OR (abs:"RAG")
+    query_string = " OR ".join([f"({kw})" for kw in keywords])
+    url = f"http://export.arxiv.org/api/query?search_query={query_string}&sortBy=submittedDate&sortOrder=desc&max_results=30"
     
-    # 1. 创建父条目 (Preprint)
-    item_template = zot.item_template('preprint')
-    item_template['title'] = paper['title']
-    item_template['abstractNote'] = paper['summary']
-    item_template['url'] = f"https://arxiv.org/abs/{paper['id']}"
-    item_template['collections'] = [daily_coll_key]
-    
-    # 将 AI 提取的“概念”直接作为 Zotero 标签写入 (方便 Zotero 内部搜索和图谱关联)
-    tags = [{"tag": ai_result["category"]}]
-    for concept in ai_result.get("concepts",[]):
-         tags.append({"tag": concept})
-    item_template['tags'] = tags
-    
-    resp = zot.create_items([item_template])
-    if not resp['successful']: return
-    
-    new_item_key = list(resp['successful'].values())[0]['key']
+    async with session.get(url) as response:
+        feed = feedparser.parse(await response.text())
+        papers = []
+        for e in feed.entries:
+            # 过滤日期
+            if e.published.startswith(yesterday):
+                papers.append({
+                    "id": e.id.split('/')[-1],
+                    "title": e.title.replace('\n',' '),
+                    "summary": e.summary.replace('\n',' '),
+                    "published": e.published
+                })
+        return papers
 
-    # 2. 创建精美排版的子笔记 (完全取代 Obsidian)
-    note_template = zot.item_template('note')
+# ================= 🧠 AI 差量分析模块 =================
+def analyze_paper_with_context(paper, category_name, context_titles):
+    prompt = f"""
+    你是一个{category_name}领域的专家。
+    【当前领域关注点】：{CONFIG['categories'][category_name]['desc']}
+    【已读相关论文】：{json.dumps(context_titles, ensure_ascii=False)}
     
-    # Zotero 笔记支持 HTML，我们将排版做得漂亮点
-    concepts_html = ", ".join([f"<b>{c}</b>" for c in ai_result.get("concepts", [])])
+    【待分析论文】：
+    标题：{paper['title']}
+    摘要：{paper['summary']}
     
-    html_content = f"""
-    <h2 style="color: #d9534f;">AI 智能速读 ({ai_result['category']})</h2>
-    <hr/>
-    <h3>🧠 核心概念</h3>
-    <p>{concepts_html if concepts_html else "无"}</p>
-    <h3>💡 锐评与分析</h3>
-    <p>{ai_result['review']}</p>
-    <h3>📄 原文摘要</h3>
-    <p>{paper['summary']}</p>
+    请严格按 JSON 格式输出以下深度分析：
+    1. recommendation: 分为 "必读"、"值得看"、"可跳过"。
+    2. comparison: 相比于已读列表，本文的独特之处（是开创、补充还是微调？）。
+    3. methodology: 核心方法论或数学逻辑的简述。
+    4. core_concepts: 提取3-5个核心术语（用于知识图谱）。
+    5. sharp_review: 犀利的批判性短评（优缺点）。
+    
+    输出示例：
+    {{
+      "recommendation": "必读",
+      "comparison": "在已读论文A的基础上，将RAG的检索环节替换为了动态图搜索...",
+      "methodology": "采用了跨模态注意力机制进行对齐，计算复杂度从O(N^2)降至O(N)...",
+      "core_concepts": ["Dynamic Graph", "Context Injection"],
+      "sharp_review": "方法极具启发性，但实验部分仅在小型数据集上验证，泛化能力存疑。"
+    }}
     """
-    
-    note_template['note'] = html_content
-    note_template['parentItem'] = new_item_key
-    zot.create_items([note_template])
+    try:
+        res = client.chat.completions.create(
+            model=CONFIG["llm_model"],
+            messages=[{"role": "system", "content": "你是一个严谨的学术助手。"},
+                      {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        return json.loads(res.choices[0].message.content)
+    except Exception as e:
+        print(f"AI 分析失败: {e}")
+        return None
 
-# ================= 主流程 =================
+# ================= 📄 结构化笔记生成 =================
+def create_html_note(paper, analysis):
+    badge_color = "#d9534f" if analysis['recommendation'] == "必读" else "#f0ad4e"
+    concepts_html = "".join([f'<span style="background:#eef; color:#3366ff; padding:2px 6px; border-radius:10px; margin-right:5px; font-size:0.9em;">[[{c}]]</span>' for c in analysis.get('core_concepts', [])])
+    
+    html = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        <h2 style="color: #2c3e50; border-bottom: 2px solid #eee;">{paper['title']}</h2>
+        
+        <p><strong>🔥 推荐指数：</strong> <span style="background:{badge_color}; color:white; padding:2px 8px; border-radius:4px;">{analysis['recommendation']}</span></p>
+
+        <div style="background:#f9f9f9; border-left:5px solid #007bff; padding:10px; margin:10px 0;">
+            <strong>🔄 差量对比（较已读）：</strong><br/>
+            {analysis['comparison']}
+        </div>
+
+        <h3 style="color: #2980b9;">🧠 核心术语库</h3>
+        <p>{concepts_html}</p>
+
+        <h3 style="color: #2980b9;">🔬 方法论简析</h3>
+        <p>{analysis['methodology']}</p>
+
+        <h3 style="color: #2980b9;">💬 锐评</h3>
+        <p><i>{analysis['sharp_review']}</i></p>
+        
+        <hr/>
+        <p style="font-size:0.8em; color:#95a5a6;">分析生成于: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+    </div>
+    """
+    return html
+
+# ================= 🚀 主流程 =================
 async def main():
-    print("1. 开始抓取最新论文...")
-    history =[]
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, 'r') as f:
+    root_key = get_or_create_collection("DailyPapers")
+    cat_keys = {name: get_or_create_collection(name, root_key) for name in CONFIG["categories"]}
+    
+    history = []
+    if os.path.exists("history.json"):
+        with open("history.json") as f:
             try: history = json.load(f)
-            except: pass
+            except: history = []
 
     async with aiohttp.ClientSession() as session:
-        tasks =[fetch_arxiv(session, kw) for kw in KEYWORDS]
-        results = await asyncio.gather(*tasks)
-    
-    new_papers =[]
-    for res in results:
-        for p in res:
-            if p['id'] not in history:
-                new_papers.append(p)
-                history.append(p['id'])
-    
-    new_papers = new_papers[:10] # 每次最多处理 10 篇
-    if not new_papers:
-        print("今天没有新的相关论文。")
-        return
-
-    print(f"2. 抓取到 {len(new_papers)} 篇新论文，开始 AI 分析...")
-    ai_results = analyze_with_ai(new_papers)
-    
-    print("3. 开始写入 Zotero...")
-    ai_dict = {res['id']: res for res in ai_results}
-    for paper in new_papers:
-        if paper['id'] in ai_dict:
-            process_to_zotero(paper, ai_dict[paper['id']])
+        for cat_name, cat_info in CONFIG["categories"].items():
+            print(f"--- 正在处理分类: {cat_name} ---")
+            papers = await fetch_arxiv(session, cat_info["keywords"])
             
-    # 保存历史记录 (供 GitHub Actions 提交回仓库)
-    with open(HISTORY_FILE, 'w') as f:
+            # 获取该分类下的对比背景
+            context = get_existing_papers_in_category(cat_keys[cat_name])
+            
+            for p in papers:
+                if p['id'] in history: continue
+                
+                # 记录 ID 防止重复
+                history.append(p['id'])
+                
+                analysis = analyze_paper_with_context(p, cat_name, context)
+                if not analysis or analysis["recommendation"] == "可跳过":
+                    continue
+                
+                # 写入 Zotero
+                item = zot.item_template('preprint')
+                item['title'] = p['title']
+                item['abstractNote'] = p['summary']
+                item['url'] = f"https://arxiv.org/abs/{p['id']}"
+                item['collections'] = [cat_keys[cat_name]]
+                item['tags'] = [{"tag": cat_name}, {"tag": analysis["recommendation"]}]
+                
+                resp = zot.create_items([item])
+                if resp['successful']:
+                    item_key = list(resp['successful'].values())[0]['key']
+                    # 生成并写入美化笔记
+                    note_content = create_html_note(p, analysis)
+                    note_template = zot.item_template('note')
+                    note_template['note'] = note_content
+                    note_template['parentItem'] = item_key
+                    zot.create_items([note_template])
+                    
+                    print(f"✅ 已同步并创建笔记: {p['title']}")
+
+    with open("history.json", "w") as f:
         json.dump(history, f)
-    print("🎉 今日任务完成！")
+    print("🎉 所有分类处理完成！")
 
 if __name__ == "__main__":
     asyncio.run(main())
