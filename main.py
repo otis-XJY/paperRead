@@ -18,34 +18,34 @@ CONFIG = {
                 '(abs:Drone AND abs:Language)',
                 '(ti:Aerial AND abs:VLN)'
             ],
-            "desc": "关注无人机(UAV/Drone)环境下的视觉语言导航、跨模态空间感知及指令执行。"
+            "desc": "无人机视觉语言导航、空间感知及指令执行。"
         },
         "MultiAgent_Game_Theory": {
             "keywords": [
-                '(ti:"Game Theory" AND abs:Multi-agent)', 
-                '(ti:"Decision Making" AND cat:cs.MA)', 
-                '(abs:"Nash Equilibrium" AND abs:Planning)',
-                '(ti:Adversarial AND abs:Decision)'
+                'ti:"Game Theory" AND abs:Multi-agent', 
+                'ti:"Decision Making" AND cat:cs.MA', 
+                'abs:"Nash Equilibrium" AND abs:Planning',
+                'ti:Adversarial AND abs:Decision'
             ],
-            "desc": "关注多智能体决策规划、博弈论应用及动态博弈。"
+            "desc": "多智能体决策规划、博弈论应用及动态博弈。"
         },
         "MARL": {
             "keywords": [
                 'ti:"Multi-Agent Reinforcement Learning"', 
                 'all:MARL', 
                 'all:CTDE', 
-                '(ti:Cooperative AND abs:"Reinforcement Learning")'
+                'ti:Cooperative AND abs:"Reinforcement Learning"'
             ],
-            "desc": "关注多智能体强化学习算法、协作机制及通信协议。"
+            "desc": "多智能体强化学习算法、协作机制及通信协议。"
         },
         "Humanoid_Manipulation": {
             "keywords": [
-                '(ti:Humanoid AND abs:Manipulation)', 
+                'ti:Humanoid AND abs:Manipulation', 
                 'abs:"Dexterous Hand"', 
                 'ti:"Whole-body Control"',
-                '(cat:cs.RO AND all:"Humanoid Robot")'
+                'cat:cs.RO AND all:"Humanoid Robot"'
             ],
-            "desc": "关注人形机器人操作、灵巧手抓取及全身协调控制。"
+            "desc": "人形机器人操作、灵巧手抓取及全身协调控制。"
         }
     },
     "comparison_depth": 5, 
@@ -78,26 +78,30 @@ def get_existing_papers_in_category(collection_key):
 # ================= 🔍 抓取模块 (支持高级语法) =================
 import urllib.parse  # 必须在文件顶部添加这个导入
 
+import urllib.parse
+
 async def fetch_arxiv(session, keywords):
-    # 获取日期
+    # 1. 获取北京时间前一天的日期 (UTC 时间需要处理)
+    # 注意：arXiv 周末不更新。如果调试时没抓到，建议 timedelta(days=3)
     yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
     
-    # 构造查询字符串：确保每个括号组之间有明确的 OR
-    # arXiv 并不总是需要外层大括号，我们尝试更简洁的组合
-    query_string = " OR ".join(keywords)
+    # 2. 构造查询字符串
+    # 确保每个关键词组都有括号包裹，且用 OR 连接
+    query_string = " OR ".join([f"({kw})" for kw in keywords])
     
-    # 使用 quote_plus 会将空格转为 +，这在 arXiv API 中更稳定
-    encoded_query = urllib.parse.quote_plus(query_string, safe='():"')
+    # 重要：不要设置 safe='"'，必须让引号被编码为 %22
+    # 不要使用 quote_plus，使用 quote 让空格变成 %20
+    encoded_query = urllib.parse.quote(query_string)
     
     url = f"http://export.arxiv.org/api/query?search_query={encoded_query}&sortBy=submittedDate&sortOrder=desc&max_results=30"
     
-    print(f"📡 正在请求 arXiv: {url}")
+    print(f"📡 正在请求 arXiv (已全编码): {url}")
 
     async with session.get(url) as response:
         if response.status != 200:
-            # 如果还是 400，打印出详情
             error_text = await response.text()
-            print(f"❌ arXiv API 请求失败，状态码: {response.status}, 原因: {error_text[:200]}")
+            print(f"❌ arXiv API 请求失败，状态码: {response.status}")
+            print(f"❌ 错误详情: {error_text[:300]}")
             return []
             
         raw_data = await response.text()
@@ -105,6 +109,7 @@ async def fetch_arxiv(session, keywords):
         
         papers = []
         for e in feed.entries:
+            # 这里的 published 是字符串 "2023-10-25T20:00:00Z"
             pub_date = e.get('published', '')
             if pub_date.startswith(yesterday):
                 papers.append({
@@ -114,7 +119,7 @@ async def fetch_arxiv(session, keywords):
                     "published": pub_date
                 })
         
-        print(f"✅ 该分类找到 {len(papers)} 篇昨日新论文")
+        print(f"✅ 该分类找到 {len(papers)} 篇新论文 (日期: {yesterday})")
         return papers
 # ================= 🧠 AI 差量分析模块 =================
 def analyze_paper_with_context(paper, category_name, context_titles):
