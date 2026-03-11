@@ -83,7 +83,7 @@ import urllib.parse
 async def fetch_arxiv(session, keywords):
     # 1. 获取北京时间前一天的日期 (UTC 时间需要处理)
     # 注意：arXiv 周末不更新。如果调试时没抓到，建议 timedelta(days=3)
-    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    yesterday = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
     
     # 2. 构造查询字符串
     # 确保每个关键词组都有括号包裹，且用 OR 连接
