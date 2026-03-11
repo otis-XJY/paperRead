@@ -79,27 +79,51 @@ def get_existing_papers_in_category(collection_key):
     return titles
 
 # ================= 🔍 抓取模块 (支持高级语法) =================
+import urllib.parse  # 必须在文件顶部添加这个导入
+
 async def fetch_arxiv(session, keywords):
-    # 算“昨天”的日期，arXiv 延迟通常为 1-2 天，建议调试时可以用 days=2
+    # 1. 动态计算日期。注意：arXiv 在周末不更新，建议调试时可以用 days=2 或 3
+    # 如果抓不到，建议先改成 days=3 测试，确认逻辑通了再改回 1
     yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
     
-    # 构建复杂的查询字符串
-    # 示例: (ti:"Reasoning") OR (abs:"RAG")
+    # 2. 构建查询字符串并进行 URL 编码
     query_string = " OR ".join([f"({kw})" for kw in keywords])
-    url = f"http://export.arxiv.org/api/query?search_query={query_string}&sortBy=submittedDate&sortOrder=desc&max_results=30"
+    encoded_query = urllib.parse.quote(query_string)
     
+    url = f"http://export.arxiv.org/api/query?search_query={encoded_query}&sortBy=submittedDate&sortOrder=desc&max_results=30"
+    
+    print(f"📡 正在请求 arXiv: {url}") # 方便在 GitHub 日志里看到生成的 URL
+
     async with session.get(url) as response:
-        feed = feedparser.parse(await response.text())
+        if response.status != 200:
+            print(f"❌ arXiv API 请求失败，状态码: {response.status}")
+            return []
+            
+        raw_data = await response.text()
+        feed = feedparser.parse(raw_data)
+        
         papers = []
         for e in feed.entries:
-            # 过滤日期
-            if e.published.startswith(yesterday):
+            # 3. 防御性检查：确保 entry 中有我们需要的所有字段
+            # arXiv 的错误返回有时会包含 id 为 "Error" 的条目，它们没有 published 属性
+            pub_date = e.get('published', '')
+            entry_id = e.get('id', '')
+            title = e.get('title', '')
+            summary = e.get('summary', '')
+
+            if not pub_date or not entry_id:
+                continue
+
+            # 4. 日期过滤
+            if pub_date.startswith(yesterday):
                 papers.append({
-                    "id": e.id.split('/')[-1],
-                    "title": e.title.replace('\n',' '),
-                    "summary": e.summary.replace('\n',' '),
-                    "published": e.published
+                    "id": entry_id.split('/')[-1],
+                    "title": title.replace('\n',' ').strip(),
+                    "summary": summary.replace('\n',' ').strip(),
+                    "published": pub_date
                 })
+        
+        print(f"✅ 该分类找到 {len(papers)} 篇昨日新论文")
         return papers
 
 # ================= 🧠 AI 差量分析模块 =================
