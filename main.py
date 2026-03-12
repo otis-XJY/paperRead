@@ -40,7 +40,22 @@ CONFIG = {
     "base_url": "https://api-inference.modelscope.cn/v1/"
 }
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url=CONFIG["base_url"])
+LLM_API_KEY = os.getenv("MODELSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
+if not LLM_API_KEY:
+    raise ValueError("缺少 LLM API Key，请设置 MODELSCOPE_API_KEY（推荐）或 OPENAI_API_KEY")
+
+
+def is_auth_error(exc):
+    msg = str(exc)
+    return "401" in msg or "Authentication failed" in msg or "invalid" in msg.lower()
+
+
+client = OpenAI(
+    api_key=LLM_API_KEY,
+    base_url=CONFIG["base_url"],
+    timeout=90.0,
+    max_retries=2,
+)
 zot = zotero.Zotero(os.getenv("ZOTERO_USER_ID"), 'user', os.getenv("ZOTERO_API_KEY"))
 
 STATE_FILE = "state.json"
@@ -48,6 +63,8 @@ HISTORY_FILE = "history.json"
 HTTP_TIMEOUT_SECONDS = 25
 RETRY_TIMES = 3
 RETRY_BASE_DELAY_SECONDS = 1.0
+DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
+DEBUG_PHASE_ONE = os.getenv("DEBUG_PHASE_ONE", "1") == "1"
 
 
 def load_json_file(path, default):
@@ -120,6 +137,13 @@ def save_state(last_date):
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump({"is_first_run": False, "last_date": last_date}, f)
 
+
+def simple_first_run_filter(paper):
+    title = (paper.get("title") or "").strip()
+    summary = (paper.get("summary") or "").strip()
+    # 冷启动仅做轻量过滤：标题/摘要不能为空，避免无效条目入库
+    return bool(title) and bool(summary)
+
 # ================= 3. 两阶段 AI 分析 =================
 def check_relevance_phase_one(paper, kb_entries):
     # 提取短评作为上下文，极致省 Token
@@ -133,8 +157,9 @@ def check_relevance_phase_one(paper, kb_entries):
     任务：
     1. 评估相关性分数。
     2. 如果分数 >= 7，找出【已读库】中哪几篇论文与它最相关（提供精确的 title 列表）。
+    3. 给出一句简短判定理由，说明为什么判定为相关/不相关。
     
-    返回严格JSON: {{"is_relevant": true/false, "score": 8, "matched_titles": ["论文A", "论文B"]}}
+    返回严格JSON: {{"is_relevant": true/false, "score": 8, "matched_titles": ["论文A", "论文B"], "reason": "一句话理由"}}
     """
     try:
         res = retry_sync(
@@ -145,8 +170,21 @@ def check_relevance_phase_one(paper, kb_entries):
             ),
             "阶段一初筛"
         )
-        return safe_json_parse(res.choices[0].message.content)
+        parsed = safe_json_parse(res.choices[0].message.content)
+        if "is_relevant" not in parsed:
+            parsed["is_relevant"] = False
+        if "score" not in parsed:
+            parsed["score"] = 0
+        if "matched_titles" not in parsed or not isinstance(parsed["matched_titles"], list):
+            parsed["matched_titles"] = []
+        if "reason" not in parsed:
+            parsed["reason"] = "模型未返回理由"
+        return parsed
     except Exception as e:
+        if is_auth_error(e):
+            raise RuntimeError(
+                "LLM 鉴权失败（401）。请确认使用的是 ModelScope Token，并设置 MODELSCOPE_API_KEY。"
+            ) from e
         print(f"阶段一初筛报错: {e}")
         return {"is_relevant": False, "matched_titles":[]}
 
@@ -171,6 +209,10 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
         )
         return safe_json_parse(res.choices[0].message.content)
     except Exception as e:
+        if is_auth_error(e):
+            raise RuntimeError(
+                "LLM 鉴权失败（401）。请确认使用的是 ModelScope Token，并设置 MODELSCOPE_API_KEY。"
+            ) from e
         print(f"阶段二深读报错: {e}")
         return None
 
@@ -178,18 +220,93 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
 async def fetch_arxiv(session, keywords, state):
     all_papers = {}
     max_published_date = state["last_date"]
+
+    if state["is_first_run"]:
+        latest_candidates = {}
+        hot_candidates = {}
+        hot_order = []
+
+        for kw in keywords:
+            encoded_kw = urllib.parse.quote(kw)
+            print(f"🚀 首次运行：拉取最新10篇 + 认可度最高(Relevance)10篇 -> {kw}")
+
+            latest_url = (
+                f"http://export.arxiv.org/api/query?search_query={encoded_kw}"
+                f"&sortBy=submittedDate&sortOrder=descending&max_results=10"
+            )
+            hot_url = (
+                f"http://export.arxiv.org/api/query?search_query={encoded_kw}"
+                f"&sortBy=relevance&sortOrder=descending&max_results=10"
+            )
+
+            latest_text = await fetch_text_with_retry(session, latest_url)
+            if latest_text:
+                latest_feed = feedparser.parse(latest_text)
+                for e in latest_feed.entries:
+                    pub_date = e.get('published', '')
+                    if pub_date > state["last_date"]:
+                        pid = e.id.split('/')[-1]
+                        paper = {
+                            "id": pid,
+                            "title": e.title.replace('\n', ' '),
+                            "summary": e.summary.replace('\n', ' '),
+                            "published": pub_date,
+                        }
+                        latest_candidates[pid] = paper
+                        if pub_date > max_published_date:
+                            max_published_date = pub_date
+
+            hot_text = await fetch_text_with_retry(session, hot_url)
+            if hot_text:
+                hot_feed = feedparser.parse(hot_text)
+                for e in hot_feed.entries:
+                    pub_date = e.get('published', '')
+                    if pub_date > state["last_date"]:
+                        pid = e.id.split('/')[-1]
+                        paper = {
+                            "id": pid,
+                            "title": e.title.replace('\n', ' '),
+                            "summary": e.summary.replace('\n', ' '),
+                            "published": pub_date,
+                        }
+                        if pid not in hot_candidates:
+                            hot_order.append(pid)
+                        hot_candidates[pid] = paper
+                        if pub_date > max_published_date:
+                            max_published_date = pub_date
+
+        latest_ranked = sorted(latest_candidates.values(), key=lambda x: x.get("published", ""), reverse=True)
+        latest_top10 = latest_ranked[:10]
+        hot_ranked = [hot_candidates[pid] for pid in hot_order if pid in hot_candidates]
+        hot_top10 = hot_ranked[:10]
+
+        merged = []
+        selected = set()
+
+        for p in latest_top10:
+            if p["id"] not in selected:
+                merged.append(p)
+                selected.add(p["id"])
+
+        for p in hot_top10:
+            if len(merged) >= 20:
+                break
+            if p["id"] not in selected:
+                merged.append(p)
+                selected.add(p["id"])
+
+        print(
+            f"📦 首次运行分类配额控制：latest={len(latest_top10)}，"
+            f"hot={len(hot_top10)}，去重后返回={len(merged)}（上限20）"
+        )
+        return merged, max_published_date
     
     for kw in keywords:
         encoded_kw = urllib.parse.quote(kw)
         urls_to_fetch = []
         
-        if state["is_first_run"]:
-            print(f"🚀 首次运行：拉取最新10篇 + 认可度最高(Relevance)10篇 -> {kw}")
-            urls_to_fetch.append(f"http://export.arxiv.org/api/query?search_query={encoded_kw}&sortBy=submittedDate&sortOrder=descending&max_results=10")
-            urls_to_fetch.append(f"http://export.arxiv.org/api/query?search_query={encoded_kw}&sortBy=relevance&sortOrder=descending&max_results=10")
-        else:
-            print(f"🔍 增量拉取：抓取最新论文对比 {state['last_date']} -> {kw}")
-            urls_to_fetch.append(f"http://export.arxiv.org/api/query?search_query={encoded_kw}&sortBy=submittedDate&sortOrder=descending&max_results=30")
+        print(f"🔍 增量拉取：抓取最新论文对比 {state['last_date']} -> {kw}")
+        urls_to_fetch.append(f"http://export.arxiv.org/api/query?search_query={encoded_kw}&sortBy=submittedDate&sortOrder=descending&max_results=30")
 
         for url in urls_to_fetch:
             text = await fetch_text_with_retry(session, url)
@@ -210,6 +327,9 @@ async def fetch_arxiv(session, keywords, state):
 
 # ================= 5. 主流程 =================
 async def main():
+    print("🚀 开始执行 main.py")
+    if DRY_RUN:
+        print("🧪 DRY_RUN=1，本次仅本地演练：不会写入 Zotero，也不会更新 history/state 文件")
     if not os.path.exists("knowledge_base.json"):
         print("❌ 找不到 knowledge_base.json，请先运行 zotero_indexer.py")
         return
@@ -227,9 +347,15 @@ async def main():
     
     state = load_state()
     global_max_date = state["last_date"]
+    print(f"🧭 当前状态: is_first_run={state['is_first_run']}, last_date={state['last_date']}")
 
-    root_key = get_or_create_collection("DailyPapers")
-    cat_keys = {name: get_or_create_collection(name, root_key) for name in CONFIG["categories"]}
+    if DRY_RUN:
+        cat_keys = {name: None for name in CONFIG["categories"]}
+    else:
+        print("📚 正在获取/创建 Zotero 集合...")
+        root_key = get_or_create_collection("DailyPapers")
+        cat_keys = {name: get_or_create_collection(name, root_key) for name in CONFIG["categories"]}
+        print("✅ Zotero 集合准备完成")
 
     async with aiohttp.ClientSession() as session:
         for cat_name, cat_info in CONFIG["categories"].items():
@@ -244,9 +370,53 @@ async def main():
             for p in papers:
                 if p['id'] in history_set:
                     continue
+
+                if state["is_first_run"]:
+                    if not simple_first_run_filter(p):
+                        print(f"⏭️ 首次运行简单过滤未通过，跳过: {p['title'][:30]}...")
+                        continue
+
+                    history.append(p['id'])
+                    history_set.add(p['id'])
+
+                    if DRY_RUN:
+                        print(f"✅ DRY_RUN 首次直存（不写入）: {p['title'][:50]}...")
+                        continue
+
+                    print(f"📝 首次运行直存 Zotero: {p['title'][:50]}...")
+                    item = zot.item_template('preprint')
+                    item['title'] = p['title']
+                    item['abstractNote'] = p['summary']
+                    item['url'] = f"https://arxiv.org/abs/{p['id']}"
+                    item['collections'] = [cat_keys[cat_name]]
+                    item['tags'] = [{"tag": cat_name}, {"tag": "首次筛选"}, {"tag": "待深读"}]
+
+                    resp = retry_sync(lambda: zot.create_items([item]), "首次运行创建 Zotero 论文条目")
+                    if resp['successful']:
+                        item_key = list(resp['successful'].values())[0]['key']
+                        note_template = zot.item_template('note')
+                        note_template['note'] = (
+                            f"<h3>首次运行自动入库</h3>"
+                            f"<p>分类：{cat_name}</p>"
+                            f"<p>说明：该条目在冷启动阶段按关键词检索并通过基础字段过滤后入库，"
+                            f"后续增量任务将进行相关性对比与深度阅读。</p>"
+                        )
+                        note_template['parentItem'] = item_key
+                        retry_sync(lambda: zot.create_items([note_template]), "首次运行创建 Zotero 说明笔记")
+                        print("✅ 首次运行已直存至 Zotero")
+                    continue
                 
                 # 阶段一：轻量化相关性初筛
+                print(f"🧪 阶段一相关性判断: {p['title'][:50]}...")
                 phase_one_res = check_relevance_phase_one(p, kb_entries)
+                if DEBUG_PHASE_ONE:
+                    print(
+                        "📊 阶段一输出: "
+                        f"score={phase_one_res.get('score', 0)}, "
+                        f"is_relevant={phase_one_res.get('is_relevant', False)}, "
+                        f"matched_titles={len(phase_one_res.get('matched_titles', []))}, "
+                        f"reason={phase_one_res.get('reason', '')}"
+                    )
                 if not phase_one_res.get("is_relevant"):
                     print(f"⏭️ 评分不够或无相关性，跳过: {p['title'][:30]}...")
                     continue
@@ -262,10 +432,16 @@ async def main():
                 matched_full_notes = [{"title": entry["title"], "note": entry["full_note"]} 
                                       for entry in kb_entries if entry["title"] in matched_titles]
                 
+                print(f"📖 阶段二深读分析: {p['title'][:50]}...")
                 analysis = deep_analyze_phase_two(p, cat_name, matched_full_notes)
                 if not analysis or analysis.get("recommendation") == "可跳过": continue
+
+                if DRY_RUN:
+                    print(f"✅ DRY_RUN 命中相关论文（不写入）: {p['title'][:50]}... | 推荐: {analysis.get('recommendation', '值得看')}")
+                    continue
                 
                 # 写入 Zotero
+                print("📝 写入 Zotero 条目与笔记...")
                 item = zot.item_template('preprint')
                 item['title'] = p['title']
                 item['abstractNote'] = p['summary']
@@ -301,10 +477,13 @@ async def main():
                     print(f"✅ 成功同步至 Zotero")
 
     # 持久化状态
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False)
-    save_state(global_max_date)
-    print(f"\n🎉 任务完成！记录的最新论文时间戳为：{global_max_date}")
+    if DRY_RUN:
+        print(f"\n🎉 DRY_RUN 完成！本次演练捕获到最新论文时间戳：{global_max_date}（未持久化）")
+    else:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False)
+        save_state(global_max_date)
+        print(f"\n🎉 任务完成！记录的最新论文时间戳为：{global_max_date}")
 
 if __name__ == "__main__":
     asyncio.run(main())

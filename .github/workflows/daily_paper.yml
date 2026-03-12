@@ -25,17 +25,22 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Build Zotero Knowledge Base
+        timeout-minutes: 15
         env:
           ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
           ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
-        run: python zotero_indexer.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u zotero_indexer.py
 
       - name: Run AI Analysis & Push
+        timeout-minutes: 30
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MODELSCOPE_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
           ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
-        run: python main.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u main.py
 
       - name: Commit State Files
         run: |
