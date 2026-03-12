@@ -170,6 +170,46 @@ def safe_json_parse(text):
         return json.loads(match.group(0)) if match else {}
 
 
+def extract_authors_from_entry(entry):
+    authors = []
+    for author in (entry.get("authors") or []):
+        name = (author.get("name") or "").strip()
+        if name:
+            authors.append(name)
+    return authors
+
+
+def authors_to_zotero_creators(authors):
+    creators = []
+    for full_name in (authors or []):
+        name = (full_name or "").strip()
+        if not name:
+            continue
+        parts = name.split()
+        if len(parts) >= 2:
+            creators.append({
+                "creatorType": "author",
+                "firstName": " ".join(parts[:-1]),
+                "lastName": parts[-1],
+            })
+        else:
+            creators.append({
+                "creatorType": "author",
+                "name": name,
+            })
+    return creators
+
+
+def format_arxiv_published_time(published):
+    if not published:
+        return ""
+    try:
+        dt = datetime.strptime(published, "%Y-%m-%dT%H:%M:%SZ")
+        return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+    except Exception:
+        return published
+
+
 def normalize_parent_collection(parent_value):
     # Zotero 顶层集合的 parentCollection 可能是 None/""/False，统一归一化
     if parent_value in (None, "", False):
@@ -368,11 +408,13 @@ async def fetch_arxiv(session, keywords, state):
                     pub_date = e.get('published', '')
                     if pub_date > state["last_date"]:
                         pid = e.id.split('/')[-1]
+                        authors = extract_authors_from_entry(e)
                         paper = {
                             "id": pid,
                             "title": e.title.replace('\n', ' '),
                             "summary": e.summary.replace('\n', ' '),
                             "published": pub_date,
+                            "authors": authors,
                         }
                         latest_candidates[pid] = paper
                         if pub_date > max_published_date:
@@ -385,11 +427,13 @@ async def fetch_arxiv(session, keywords, state):
                     pub_date = e.get('published', '')
                     if pub_date > state["last_date"]:
                         pid = e.id.split('/')[-1]
+                        authors = extract_authors_from_entry(e)
                         paper = {
                             "id": pid,
                             "title": e.title.replace('\n', ' '),
                             "summary": e.summary.replace('\n', ' '),
                             "published": pub_date,
+                            "authors": authors,
                         }
                         if pid not in hot_candidates:
                             hot_order.append(pid)
@@ -441,7 +485,13 @@ async def fetch_arxiv(session, keywords, state):
                 # 增量过滤逻辑：只接受比 last_date 新的论文（首次运行时 last_date 极小，等于全收）
                 if pub_date > state["last_date"]:
                     pid = e.id.split('/')[-1]
-                    all_papers[pid] = {"id": pid, "title": e.title.replace('\n', ' '), "summary": e.summary.replace('\n', ' '), "published": pub_date}
+                    all_papers[pid] = {
+                        "id": pid,
+                        "title": e.title.replace('\n', ' '),
+                        "summary": e.summary.replace('\n', ' '),
+                        "published": pub_date,
+                        "authors": extract_authors_from_entry(e),
+                    }
                     if pub_date > max_published_date:
                         max_published_date = pub_date
 
@@ -527,6 +577,8 @@ async def main():
                     item['title'] = p['title']
                     item['abstractNote'] = p['summary']
                     item['url'] = f"https://arxiv.org/abs/{p['id']}"
+                    item['date'] = p.get('published', '')
+                    item['creators'] = authors_to_zotero_creators(p.get('authors', []))
                     item['collections'] = [cat_keys[cat_name]]
                     item['tags'] = [
                         {"tag": cat_name},
@@ -544,6 +596,8 @@ async def main():
                         ensure_item_in_collection(item_key, cat_keys[cat_name], f"首次-{cat_name}")
                         note_template = zot.item_template('note')
                         badge_color = "#d9534f" if first_run_analysis.get("recommendation") == "必读" else "#f0ad4e"
+                        authors_str = ", ".join(p.get("authors", [])) if p.get("authors") else "未知"
+                        published_str = format_arxiv_published_time(p.get("published", ""))
                         concepts_html = "".join([
                             f'<span style="background:#eef; color:#3366ff; padding:2px 6px; border-radius:10px; margin-right:5px; font-size:0.9em;">[[{c}]]</span>'
                             for c in first_run_analysis.get("core_concepts", [])
@@ -553,6 +607,8 @@ async def main():
                             f"<p><strong>🆕 入库阶段：</strong>首次运行（冷启动）</p>"
                             f"<p><strong>🔥 推荐指数：</strong> <span style=\"background:{badge_color}; color:white; padding:2px 8px; border-radius:4px;\">{first_run_analysis.get('recommendation', '值得看')}</span></p>"
                             f"<p><strong>📂 分类：</strong>{cat_name}</p>"
+                            f"<p><strong>👤 作者：</strong>{authors_str}</p>"
+                            f"<p><strong>🕒 arXiv上传时间：</strong>{published_str}</p>"
                             f"<p><strong>🔗 原文：</strong><a href=\"https://arxiv.org/abs/{p['id']}\">https://arxiv.org/abs/{p['id']}</a></p>"
                             f"<div style=\"background:#f9f9f9;border-left:5px solid #28a745;padding:10px;margin:10px 0;\">"
                             f"<strong>🧾 一句话总结：</strong><br/>{first_run_analysis.get('summary', '')}"
@@ -623,6 +679,8 @@ async def main():
                 item['title'] = p['title']
                 item['abstractNote'] = p['summary']
                 item['url'] = f"https://arxiv.org/abs/{p['id']}"
+                item['date'] = p.get('published', '')
+                item['creators'] = authors_to_zotero_creators(p.get('authors', []))
                 item['collections'] = [cat_keys[cat_name]]
                 item['tags'] =[{"tag": cat_name}, {"tag": analysis.get("recommendation", "值得看")}]
                 
@@ -635,6 +693,8 @@ async def main():
                     item_key, web_item_link = extract_created_item_meta(resp)
                     ensure_item_in_collection(item_key, cat_keys[cat_name], f"增量-{cat_name}")
                     badge_color = "#d9534f" if analysis.get('recommendation') == "必读" else "#f0ad4e"
+                    authors_str = ", ".join(p.get("authors", [])) if p.get("authors") else "未知"
+                    published_str = format_arxiv_published_time(p.get("published", ""))
                     concepts_html = "".join([f'<span style="background:#eef; color:#3366ff; padding:2px 6px; border-radius:10px; margin-right:5px; font-size:0.9em;">[[{c}]]</span>' for c in analysis.get('core_concepts',[])])
                     
                     # 动态生成关联信息
@@ -643,6 +703,8 @@ async def main():
                     note_html = f"""
                     <h2 style="color: #2c3e50; border-bottom: 2px solid #eee;">{p['title']}</h2>
                     <p><strong>🔥 推荐指数：</strong> <span style="background:{badge_color}; color:white; padding:2px 8px; border-radius:4px;">{analysis.get('recommendation')}</span></p>
+                    <p><strong>👤 作者：</strong>{authors_str}</p>
+                    <p><strong>🕒 arXiv上传时间：</strong>{published_str}</p>
                     {matched_html}
                     <div style="background:#f9f9f9; border-left:5px solid #007bff; padding:10px; margin:10px 0;">
                         <strong>🔄 深度差量对比：</strong><br/>{analysis.get('comparison', '')}
