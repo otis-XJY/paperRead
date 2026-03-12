@@ -19,11 +19,23 @@ def retry_sync(operation, operation_name, retries=3, base_delay=1.0):
         try:
             return operation()
         except Exception as e:
+            # 接口不存在属于编程错误，直接抛出，避免无效重试
+            if isinstance(e, AttributeError):
+                raise
             if attempt == retries - 1:
                 raise
             delay = base_delay * (2 ** attempt)
             print(f"⚠️ {operation_name} 失败（第 {attempt + 1}/{retries} 次）: {e}，{delay:.1f}s 后重试")
             time.sleep(delay)
+
+
+def get_item_children(item_key, title=""):
+    # 兼容不同 pyzotero 版本：优先 item_children，其次 children
+    if hasattr(zot, "item_children"):
+        return retry_sync(lambda: zot.item_children(item_key), f"读取条目子项({title[:20]})")
+    if hasattr(zot, "children"):
+        return retry_sync(lambda: zot.children(item_key), f"读取条目子项({title[:20]})")
+    raise AttributeError("当前 pyzotero 版本不支持读取条目子项（缺少 item_children/children 方法）")
 
 def extract_note_parts(html_content):
     if not html_content:
@@ -57,12 +69,12 @@ def build_knowledge_base():
         
         print(f"正在索引分类: {cat_name}")
         items = retry_sync(lambda: zot.collection_items(coll['key']), f"读取分类条目({cat_name})")
-        kb[cat_name] =[]
+        kb.setdefault(cat_name, [])
         
         for item in items:
             if item['data']['itemType'] in ['preprint', 'journalArticle']:
                 title = item['data'].get('title', '')
-                children = retry_sync(lambda: zot.item_children(item['key']), f"读取条目子项({title[:20]})")
+                children = get_item_children(item['key'], title)
                 
                 sharp_review, full_note = "", ""
                 for child in children:
