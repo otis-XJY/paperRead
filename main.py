@@ -112,11 +112,27 @@ def safe_json_parse(text):
         match = re.search(r'\{.*\}', text, re.DOTALL)
         return json.loads(match.group(0)) if match else {}
 
+
+def normalize_parent_collection(parent_value):
+    # Zotero 顶层集合的 parentCollection 可能是 None/""/False，统一归一化
+    if parent_value in (None, "", False):
+        return None
+    return parent_value
+
 def get_or_create_collection(name, parent_key=None):
     colls = retry_sync(lambda: zot.collections(), f"读取集合列表({name})")
+    target_parent = normalize_parent_collection(parent_key)
+    matched = []
     for c in colls:
-        if c['data']['name'] == name and c['data'].get('parentCollection') == parent_key:
-            return c['key']
+        collection_parent = normalize_parent_collection(c['data'].get('parentCollection'))
+        if c['data']['name'] == name and collection_parent == target_parent:
+            matched.append(c)
+
+    if matched:
+        # 若历史上已存在重复集合，优先复用最早创建的，避免继续扩散
+        matched.sort(key=lambda x: x['data'].get('dateAdded', ''))
+        return matched[0]['key']
+
     resp = retry_sync(
         lambda: zot.create_collections([{'name': name, 'parentCollection': parent_key}]),
         f"创建集合({name})"
@@ -190,7 +206,7 @@ def check_relevance_phase_one(paper, kb_entries):
 
 def deep_analyze_phase_two(paper, category_name, matched_full_notes):
     prompt = f"""
-    你是{category_name}专家。
+    你是{category_name}专家学者，了解这个领域的经典方法和前沿进展。
     【你过去写下的核心笔记】（仅针对强相关论文）：{json.dumps(matched_full_notes, ensure_ascii=False)}
     
     【今日新论文】：标题：{paper['title']} | 摘要：{paper['summary']}
@@ -214,6 +230,46 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
                 "LLM 鉴权失败（401）。请确认使用的是 ModelScope Token，并设置 MODELSCOPE_API_KEY。"
             ) from e
         print(f"阶段二深读报错: {e}")
+        return None
+
+
+def analyze_first_run_paper(paper, category_name):
+    prompt = f"""
+    你是{category_name}专家学者，了解这个领域的经典方法和前沿进展。
+    当前为冷启动阶段，没有历史论文可对比。
+
+    【论文】：标题：{paper['title']} | 摘要：{paper['summary']}
+
+    任务：仅基于该论文内容输出结构化笔记，严格输出 JSON：
+    {{"recommendation": "必读/值得看/可跳过", "methodology": "核心方法简述", "core_concepts": ["术语1"], "sharp_review": "批判性锐评", "summary": "一句话价值总结"}}
+    """
+    try:
+        res = retry_sync(
+            lambda: client.chat.completions.create(
+                model=CONFIG["llm_model"],
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            ),
+            "首次运行深读"
+        )
+        parsed = safe_json_parse(res.choices[0].message.content)
+        if "recommendation" not in parsed:
+            parsed["recommendation"] = "值得看"
+        if "methodology" not in parsed:
+            parsed["methodology"] = "模型未返回方法论"
+        if "core_concepts" not in parsed or not isinstance(parsed["core_concepts"], list):
+            parsed["core_concepts"] = []
+        if "sharp_review" not in parsed:
+            parsed["sharp_review"] = "模型未返回锐评"
+        if "summary" not in parsed:
+            parsed["summary"] = "模型未返回总结"
+        return parsed
+    except Exception as e:
+        if is_auth_error(e):
+            raise RuntimeError(
+                "LLM 鉴权失败（401）。请确认使用的是 ModelScope Token，并设置 MODELSCOPE_API_KEY。"
+            ) from e
+        print(f"首次运行深读报错: {e}")
         return None
 
 # ================= 4. 动态抓取模块 =================
@@ -376,11 +432,25 @@ async def main():
                         print(f"⏭️ 首次运行简单过滤未通过，跳过: {p['title'][:30]}...")
                         continue
 
+                    print(f"📖 首次运行深读分析: {p['title'][:50]}...")
+                    first_run_analysis = analyze_first_run_paper(p, cat_name)
+                    if not first_run_analysis:
+                        first_run_analysis = {
+                            "recommendation": "值得看",
+                            "methodology": "首次运行分析失败，暂无法生成方法论",
+                            "core_concepts": [],
+                            "sharp_review": "首次运行分析失败，暂无法生成锐评",
+                            "summary": "首次运行分析失败，建议后续补充。",
+                        }
+
                     history.append(p['id'])
                     history_set.add(p['id'])
 
                     if DRY_RUN:
-                        print(f"✅ DRY_RUN 首次直存（不写入）: {p['title'][:50]}...")
+                        print(
+                            f"✅ DRY_RUN 首次深读完成（不写入）: {p['title'][:50]}... | "
+                            f"推荐: {first_run_analysis.get('recommendation', '值得看')}"
+                        )
                         continue
 
                     print(f"📝 首次运行直存 Zotero: {p['title'][:50]}...")
@@ -389,21 +459,44 @@ async def main():
                     item['abstractNote'] = p['summary']
                     item['url'] = f"https://arxiv.org/abs/{p['id']}"
                     item['collections'] = [cat_keys[cat_name]]
-                    item['tags'] = [{"tag": cat_name}, {"tag": "首次筛选"}, {"tag": "待深读"}]
+                    item['tags'] = [
+                        {"tag": cat_name},
+                        {"tag": "首次运行"},
+                        {"tag": first_run_analysis.get("recommendation", "值得看")},
+                    ]
 
                     resp = retry_sync(lambda: zot.create_items([item]), "首次运行创建 Zotero 论文条目")
                     if resp['successful']:
                         item_key = list(resp['successful'].values())[0]['key']
                         note_template = zot.item_template('note')
+                        badge_color = "#d9534f" if first_run_analysis.get("recommendation") == "必读" else "#f0ad4e"
+                        concepts_html = "".join([
+                            f'<span style="background:#eef; color:#3366ff; padding:2px 6px; border-radius:10px; margin-right:5px; font-size:0.9em;">[[{c}]]</span>'
+                            for c in first_run_analysis.get("core_concepts", [])
+                        ])
                         note_template['note'] = (
-                            f"<h3>首次运行自动入库</h3>"
-                            f"<p>分类：{cat_name}</p>"
-                            f"<p>说明：该条目在冷启动阶段按关键词检索并通过基础字段过滤后入库，"
-                            f"后续增量任务将进行相关性对比与深度阅读。</p>"
+                            f"<h2 style=\"color:#2c3e50;border-bottom:2px solid #eee;\">{p['title']}</h2>"
+                            f"<p><strong>🆕 入库阶段：</strong>首次运行（冷启动）</p>"
+                            f"<p><strong>🔥 推荐指数：</strong> <span style=\"background:{badge_color}; color:white; padding:2px 8px; border-radius:4px;\">{first_run_analysis.get('recommendation', '值得看')}</span></p>"
+                            f"<p><strong>📂 分类：</strong>{cat_name}</p>"
+                            f"<p><strong>🔗 原文：</strong><a href=\"https://arxiv.org/abs/{p['id']}\">https://arxiv.org/abs/{p['id']}</a></p>"
+                            f"<div style=\"background:#f9f9f9;border-left:5px solid #28a745;padding:10px;margin:10px 0;\">"
+                            f"<strong>🧾 一句话总结：</strong><br/>{first_run_analysis.get('summary', '')}"
+                            f"</div>"
+                            f"<div style=\"background:#f9f9f9;border-left:5px solid #007bff;padding:10px;margin:10px 0;\">"
+                            f"<strong>📄 摘要：</strong><br/>{p['summary']}"
+                            f"</div>"
+                            f"<h3 style=\"color:#2980b9;\">🧠 核心术语库</h3><p>{concepts_html}</p>"
+                            f"<h3 style=\"color:#2980b9;\">🔬 核心方法简述</h3><p>{first_run_analysis.get('methodology', '')}</p>"
+                            f"<h3 style=\"color:#2980b9;\">💬 锐评</h3><p><i>{first_run_analysis.get('sharp_review', '')}</i></p>"
+                            f"<p><strong>📝 说明：</strong>该条目在冷启动阶段按关键词检索后完成单篇深读分析，"
+                            f"后续增量任务将继续进行相关性对比与深度比较。</p>"
                         )
                         note_template['parentItem'] = item_key
                         retry_sync(lambda: zot.create_items([note_template]), "首次运行创建 Zotero 说明笔记")
                         print("✅ 首次运行已直存至 Zotero")
+                    else:
+                        print(f"⚠️ 首次运行条目创建失败: {p['title'][:50]}...")
                     continue
                 
                 # 阶段一：轻量化相关性初筛
