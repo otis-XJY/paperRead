@@ -4,6 +4,7 @@ import feedparser
 import json
 import os
 import re
+import time
 import urllib.parse
 from datetime import datetime
 from openai import OpenAI
@@ -44,6 +45,49 @@ zot = zotero.Zotero(os.getenv("ZOTERO_USER_ID"), 'user', os.getenv("ZOTERO_API_K
 
 STATE_FILE = "state.json"
 HISTORY_FILE = "history.json"
+HTTP_TIMEOUT_SECONDS = 25
+RETRY_TIMES = 3
+RETRY_BASE_DELAY_SECONDS = 1.0
+
+
+def load_json_file(path, default):
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"⚠️ 读取 {path} 失败，使用默认值。原因: {e}")
+        return default
+
+
+def retry_sync(operation, operation_name, retries=RETRY_TIMES, base_delay=RETRY_BASE_DELAY_SECONDS):
+    for attempt in range(retries):
+        try:
+            return operation()
+        except Exception as e:
+            if attempt == retries - 1:
+                raise
+            delay = base_delay * (2 ** attempt)
+            print(f"⚠️ {operation_name} 失败（第 {attempt + 1}/{retries} 次）: {e}，{delay:.1f}s 后重试")
+            time.sleep(delay)
+
+
+async def fetch_text_with_retry(session, url, retries=RETRY_TIMES, base_delay=RETRY_BASE_DELAY_SECONDS):
+    timeout = aiohttp.ClientTimeout(total=HTTP_TIMEOUT_SECONDS)
+    for attempt in range(retries):
+        try:
+            async with session.get(url, timeout=timeout) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f"HTTP {resp.status}")
+                return await resp.text()
+        except Exception as e:
+            if attempt == retries - 1:
+                print(f"❌ 抓取失败，已放弃: {url}，原因: {e}")
+                return ""
+            delay = base_delay * (2 ** attempt)
+            print(f"⚠️ 抓取失败（第 {attempt + 1}/{retries} 次）: {e}，{delay:.1f}s 后重试")
+            await asyncio.sleep(delay)
 
 def safe_json_parse(text):
     try: return json.loads(text)
@@ -52,21 +96,28 @@ def safe_json_parse(text):
         return json.loads(match.group(0)) if match else {}
 
 def get_or_create_collection(name, parent_key=None):
-    colls = zot.collections()
+    colls = retry_sync(lambda: zot.collections(), f"读取集合列表({name})")
     for c in colls:
         if c['data']['name'] == name and c['data'].get('parentCollection') == parent_key:
             return c['key']
-    resp = zot.create_collections([{'name': name, 'parentCollection': parent_key}])
+    resp = retry_sync(
+        lambda: zot.create_collections([{'name': name, 'parentCollection': parent_key}]),
+        f"创建集合({name})"
+    )
     return resp['successful']['0']['key']
 
 # ================= 2. 状态管理 =================
 def load_state():
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f: return json.load(f)
-    return {"is_first_run": True, "last_date": "2000-01-01T00:00:00Z"}
+    default_state = {"is_first_run": True, "last_date": "2000-01-01T00:00:00Z"}
+    state = load_json_file(STATE_FILE, default_state)
+    if not isinstance(state, dict):
+        return default_state
+    if "is_first_run" not in state or "last_date" not in state:
+        return default_state
+    return state
 
 def save_state(last_date):
-    with open(STATE_FILE, "w") as f:
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump({"is_first_run": False, "last_date": last_date}, f)
 
 # ================= 3. 两阶段 AI 分析 =================
@@ -86,10 +137,13 @@ def check_relevance_phase_one(paper, kb_entries):
     返回严格JSON: {{"is_relevant": true/false, "score": 8, "matched_titles": ["论文A", "论文B"]}}
     """
     try:
-        res = client.chat.completions.create(
-            model=CONFIG["llm_model"],
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
+        res = retry_sync(
+            lambda: client.chat.completions.create(
+                model=CONFIG["llm_model"],
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            ),
+            "阶段一初筛"
         )
         return safe_json_parse(res.choices[0].message.content)
     except Exception as e:
@@ -107,10 +161,13 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
     {{"recommendation": "必读/值得看/可跳过", "comparison": "一句话说明与你过去笔记中论文的具体异同", "methodology": "核心方法简述", "core_concepts": ["术语1"], "sharp_review": "批判性分析"}}
     """
     try:
-        res = client.chat.completions.create(
-            model=CONFIG["llm_model"],
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
+        res = retry_sync(
+            lambda: client.chat.completions.create(
+                model=CONFIG["llm_model"],
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            ),
+            "阶段二深读"
         )
         return safe_json_parse(res.choices[0].message.content)
     except Exception as e:
@@ -135,18 +192,19 @@ async def fetch_arxiv(session, keywords, state):
             urls_to_fetch.append(f"http://export.arxiv.org/api/query?search_query={encoded_kw}&sortBy=submittedDate&sortOrder=descending&max_results=30")
 
         for url in urls_to_fetch:
-            async with session.get(url) as resp:
-                if resp.status != 200: continue
-                feed = feedparser.parse(await resp.text())
+            text = await fetch_text_with_retry(session, url)
+            if not text:
+                continue
+            feed = feedparser.parse(text)
                 
-                for e in feed.entries:
-                    pub_date = e.get('published', '')
-                    # 增量过滤逻辑：只接受比 last_date 新的论文（首次运行时 last_date 极小，等于全收）
-                    if pub_date > state["last_date"]:
-                        pid = e.id.split('/')[-1]
-                        all_papers[pid] = {"id": pid, "title": e.title.replace('\n', ' '), "summary": e.summary.replace('\n', ' '), "published": pub_date}
-                        if pub_date > max_published_date:
-                            max_published_date = pub_date
+            for e in feed.entries:
+                pub_date = e.get('published', '')
+                # 增量过滤逻辑：只接受比 last_date 新的论文（首次运行时 last_date 极小，等于全收）
+                if pub_date > state["last_date"]:
+                    pid = e.id.split('/')[-1]
+                    all_papers[pid] = {"id": pid, "title": e.title.replace('\n', ' '), "summary": e.summary.replace('\n', ' '), "published": pub_date}
+                    if pub_date > max_published_date:
+                        max_published_date = pub_date
 
     return list(all_papers.values()), max_published_date
 
@@ -156,8 +214,16 @@ async def main():
         print("❌ 找不到 knowledge_base.json，请先运行 zotero_indexer.py")
         return
         
-    with open("knowledge_base.json", "r", encoding="utf-8") as f: kb = json.load(f)
-    history = json.load(open(HISTORY_FILE, "r")) if os.path.exists(HISTORY_FILE) else[]
+    kb = load_json_file("knowledge_base.json", {})
+    if not isinstance(kb, dict):
+        print("⚠️ knowledge_base.json 格式异常，使用空知识库")
+        kb = {}
+
+    history = load_json_file(HISTORY_FILE, [])
+    if not isinstance(history, list):
+        print("⚠️ history.json 格式异常，重置为空列表")
+        history = []
+    history_set = set(history)
     
     state = load_state()
     global_max_date = state["last_date"]
@@ -176,14 +242,18 @@ async def main():
             kb_entries = kb.get(cat_name, [])
             
             for p in papers:
-                if p['id'] in history: continue
-                history.append(p['id'])
+                if p['id'] in history_set:
+                    continue
                 
                 # 阶段一：轻量化相关性初筛
                 phase_one_res = check_relevance_phase_one(p, kb_entries)
                 if not phase_one_res.get("is_relevant"):
                     print(f"⏭️ 评分不够或无相关性，跳过: {p['title'][:30]}...")
                     continue
+
+                # 只在确认“相关”后记录历史，避免误伤其它分类
+                history.append(p['id'])
+                history_set.add(p['id'])
                 
                 # 阶段二：组装深读上下文并深度对比
                 matched_titles = phase_one_res.get("matched_titles",[])
@@ -203,7 +273,7 @@ async def main():
                 item['collections'] = [cat_keys[cat_name]]
                 item['tags'] =[{"tag": cat_name}, {"tag": analysis.get("recommendation", "值得看")}]
                 
-                resp = zot.create_items([item])
+                resp = retry_sync(lambda: zot.create_items([item]), "创建 Zotero 论文条目")
                 if resp['successful']:
                     item_key = list(resp['successful'].values())[0]['key']
                     badge_color = "#d9534f" if analysis.get('recommendation') == "必读" else "#f0ad4e"
@@ -227,11 +297,12 @@ async def main():
                     note_template = zot.item_template('note')
                     note_template['note'] = note_html
                     note_template['parentItem'] = item_key
-                    zot.create_items([note_template])
+                    retry_sync(lambda: zot.create_items([note_template]), "创建 Zotero 笔记")
                     print(f"✅ 成功同步至 Zotero")
 
     # 持久化状态
-    with open(HISTORY_FILE, "w") as f: json.dump(history, f)
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False)
     save_state(global_max_date)
     print(f"\n🎉 任务完成！记录的最新论文时间戳为：{global_max_date}")
 

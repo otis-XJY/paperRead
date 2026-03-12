@@ -1,13 +1,29 @@
 import os
 import json
 import re
+import time
 from pyzotero import zotero
 from bs4 import BeautifulSoup
 
 ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
 ZOTERO_API_KEY = os.getenv("ZOTERO_API_KEY")
 
+if not ZOTERO_USER_ID or not ZOTERO_API_KEY:
+    raise ValueError("缺少 Zotero 凭据，请检查 ZOTERO_USER_ID / ZOTERO_API_KEY")
+
 zot = zotero.Zotero(ZOTERO_USER_ID, 'user', ZOTERO_API_KEY)
+
+
+def retry_sync(operation, operation_name, retries=3, base_delay=1.0):
+    for attempt in range(retries):
+        try:
+            return operation()
+        except Exception as e:
+            if attempt == retries - 1:
+                raise
+            delay = base_delay * (2 ** attempt)
+            print(f"⚠️ {operation_name} 失败（第 {attempt + 1}/{retries} 次）: {e}，{delay:.1f}s 后重试")
+            time.sleep(delay)
 
 def extract_note_parts(html_content):
     if not html_content:
@@ -34,18 +50,19 @@ def build_knowledge_base():
     print("🔄 开始构建 Zotero 知识库...")
     kb = {}
     
-    for coll in zot.collections():
+    collections = retry_sync(lambda: zot.collections(), "读取 Zotero 集合列表")
+    for coll in collections:
         cat_name = coll['data']['name']
         if cat_name == "DailyPapers": continue 
         
         print(f"正在索引分类: {cat_name}")
-        items = zot.collection_items(coll['key'])
+        items = retry_sync(lambda: zot.collection_items(coll['key']), f"读取分类条目({cat_name})")
         kb[cat_name] =[]
         
         for item in items:
             if item['data']['itemType'] in ['preprint', 'journalArticle']:
                 title = item['data'].get('title', '')
-                children = zot.item_children(item['key'])
+                children = retry_sync(lambda: zot.item_children(item['key']), f"读取条目子项({title[:20]})")
                 
                 sharp_review, full_note = "", ""
                 for child in children:
