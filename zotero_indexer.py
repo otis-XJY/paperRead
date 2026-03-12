@@ -2,6 +2,7 @@ import os
 import json
 import re
 import time
+from collections import defaultdict
 from pyzotero import zotero
 from bs4 import BeautifulSoup
 
@@ -37,6 +38,12 @@ def get_item_children(item_key, title=""):
         return retry_sync(lambda: zot.children(item_key), f"读取条目子项({title[:20]})")
     raise AttributeError("当前 pyzotero 版本不支持读取条目子项（缺少 item_children/children 方法）")
 
+
+def normalize_parent_collection(parent_value):
+    if parent_value in (None, "", False):
+        return None
+    return parent_value
+
 def extract_note_parts(html_content):
     if not html_content:
         return "", ""
@@ -63,29 +70,59 @@ def build_knowledge_base():
     kb = {}
     
     collections = retry_sync(lambda: zot.collections(), "读取 Zotero 集合列表")
+
+    daily_root_keys = set()
+    for coll in collections:
+        if coll['data'].get('name') != "DailyPapers":
+            continue
+        if normalize_parent_collection(coll['data'].get('parentCollection')) is None:
+            daily_root_keys.add(coll['key'])
+
+    if not daily_root_keys:
+        print("⚠️ 未找到 DailyPapers 根集合，knowledge_base 将为空。")
+    else:
+        print(f"📁 DailyPapers 根集合数量: {len(daily_root_keys)}")
+
+    grouped = defaultdict(list)
     for coll in collections:
         cat_name = coll['data']['name']
-        if cat_name == "DailyPapers": continue 
-        
-        print(f"正在索引分类: {cat_name}")
-        items = retry_sync(lambda: zot.collection_items(coll['key']), f"读取分类条目({cat_name})")
+        if cat_name == "DailyPapers":
+            continue
+
+        parent_key = normalize_parent_collection(coll['data'].get('parentCollection'))
+        if parent_key not in daily_root_keys:
+            continue
+        grouped[cat_name].append(coll['key'])
+
+    for cat_name, coll_keys in grouped.items():
+        print(f"正在索引分类: {cat_name}（集合数: {len(coll_keys)}）")
         kb.setdefault(cat_name, [])
-        
-        for item in items:
-            if item['data']['itemType'] in ['preprint', 'journalArticle']:
-                title = item['data'].get('title', '')
+        seen_titles = set()
+
+        for coll_key in coll_keys:
+            items = retry_sync(lambda key=coll_key: zot.collection_items(key), f"读取分类条目({cat_name})")
+
+            for item in items:
+                if item['data']['itemType'] not in ['preprint', 'journalArticle']:
+                    continue
+
+                title = (item['data'].get('title', '') or '').strip()
+                if not title or title in seen_titles:
+                    continue
+
                 children = get_item_children(item['key'], title)
-                
+
                 sharp_review, full_note = "", ""
                 for child in children:
                     if child['data']['itemType'] == 'note':
                         sharp_review, full_note = extract_note_parts(child['data'].get('note', ''))
-                
+
                 kb[cat_name].append({
                     "title": title,
                     "short_review": sharp_review,  # 用于阶段一初筛
                     "full_note": full_note         # 用于阶段二深读
                 })
+                seen_titles.add(title)
 
     with open("knowledge_base.json", "w", encoding="utf-8") as f:
         json.dump(kb, f, ensure_ascii=False, indent=2)
