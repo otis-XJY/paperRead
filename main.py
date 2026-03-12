@@ -46,8 +46,15 @@ if not LLM_API_KEY:
 
 
 def is_auth_error(exc):
-    msg = str(exc)
-    return "401" in msg or "Authentication failed" in msg or "invalid" in msg.lower()
+    msg = str(exc).lower()
+    # 只匹配真正的鉴权失败，避免将限速(429)、无效参数等误判为鉴权错误
+    return (
+        "401" in msg
+        or "authentication failed" in msg
+        or "invalid api key" in msg
+        or "invalid token" in msg
+        or "unauthorized" in msg
+    )
 
 
 client = OpenAI(
@@ -65,6 +72,28 @@ RETRY_TIMES = 3
 RETRY_BASE_DELAY_SECONDS = 1.0
 DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 DEBUG_PHASE_ONE = os.getenv("DEBUG_PHASE_ONE", "1") == "1"
+ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
+
+
+def build_zotero_web_item_link(item_key):
+    if not ZOTERO_USER_ID or not item_key:
+        return ""
+    # 当前脚本使用 user library（非 group library）
+    return f"https://www.zotero.org/users/{ZOTERO_USER_ID}/items/{item_key}/library"
+
+
+def extract_created_item_meta(resp):
+    successful = resp.get("successful", {}) if isinstance(resp, dict) else {}
+    if not successful:
+        return "", ""
+    first = next(iter(successful.values()))
+    item_key = first.get("key", "")
+    web_link = ((first.get("links") or {}).get("alternate") or {}).get("href", "")
+    if web_link and not web_link.endswith("/library"):
+        web_link = f"{web_link}/library"
+    if not web_link:
+        web_link = build_zotero_web_item_link(item_key)
+    return item_key, web_link
 
 
 def load_json_file(path, default):
@@ -122,23 +151,31 @@ def normalize_parent_collection(parent_value):
 def get_or_create_collection(name, parent_key=None):
     colls = retry_sync(lambda: zot.collections(), f"读取集合列表({name})")
     target_parent = normalize_parent_collection(parent_key)
-    matched = []
+    matched =[]
     for c in colls:
         collection_parent = normalize_parent_collection(c['data'].get('parentCollection'))
         if c['data']['name'] == name and collection_parent == target_parent:
             matched.append(c)
 
     if matched:
-        # 若历史上已存在重复集合，优先复用最早创建的，避免继续扩散
         matched.sort(key=lambda x: x['data'].get('dateAdded', ''))
         return matched[0]['key']
 
+    # 【修复重点】动态构造 payload，剔除掉顶层目录不该有的 parentCollection 字段
+    payload = {'name': name}
+    if parent_key:
+        payload['parentCollection'] = parent_key
+
     resp = retry_sync(
-        lambda: zot.create_collections([{'name': name, 'parentCollection': parent_key}]),
+        lambda: zot.create_collections([payload]),
         f"创建集合({name})"
     )
+    
+    # 容错处理：打印详细失败原因
+    if '0' not in resp.get('successful', {}):
+        raise RuntimeError(f"创建Zotero集合失败，API返回: {resp.get('failed')}")
+        
     return resp['successful']['0']['key']
-
 # ================= 2. 状态管理 =================
 def load_state():
     default_state = {"is_first_run": True, "last_date": "2000-01-01T00:00:00Z"}
@@ -411,7 +448,10 @@ async def main():
         print("📚 正在获取/创建 Zotero 集合...")
         root_key = get_or_create_collection("DailyPapers")
         cat_keys = {name: get_or_create_collection(name, root_key) for name in CONFIG["categories"]}
-        print("✅ Zotero 集合准备完成")
+        print(f"✅ Zotero 集合准备完成，root_key={root_key}")
+        print("📁 分类集合映射:")
+        for _cat_name, _cat_key in cat_keys.items():
+            print(f"   - {_cat_name}: {_cat_key}")
 
     async with aiohttp.ClientSession() as session:
         for cat_name, cat_info in CONFIG["categories"].items():
@@ -465,9 +505,13 @@ async def main():
                         {"tag": first_run_analysis.get("recommendation", "值得看")},
                     ]
 
-                    resp = retry_sync(lambda: zot.create_items([item]), "首次运行创建 Zotero 论文条目")
+                    try:
+                        resp = retry_sync(lambda: zot.create_items([item]), "首次运行创建 Zotero 论文条目")
+                    except Exception as _zotero_err:
+                        print(f"⚠️ Zotero 条目写入失败，跳过此论文: {p['title'][:40]}... 原因: {_zotero_err}")
+                        continue
                     if resp['successful']:
-                        item_key = list(resp['successful'].values())[0]['key']
+                        item_key, web_item_link = extract_created_item_meta(resp)
                         note_template = zot.item_template('note')
                         badge_color = "#d9534f" if first_run_analysis.get("recommendation") == "必读" else "#f0ad4e"
                         concepts_html = "".join([
@@ -493,10 +537,20 @@ async def main():
                             f"后续增量任务将继续进行相关性对比与深度比较。</p>"
                         )
                         note_template['parentItem'] = item_key
-                        retry_sync(lambda: zot.create_items([note_template]), "首次运行创建 Zotero 说明笔记")
+                        try:
+                            retry_sync(lambda: zot.create_items([note_template]), "首次运行创建 Zotero 说明笔记")
+                        except Exception as _note_err:
+                            print(f"⚠️ 笔记创建失败，但条目已入库: {p['title'][:40]}... 原因: {_note_err}")
                         print("✅ 首次运行已直存至 Zotero")
+                        if web_item_link:
+                            print(f"🔗 Zotero 直达链接: {web_item_link}")
+                        else:
+                            print(f"🔗 Zotero 条目 Key: {item_key}")
                     else:
-                        print(f"⚠️ 首次运行条目创建失败: {p['title'][:50]}...")
+                        print(
+                            f"⚠️ 首次运行条目创建失败: {p['title'][:50]}... | "
+                            f"failed={resp.get('failed')} | collection={cat_keys.get(cat_name)}"
+                        )
                     continue
                 
                 # 阶段一：轻量化相关性初筛
@@ -542,9 +596,13 @@ async def main():
                 item['collections'] = [cat_keys[cat_name]]
                 item['tags'] =[{"tag": cat_name}, {"tag": analysis.get("recommendation", "值得看")}]
                 
-                resp = retry_sync(lambda: zot.create_items([item]), "创建 Zotero 论文条目")
+                try:
+                    resp = retry_sync(lambda: zot.create_items([item]), "创建 Zotero 论文条目")
+                except Exception as _zotero_err:
+                    print(f"⚠️ Zotero 条目写入失败，跳过此论文: {p['title'][:40]}... 原因: {_zotero_err}")
+                    continue
                 if resp['successful']:
-                    item_key = list(resp['successful'].values())[0]['key']
+                    item_key, web_item_link = extract_created_item_meta(resp)
                     badge_color = "#d9534f" if analysis.get('recommendation') == "必读" else "#f0ad4e"
                     concepts_html = "".join([f'<span style="background:#eef; color:#3366ff; padding:2px 6px; border-radius:10px; margin-right:5px; font-size:0.9em;">[[{c}]]</span>' for c in analysis.get('core_concepts',[])])
                     
@@ -566,8 +624,20 @@ async def main():
                     note_template = zot.item_template('note')
                     note_template['note'] = note_html
                     note_template['parentItem'] = item_key
-                    retry_sync(lambda: zot.create_items([note_template]), "创建 Zotero 笔记")
+                    try:
+                        retry_sync(lambda: zot.create_items([note_template]), "创建 Zotero 笔记")
+                    except Exception as _note_err:
+                        print(f"⚠️ 笔记创建失败，但条目已入库: {p['title'][:40]}... 原因: {_note_err}")
                     print(f"✅ 成功同步至 Zotero")
+                    if web_item_link:
+                        print(f"🔗 Zotero 直达链接: {web_item_link}")
+                    else:
+                        print(f"🔗 Zotero 条目 Key: {item_key}")
+                else:
+                    print(
+                        f"⚠️ 增量条目创建失败: {p['title'][:50]}... | "
+                        f"failed={resp.get('failed')} | collection={cat_keys.get(cat_name)}"
+                    )
 
     # 持久化状态
     if DRY_RUN:

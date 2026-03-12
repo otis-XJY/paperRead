@@ -44,6 +44,25 @@ def normalize_parent_collection(parent_value):
         return None
     return parent_value
 
+
+def get_or_create_daily_root_collection(collections):
+    daily_roots = []
+    for coll in collections:
+        if coll['data'].get('name') != "DailyPapers":
+            continue
+        if normalize_parent_collection(coll['data'].get('parentCollection')) is None:
+            daily_roots.append(coll)
+
+    if daily_roots:
+        # 若历史上存在多个同名根集合，复用最早创建的，避免继续扩散
+        daily_roots.sort(key=lambda x: x['data'].get('dateAdded', ''))
+        return daily_roots[0]['key']
+
+    resp = retry_sync(lambda: zot.create_collections([{'name': 'DailyPapers'}]), "创建 DailyPapers 根集合")
+    if '0' not in resp.get('successful', {}):
+        raise RuntimeError(f"创建 DailyPapers 失败，API返回: {resp.get('failed')}")
+    return resp['successful']['0']['key']
+
 def extract_note_parts(html_content):
     if not html_content:
         return "", ""
@@ -70,6 +89,13 @@ def build_knowledge_base():
     kb = {}
     
     collections = retry_sync(lambda: zot.collections(), "读取 Zotero 集合列表")
+
+    # 首次运行若不存在 DailyPapers，则自动创建一个根集合
+    root_key = get_or_create_daily_root_collection(collections)
+    if root_key:
+        print(f"📁 DailyPapers 根集合已就绪: {root_key}")
+        # 重新拉取，确保后续分组逻辑看到最新集合列表
+        collections = retry_sync(lambda: zot.collections(), "刷新 Zotero 集合列表")
 
     daily_root_keys = set()
     for coll in collections:
