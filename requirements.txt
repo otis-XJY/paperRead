@@ -1,4 +1,5 @@
-aiohttp
-feedparser
-openai
-pyzotero
+aiohttp==3.9.3
+feedparser==6.0.11
+openai==1.14.0
+pyzotero==1.5.15
+beautifulsoup4==4.12.3

@@ -44,7 +44,8 @@ async def fetch_arxiv(session, keyword):
 
     keyword_query = keyword.replace(' ', '+')
     # 增加 max_results 以确保在过滤日期前有足够的样本
-    url = f"http://export.arxiv.org/api/query?search_query=all:{keyword_query}&sortBy=submittedDate&sortOrder=desc&max_results=30"
+    # arXiv API 要求 sortOrder 取值为 ascending/descending
+    url = f"http://export.arxiv.org/api/query?search_query=all:{keyword_query}&sortBy=submittedDate&sortOrder=descending&max_results=30"
     
     async with session.get(url) as response:
         text = await response.text()
