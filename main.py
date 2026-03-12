@@ -78,8 +78,13 @@ ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
 def build_zotero_web_item_link(item_key):
     if not ZOTERO_USER_ID or not item_key:
         return ""
-    # 当前脚本使用 user library（非 group library）
-    return f"https://www.zotero.org/users/{ZOTERO_USER_ID}/items/{item_key}/library"
+    return f"https://www.zotero.org/users/{ZOTERO_USER_ID}/items/{item_key}"
+
+
+def build_zotero_collection_link(collection_key):
+    if not ZOTERO_USER_ID or not collection_key:
+        return ""
+    return f"https://www.zotero.org/users/{ZOTERO_USER_ID}/collections/{collection_key}"
 
 
 def extract_created_item_meta(resp):
@@ -88,12 +93,35 @@ def extract_created_item_meta(resp):
         return "", ""
     first = next(iter(successful.values()))
     item_key = first.get("key", "")
-    web_link = ((first.get("links") or {}).get("alternate") or {}).get("href", "")
-    if web_link and not web_link.endswith("/library"):
-        web_link = f"{web_link}/library"
-    if not web_link:
-        web_link = build_zotero_web_item_link(item_key)
+    web_link = ((first.get("links") or {}).get("alternate") or {}).get("href", "") or build_zotero_web_item_link(item_key)
     return item_key, web_link
+
+
+def ensure_item_in_collection(item_key, collection_key, context=""):
+    """条目创建后强制归档到目标集合，作为 collections 字段可能被忽略时的兜底。"""
+    if not item_key or not collection_key:
+        print(f"⚠️  [{context}] 无法归档：item_key 或 collection_key 为空")
+        return False
+    try:
+        obj = retry_sync(lambda: zot.item(item_key), f"读取条目({context})")
+        current = list(obj.get("data", {}).get("collections") or [])
+        if collection_key in current:
+            return True
+        obj["data"]["collections"] = list(dict.fromkeys(current + [collection_key]))
+        retry_sync(lambda: zot.update_item(obj), f"归档条目到集合({context})")
+        verified = retry_sync(lambda: zot.item(item_key), f"验证归档({context})")
+        ok = collection_key in (verified.get("data", {}).get("collections") or [])
+        col_link = build_zotero_collection_link(collection_key)
+        if ok:
+            print(f"📌 [{context}] 已归档至分类: {collection_key}")
+            if col_link:
+                print(f"   🔗 分类链接: {col_link}")
+        else:
+            print(f"⚠️  [{context}] 归档未生效 item={item_key} collection={collection_key}")
+        return ok
+    except Exception as e:
+        print(f"⚠️  [{context}] 归档出错: {e}")
+        return False
 
 
 def load_json_file(path, default):
@@ -149,7 +177,8 @@ def normalize_parent_collection(parent_value):
     return parent_value
 
 def get_or_create_collection(name, parent_key=None):
-    colls = retry_sync(lambda: zot.collections(), f"读取集合列表({name})")
+    # limit=100 为 Zotero API 单页最大值；使用 everything() 自动拉取全部分页
+    colls = retry_sync(lambda: zot.everything(zot.collections()), f"读取集合列表({name})")
     target_parent = normalize_parent_collection(parent_key)
     matched =[]
     for c in colls:
@@ -512,6 +541,7 @@ async def main():
                         continue
                     if resp['successful']:
                         item_key, web_item_link = extract_created_item_meta(resp)
+                        ensure_item_in_collection(item_key, cat_keys[cat_name], f"首次-{cat_name}")
                         note_template = zot.item_template('note')
                         badge_color = "#d9534f" if first_run_analysis.get("recommendation") == "必读" else "#f0ad4e"
                         concepts_html = "".join([
@@ -603,6 +633,7 @@ async def main():
                     continue
                 if resp['successful']:
                     item_key, web_item_link = extract_created_item_meta(resp)
+                    ensure_item_in_collection(item_key, cat_keys[cat_name], f"增量-{cat_name}")
                     badge_color = "#d9534f" if analysis.get('recommendation') == "必读" else "#f0ad4e"
                     concepts_html = "".join([f'<span style="background:#eef; color:#3366ff; padding:2px 6px; border-radius:10px; margin-right:5px; font-size:0.9em;">[[{c}]]</span>' for c in analysis.get('core_concepts',[])])
                     

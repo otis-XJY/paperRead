@@ -15,6 +15,22 @@ if not ZOTERO_USER_ID or not ZOTERO_API_KEY:
 zot = zotero.Zotero(ZOTERO_USER_ID, 'user', ZOTERO_API_KEY)
 
 
+def extract_collection_link(collection_obj):
+    """从 Zotero API 返回的集合对象中提取网页链接（优先 API 返回的真实 URL）"""
+    if not isinstance(collection_obj, dict):
+        return ""
+    # 优先使用 API 返回的 links.alternate.href（权威且正确）
+    links = collection_obj.get("links") or {}
+    alt_link = (links.get("alternate") or {}).get("href", "")
+    if alt_link:
+        return alt_link
+    # 降级：手动构建（如果 API 没有提供链接）
+    collection_key = collection_obj.get("key", "")
+    if not ZOTERO_USER_ID or not collection_key:
+        return ""
+    return f"https://www.zotero.org/users/{ZOTERO_USER_ID}/collections/{collection_key}"
+
+
 def retry_sync(operation, operation_name, retries=3, base_delay=1.0):
     for attempt in range(retries):
         try:
@@ -28,6 +44,47 @@ def retry_sync(operation, operation_name, retries=3, base_delay=1.0):
             delay = base_delay * (2 ** attempt)
             print(f"⚠️ {operation_name} 失败（第 {attempt + 1}/{retries} 次）: {e}，{delay:.1f}s 后重试")
             time.sleep(delay)
+
+
+def get_or_create_collection(name, parent_key=None):
+    """创建或获取 Zotero 集合"""
+    colls = retry_sync(lambda: zot.everything(zot.collections()), f"读取集合列表({name})")
+    target_parent = normalize_parent_collection(parent_key)
+    matched = []
+    for c in colls:
+        collection_parent = normalize_parent_collection(c['data'].get('parentCollection'))
+        if c['data']['name'] == name and collection_parent == target_parent:
+            matched.append(c)
+
+    if matched:
+        matched.sort(key=lambda x: x['data'].get('dateAdded', ''))
+        return matched[0]['key']
+
+    # 动态构造 payload，顶层集合不含 parentCollection 字段
+    payload = {'name': name}
+    if parent_key:
+        payload['parentCollection'] = parent_key
+
+    resp = retry_sync(
+        lambda: zot.create_collections([payload]),
+        f"创建集合({name})"
+    )
+    
+    if '0' not in resp.get('successful', {}):
+        raise RuntimeError(f"创建集合失败，API返回: {resp.get('failed')}")
+    return resp['successful']['0']['key']
+
+
+def ensure_collection_structure(root_key, categories):
+    """确保 DailyPapers 及其子分类框架已创建"""
+    print(f"📁 确保分类框架已就绪...")
+    for cat_name in categories:
+        try:
+            cat_key = get_or_create_collection(cat_name, root_key)
+            print(f"   ✓ {cat_name}: {cat_key}")
+        except Exception as e:
+            print(f"   ⚠️  {cat_name} 创建失败: {e}")
+
 
 
 def get_item_children(item_key, title=""):
@@ -88,14 +145,31 @@ def build_knowledge_base():
     print("🔄 开始构建 Zotero 知识库...")
     kb = {}
     
-    collections = retry_sync(lambda: zot.collections(), "读取 Zotero 集合列表")
+    collections = retry_sync(lambda: zot.everything(zot.collections()), "读取 Zotero 集合列表")
 
     # 首次运行若不存在 DailyPapers，则自动创建一个根集合
     root_key = get_or_create_daily_root_collection(collections)
     if root_key:
+        # 立即刷新集合列表，确保新创建的 DailyPapers 被识别
+        collections = retry_sync(lambda: zot.everything(zot.collections()), "刷新 Zotero 集合列表")
+        
+        # 找到根集合对象以提取真实链接
+        root_obj = None
+        for coll in collections:
+            if coll['key'] == root_key:
+                root_obj = coll
+                break
+        root_link = extract_collection_link(root_obj) if root_obj else ""
         print(f"📁 DailyPapers 根集合已就绪: {root_key}")
+        if root_link:
+            print(f"🔗 DailyPapers 链接: {root_link}")
+        
+        # 【新增】确保子分类框架 (首次运行时创建所有必要的分类在 DailyPapers 下)
+        categories = ["UAV_VLN", "MultiAgent_Game_Theory", "MARL", "Humanoid_Manipulation"]
+        ensure_collection_structure(root_key, categories)
+        
         # 重新拉取，确保后续分组逻辑看到最新集合列表
-        collections = retry_sync(lambda: zot.collections(), "刷新 Zotero 集合列表")
+        collections = retry_sync(lambda: zot.everything(zot.collections()), "刷新 Zotero 集合列表")
 
     daily_root_keys = set()
     for coll in collections:
@@ -118,15 +192,20 @@ def build_knowledge_base():
         parent_key = normalize_parent_collection(coll['data'].get('parentCollection'))
         if parent_key not in daily_root_keys:
             continue
-        grouped[cat_name].append(coll['key'])
+        grouped[cat_name].append(coll)
 
-    for cat_name, coll_keys in grouped.items():
-        print(f"正在索引分类: {cat_name}（集合数: {len(coll_keys)}）")
+    for cat_name, coll_objs in grouped.items():
+        cat_links = [extract_collection_link(coll_obj) for coll_obj in coll_objs if coll_obj]
+        cat_links_str = " | ".join(cat_links) if cat_links else "无"
+        print(f"正在索引分类: {cat_name}（集合数: {len(coll_objs)}）")
+        print(f"   🔗 分类链接: {cat_links_str}")
         kb.setdefault(cat_name, [])
         seen_titles = set()
 
-        for coll_key in coll_keys:
-            items = retry_sync(lambda key=coll_key: zot.collection_items(key), f"读取分类条目({cat_name})")
+        for coll_obj in coll_objs:
+            coll_key = coll_obj['key']
+            # 读取分类条目，排除回收站中的已删除项目（itemType='-trashed'）
+            items = retry_sync(lambda key=coll_key: zot.collection_items(key, itemType='-trashed'), f"读取分类条目({cat_name})")
 
             for item in items:
                 if item['data']['itemType'] not in ['preprint', 'journalArticle']:
