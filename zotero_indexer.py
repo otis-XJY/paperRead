@@ -204,8 +204,8 @@ def build_knowledge_base():
 
         for coll_obj in coll_objs:
             coll_key = coll_obj['key']
-            # 读取分类条目，排除回收站中的已删除项目（itemType='-trashed'）
-            items = retry_sync(lambda key=coll_key: zot.collection_items(key, itemType='-trashed'), f"读取分类条目({cat_name})")
+            # Zotero API 默认不会返回回收站项目；itemType 不支持 "-trashed" 这种写法
+            items = retry_sync(lambda key=coll_key: zot.collection_items(key), f"读取分类条目({cat_name})")
 
             for item in items:
                 if item['data']['itemType'] not in ['preprint', 'journalArticle']:
