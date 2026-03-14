@@ -39,6 +39,9 @@ jobs:
           MODELSCOPE_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
           ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
+          WXWORK_WEBHOOK_URL: ${{ secrets.WXWORK_WEBHOOK_URL }}
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          ENABLE_NOTIFICATION: "1"
           PYTHONUNBUFFERED: "1"
         run: python -u main.py
 

@@ -4,3 +4,4 @@ openai
 httpx
 pyzotero
 beautifulsoup4
+requests

@@ -9,6 +9,7 @@ import urllib.parse
 from datetime import datetime
 from openai import OpenAI
 from pyzotero import zotero
+from notifier import notifier
 
 # ================= 1. 配置区 =================
 CONFIG = {
@@ -72,6 +73,7 @@ RETRY_TIMES = 3
 RETRY_BASE_DELAY_SECONDS = 1.0
 DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 DEBUG_PHASE_ONE = os.getenv("DEBUG_PHASE_ONE", "1") == "1"
+ENABLE_NOTIFICATION = os.getenv("ENABLE_NOTIFICATION", "1") == "1"
 ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
 
 
@@ -153,14 +155,22 @@ async def fetch_text_with_retry(session, url, retries=RETRY_TIMES, base_delay=RE
         try:
             async with session.get(url, timeout=timeout) as resp:
                 if resp.status != 200:
+                    # 特殊处理 429 速率限制错误
+                    if resp.status == 429:
+                        raise RuntimeError(f"HTTP 429 (速率限制)")
                     raise RuntimeError(f"HTTP {resp.status}")
                 return await resp.text()
         except Exception as e:
             if attempt == retries - 1:
                 print(f"❌ 抓取失败，已放弃: {url}，原因: {e}")
                 return ""
-            delay = base_delay * (2 ** attempt)
-            print(f"⚠️ 抓取失败（第 {attempt + 1}/{retries} 次）: {e}，{delay:.1f}s 后重试")
+            # 429 错误使用更长的延迟
+            if "429" in str(e):
+                delay = 3.0  # 429 错误使用固定 3 秒延迟
+                print(f"⚠️ 遇到速率限制（第 {attempt + 1}/{retries} 次）: {e}，{delay:.1f}s 后重试")
+            else:
+                delay = base_delay * (2 ** attempt)
+                print(f"⚠️ 抓取失败（第 {attempt + 1}/{retries} 次）: {e}，{delay:.1f}s 后重试")
             await asyncio.sleep(delay)
 
 def safe_json_parse(text):
@@ -379,6 +389,43 @@ def analyze_first_run_paper(paper, category_name):
         return None
 
 # ================= 4. 动态抓取模块 =================
+async def fetch_arxiv_single(session, url, max_retries=3, base_delay=3.0):
+    """
+    单次抓取 arXiv 的函数，使用更长的延迟和重试策略
+    """
+    timeout = aiohttp.ClientTimeout(total=30)
+    for attempt in range(max_retries):
+        try:
+            # 每次请求前都添加延迟，避免触发速率限制
+            if attempt > 0:
+                delay = base_delay * (2 ** (attempt - 1))
+                print(f"⏳ 延迟 {delay:.1f}s 后重试...")
+                await asyncio.sleep(delay)
+            
+            async with session.get(url, timeout=timeout) as resp:
+                if resp.status == 429:
+                    # 速率限制，等待更长时间
+                    wait_time = 5 + (attempt * 2)
+                    print(f"⚠️ 遇到速率限制，等待 {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                elif resp.status != 200:
+                    raise RuntimeError(f"HTTP {resp.status}")
+                return await resp.text()
+        except RuntimeError as e:
+            if attempt == max_retries - 1:
+                print(f"❌ 抓取失败，已放弃: {url}，原因: {e}")
+                return ""
+            print(f"⚠️ 抓取失败（第 {attempt + 1}/{max_retries} 次）: {e}")
+        except Exception as e:
+            print(f"❌ 网络错误: {e}")
+            if attempt == max_retries - 1:
+                print(f"❌ 抓取失败，已放弃: {url}")
+                return ""
+    
+    return ""
+
+
 async def fetch_arxiv(session, keywords, state):
     all_papers = {}
     max_published_date = state["last_date"]
@@ -401,7 +448,8 @@ async def fetch_arxiv(session, keywords, state):
                 f"&sortBy=relevance&sortOrder=descending&max_results=10"
             )
 
-            latest_text = await fetch_text_with_retry(session, latest_url)
+            # 拉取最新 10 篇
+            latest_text = await fetch_arxiv_single(session, latest_url)
             if latest_text:
                 latest_feed = feedparser.parse(latest_text)
                 for e in latest_feed.entries:
@@ -420,7 +468,12 @@ async def fetch_arxiv(session, keywords, state):
                         if pub_date > max_published_date:
                             max_published_date = pub_date
 
-            hot_text = await fetch_text_with_retry(session, hot_url)
+            # 请求之间添加更长的延迟（5秒）
+            print("⏳ 请求间隔 5s...")
+            await asyncio.sleep(5.0)
+
+            # 拉取 Relevance 10 篇
+            hot_text = await fetch_arxiv_single(session, hot_url)
             if hot_text:
                 hot_feed = feedparser.parse(hot_text)
                 for e in hot_feed.entries:
@@ -440,6 +493,10 @@ async def fetch_arxiv(session, keywords, state):
                         hot_candidates[pid] = paper
                         if pub_date > max_published_date:
                             max_published_date = pub_date
+
+            # 关键词之间添加更长的延迟（5秒）
+            print("⏳ 关键词间隔 5s...")
+            await asyncio.sleep(5.0)
 
         latest_ranked = sorted(latest_candidates.values(), key=lambda x: x.get("published", ""), reverse=True)
         latest_top10 = latest_ranked[:10]
@@ -466,39 +523,62 @@ async def fetch_arxiv(session, keywords, state):
             f"hot={len(hot_top10)}，去重后返回={len(merged)}（上限20）"
         )
         return merged, max_published_date
-    
+
     for kw in keywords:
         encoded_kw = urllib.parse.quote(kw)
-        urls_to_fetch = []
-        
         print(f"🔍 增量拉取：抓取最新论文对比 {state['last_date']} -> {kw}")
-        urls_to_fetch.append(f"http://export.arxiv.org/api/query?search_query={encoded_kw}&sortBy=submittedDate&sortOrder=descending&max_results=30")
+        url = f"http://export.arxiv.org/api/query?search_query={encoded_kw}&sortBy=submittedDate&sortOrder=descending&max_results=30"
 
-        for url in urls_to_fetch:
-            text = await fetch_text_with_retry(session, url)
-            if not text:
-                continue
-            feed = feedparser.parse(text)
-                
-            for e in feed.entries:
-                pub_date = e.get('published', '')
-                # 增量过滤逻辑：只接受比 last_date 新的论文（首次运行时 last_date 极小，等于全收）
-                if pub_date > state["last_date"]:
-                    pid = e.id.split('/')[-1]
-                    all_papers[pid] = {
-                        "id": pid,
-                        "title": e.title.replace('\n', ' '),
-                        "summary": e.summary.replace('\n', ' '),
-                        "published": pub_date,
-                        "authors": extract_authors_from_entry(e),
-                    }
-                    if pub_date > max_published_date:
-                        max_published_date = pub_date
+        text = await fetch_arxiv_single(session, url)
+        if not text:
+            continue
+            
+        feed = feedparser.parse(text)
+        for e in feed.entries:
+            pub_date = e.get('published', '')
+            # 增量过滤逻辑：只接受比 last_date 新的论文（首次运行时 last_date 极小，等于全收）
+            if pub_date > state["last_date"]:
+                pid = e.id.split('/')[-1]
+                all_papers[pid] = {
+                    "id": pid,
+                    "title": e.title.replace('\n', ' '),
+                    "summary": e.summary.replace('\n', ' '),
+                    "published": pub_date,
+                    "authors": extract_authors_from_entry(e),
+                }
+                if pub_date > max_published_date:
+                    max_published_date = pub_date
+        
+        # 请求之间添加延迟
+        print("⏳ 请求间隔 3s...")
+        await asyncio.sleep(3.0)
 
     return list(all_papers.values()), max_published_date
 
 # ================= 5. 主流程 =================
 async def main():
+    print("🚀 开始执行 main.py")
+    if DRY_RUN:
+        print("🧪 DRY_RUN=1，本次仅本地演练：不会写入 Zotero，也不会更新 history/state 文件")
+    if not os.path.exists("knowledge_base.json"):
+        print("❌ 找不到 knowledge_base.json，请先运行 zotero_indexer.py")
+        return
+    
+    # 错误处理
+    try:
+        await _main_impl()
+    except Exception as e:
+        print(f"❌ 程序运行出错: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # 发送错误通知
+        if ENABLE_NOTIFICATION and not DRY_RUN:
+            notifier.send_workflow_error(str(e))
+        raise
+
+
+async def _main_impl():
     print("🚀 开始执行 main.py")
     if DRY_RUN:
         print("🧪 DRY_RUN=1，本次仅本地演练：不会写入 Zotero，也不会更新 history/state 文件")
@@ -520,6 +600,10 @@ async def main():
     state = load_state()
     global_max_date = state["last_date"]
     print(f"🧭 当前状态: is_first_run={state['is_first_run']}, last_date={state['last_date']}")
+    
+    # 发送工作流开始通知
+    if ENABLE_NOTIFICATION and not DRY_RUN:
+        notifier.send_workflow_start(state["is_first_run"])
 
     if DRY_RUN:
         cat_keys = {name: None for name in CONFIG["categories"]}
@@ -532,9 +616,16 @@ async def main():
         for _cat_name, _cat_key in cat_keys.items():
             print(f"   - {_cat_name}: {_cat_key}")
 
+    # 统计变量
+    stats = {
+        "categories": {},
+        "total_papers": 0
+    }
+
     async with aiohttp.ClientSession() as session:
         for cat_name, cat_info in CONFIG["categories"].items():
             print(f"\n--- 正在处理分类: {cat_name} ---")
+            stats["categories"][cat_name] = 0
             
             # 动态抓取（支持首次与增量）
             papers, cat_max_date = await fetch_arxiv(session, cat_info["keywords"], state)
@@ -628,6 +719,10 @@ async def main():
                         except Exception as _note_err:
                             print(f"⚠️ 笔记创建失败，但条目已入库: {p['title'][:40]}... 原因: {_note_err}")
                         print("✅ 首次运行已直存至 Zotero")
+                        # 更新统计
+                        stats["categories"][cat_name] += 1
+                        stats["total_papers"] += 1
+                        
                         if web_item_link:
                             print(f"🔗 Zotero 直达链接: {web_item_link}")
                         else:
@@ -722,6 +817,10 @@ async def main():
                     except Exception as _note_err:
                         print(f"⚠️ 笔记创建失败，但条目已入库: {p['title'][:40]}... 原因: {_note_err}")
                     print(f"✅ 成功同步至 Zotero")
+                    # 更新统计
+                    stats["categories"][cat_name] += 1
+                    stats["total_papers"] += 1
+                    
                     if web_item_link:
                         print(f"🔗 Zotero 直达链接: {web_item_link}")
                     else:
@@ -740,6 +839,11 @@ async def main():
             json.dump(history, f, ensure_ascii=False)
         save_state(global_max_date)
         print(f"\n🎉 任务完成！记录的最新论文时间戳为：{global_max_date}")
+        
+        # 发送完成通知
+        if ENABLE_NOTIFICATION and stats["total_papers"] > 0:
+            print("📤 发送通知...")
+            notifier.send_workflow_complete(stats)
 
 if __name__ == "__main__":
     asyncio.run(main())
