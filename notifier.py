@@ -459,7 +459,27 @@ class NotificationManager:
                 })
         
         return sections
-    
+
+    def send_no_papers_notification(self, is_first_run: bool) -> Dict[str, bool]:
+        """发送无新论文通知"""
+        mode = "首次运行（冷启动）" if is_first_run else "增量更新"
+        content = f"""
+📊 Zotero AI Daily Papers 运行报告
+
+运行模式: {mode}
+扫描时间: {self._get_current_time()}
+结果: ✅ 暂无新论文
+
+本次扫描了以下分类:
+- UAV_VLN: 无人机视觉语言导航
+- MultiAgent_Game_Theory: 多智能体决策博弈
+- MARL: 多智能体强化学习
+- Humanoid_Manipulation: 人形机器人操作
+
+系统运行正常，等待下一篇新论文...
+"""
+        return self.send_text(content)
+
     def send_workflow_error(self, error: str) -> Dict[str, bool]:
         """发送工作流错误通知"""
         content = f"""
@@ -469,7 +489,7 @@ class NotificationManager:
 发生时间: {self._get_current_time()}
 """
         return self.send_text(content)
-    
+
     def _get_current_time(self) -> str:
         """获取当前时间字符串"""
         from datetime import datetime

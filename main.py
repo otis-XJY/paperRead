@@ -556,8 +556,9 @@ async def fetch_arxiv(session, keywords, state):
         text = await fetch_arxiv_single(session, url)
         if not text:
             continue
-            
+
         feed = feedparser.parse(text)
+        new_papers_count = 0
         for e in feed.entries:
             pub_date = e.get('published', '')
             # 增量过滤逻辑：只接受比 last_date 新的论文（首次运行时 last_date 极小，等于全收）
@@ -570,9 +571,13 @@ async def fetch_arxiv(session, keywords, state):
                     "published": pub_date,
                     "authors": extract_authors_from_entry(e),
                 }
+                new_papers_count += 1
                 if pub_date > max_published_date:
                     max_published_date = pub_date
-        
+
+        if new_papers_count == 0:
+            print(f"✅ 该关键词暂无新论文: {kw}")
+
         # 请求之间添加延迟
         print("⏳ 请求间隔 6s...")
         await asyncio.sleep(6.0)
@@ -889,16 +894,28 @@ async def _main_impl():
     # 持久化状态
     if DRY_RUN:
         print(f"\n🎉 DRY_RUN 完成！本次演练捕获到最新论文时间戳：{global_max_date}（未持久化）")
+        # DRY_RUN模式也显示统计信息
+        if stats["total_papers"] == 0:
+            print("📊 本次扫描结果: 暂无新论文")
+        else:
+            print(f"📊 本次扫描结果: 发现 {stats['total_papers']} 篇新论文")
+            for cat_name, count in stats["categories"].items():
+                if count > 0:
+                    print(f"   - {cat_name}: {count} 篇")
     else:
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(history, f, ensure_ascii=False)
         save_state(global_max_date)
         print(f"\n🎉 任务完成！记录的最新论文时间戳为：{global_max_date}")
-        
-        # 发送完成通知（包含详细论文信息）
-        if ENABLE_NOTIFICATION and stats["total_papers"] > 0:
-            print("📤 发送通知...")
-            notifier.send_papers_detail(stats, state["is_first_run"])
+
+        # 发送完成通知（包含详细论文信息或无新论文提示）
+        if ENABLE_NOTIFICATION:
+            if stats["total_papers"] > 0:
+                print("📤 发送新论文通知...")
+                notifier.send_papers_detail(stats, state["is_first_run"])
+            else:
+                print("📤 发送无新论文通知...")
+                notifier.send_no_papers_notification(state["is_first_run"])
 
 if __name__ == "__main__":
     asyncio.run(main())
