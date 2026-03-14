@@ -619,7 +619,8 @@ async def _main_impl():
     # 统计变量
     stats = {
         "categories": {},
-        "total_papers": 0
+        "total_papers": 0,
+        "papers": {}  # 存储新论文的详细信息
     }
 
     async with aiohttp.ClientSession() as session:
@@ -722,6 +723,21 @@ async def _main_impl():
                         # 更新统计
                         stats["categories"][cat_name] += 1
                         stats["total_papers"] += 1
+                        # 收集论文信息用于通知
+                        if cat_name not in stats["papers"]:
+                            stats["papers"][cat_name] = []
+                        stats["papers"][cat_name].append({
+                            "title": p['title'],
+                            "arxiv_id": p['id'],
+                            "authors": p.get('authors', []),
+                            "published": p.get('published', ''),
+                            "recommendation": first_run_analysis.get('recommendation', '值得看'),
+                            "methodology": first_run_analysis.get('methodology', ''),
+                            "core_concepts": first_run_analysis.get('core_concepts', []),
+                            "sharp_review": first_run_analysis.get('sharp_review', ''),
+                            "summary": first_run_analysis.get('summary', ''),
+                            "zotero_link": web_item_link or f"https://www.zotero.org/users/{ZOTERO_USER_ID}/items/{item_key}",
+                        })
                         
                         if web_item_link:
                             print(f"🔗 Zotero 直达链接: {web_item_link}")
@@ -820,6 +836,21 @@ async def _main_impl():
                     # 更新统计
                     stats["categories"][cat_name] += 1
                     stats["total_papers"] += 1
+                    # 收集论文信息用于通知
+                    if cat_name not in stats["papers"]:
+                        stats["papers"][cat_name] = []
+                    stats["papers"][cat_name].append({
+                        "title": p['title'],
+                        "arxiv_id": p['id'],
+                        "authors": p.get('authors', []),
+                        "published": p.get('published', ''),
+                        "recommendation": analysis.get('recommendation', '值得看'),
+                        "methodology": analysis.get('methodology', ''),
+                        "core_concepts": analysis.get('core_concepts', []),
+                        "sharp_review": analysis.get('sharp_review', ''),
+                        "comparison": analysis.get('comparison', ''),
+                        "zotero_link": web_item_link or f"https://www.zotero.org/users/{ZOTERO_USER_ID}/items/{item_key}",
+                    })
                     
                     if web_item_link:
                         print(f"🔗 Zotero 直达链接: {web_item_link}")
@@ -840,10 +871,10 @@ async def _main_impl():
         save_state(global_max_date)
         print(f"\n🎉 任务完成！记录的最新论文时间戳为：{global_max_date}")
         
-        # 发送完成通知
+        # 发送完成通知（包含详细论文信息）
         if ENABLE_NOTIFICATION and stats["total_papers"] > 0:
             print("📤 发送通知...")
-            notifier.send_workflow_complete(stats)
+            notifier.send_papers_detail(stats, state["is_first_run"])
 
 if __name__ == "__main__":
     asyncio.run(main())
