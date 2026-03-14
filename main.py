@@ -389,11 +389,11 @@ def analyze_first_run_paper(paper, category_name):
         return None
 
 # ================= 4. 动态抓取模块 =================
-async def fetch_arxiv_single(session, url, max_retries=3, base_delay=3.0):
+async def fetch_arxiv_single(session, url, max_retries=3, base_delay=6.0):
     """
     单次抓取 arXiv 的函数，使用更长的延迟和重试策略
     """
-    timeout = aiohttp.ClientTimeout(total=30)
+    timeout = aiohttp.ClientTimeout(total=45, connect=10)
     for attempt in range(max_retries):
         try:
             # 每次请求前都添加延迟，避免触发速率限制
@@ -401,11 +401,11 @@ async def fetch_arxiv_single(session, url, max_retries=3, base_delay=3.0):
                 delay = base_delay * (2 ** (attempt - 1))
                 print(f"⏳ 延迟 {delay:.1f}s 后重试...")
                 await asyncio.sleep(delay)
-            
+
             async with session.get(url, timeout=timeout) as resp:
                 if resp.status == 429:
-                    # 速率限制，等待更长时间
-                    wait_time = 5 + (attempt * 2)
+                    # 速率限制，动态增加等待时间：首次7秒，之后每次增加3秒
+                    wait_time = 7 + (attempt * 3)
                     print(f"⚠️ 遇到速率限制，等待 {wait_time}s...")
                     await asyncio.sleep(wait_time)
                     continue
@@ -417,12 +417,36 @@ async def fetch_arxiv_single(session, url, max_retries=3, base_delay=3.0):
                 print(f"❌ 抓取失败，已放弃: {url}，原因: {e}")
                 return ""
             print(f"⚠️ 抓取失败（第 {attempt + 1}/{max_retries} 次）: {e}")
-        except Exception as e:
-            print(f"❌ 网络错误: {e}")
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            # 捕获更具体的网络错误类型
+            error_type = type(e).__name__
+            if "timeout" in str(e).lower() or isinstance(e, asyncio.TimeoutError):
+                error_msg = f"请求超时({error_type})"
+            elif "connect" in str(e).lower():
+                error_msg = f"连接失败({error_type})"
+            else:
+                error_msg = f"网络错误({error_type}): {e}"
+
+            print(f"❌ {error_msg}")
+
             if attempt == max_retries - 1:
                 print(f"❌ 抓取失败，已放弃: {url}")
                 return ""
-    
+
+            # 其他网络错误也等待一段时间
+            delay = 5.0 * (attempt + 1)
+            print(f"⏳ 网络错误延迟 {delay:.1f}s 后重试...")
+            await asyncio.sleep(delay)
+        except Exception as e:
+            error_type = type(e).__name__
+            print(f"❌ 未知错误({error_type}): {e}")
+            if attempt == max_retries - 1:
+                print(f"❌ 抓取失败，已放弃: {url}")
+                return ""
+            delay = 5.0 * (attempt + 1)
+            print(f"⏳ 未知错误延迟 {delay:.1f}s 后重试...")
+            await asyncio.sleep(delay)
+
     return ""
 
 
@@ -468,9 +492,9 @@ async def fetch_arxiv(session, keywords, state):
                         if pub_date > max_published_date:
                             max_published_date = pub_date
 
-            # 请求之间添加更长的延迟（5秒）
-            print("⏳ 请求间隔 5s...")
-            await asyncio.sleep(5.0)
+            # 请求之间添加更长的延迟（8秒）
+            print("⏳ 请求间隔 8s...")
+            await asyncio.sleep(8.0)
 
             # 拉取 Relevance 10 篇
             hot_text = await fetch_arxiv_single(session, hot_url)
@@ -494,9 +518,9 @@ async def fetch_arxiv(session, keywords, state):
                         if pub_date > max_published_date:
                             max_published_date = pub_date
 
-            # 关键词之间添加更长的延迟（5秒）
-            print("⏳ 关键词间隔 5s...")
-            await asyncio.sleep(5.0)
+            # 关键词之间添加更长的延迟（10秒）
+            print("⏳ 关键词间隔 10s...")
+            await asyncio.sleep(10.0)
 
         latest_ranked = sorted(latest_candidates.values(), key=lambda x: x.get("published", ""), reverse=True)
         latest_top10 = latest_ranked[:10]
@@ -550,8 +574,8 @@ async def fetch_arxiv(session, keywords, state):
                     max_published_date = pub_date
         
         # 请求之间添加延迟
-        print("⏳ 请求间隔 3s...")
-        await asyncio.sleep(3.0)
+        print("⏳ 请求间隔 6s...")
+        await asyncio.sleep(6.0)
 
     return list(all_papers.values()), max_published_date
 
