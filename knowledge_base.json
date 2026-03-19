@@ -1,6 +1,16 @@
 {
   "Humanoid_Manipulation": [
     {
+      "title": "Learning Whole-Body Control for a Salamander Robot",
+      "short_review": "该工作在非典型形态机器人上验证了统一全身控制的可行性及模式切换能力，对人形机器人长周期运动的鲁棒性训练有借鉴意义；然而对于人形操作领域而言，其核心痛点在于缺失手 - 物交互建模与力控反馈机制，且两栖环境下的接触动力学与人形负载场景差异巨大，直接迁移价值有限。",
+      "full_note": "Learning Whole-Body Control for a Salamander Robot 🔥 推荐指数： 值得看 (侧重控制迁移) 👤 作者： Mengze Tian, Qiyuan Fu, Chuanfang Ning, Javier Jia Jie Pey, Auke Ijspeert 🕒 arXiv上传时间： 2026-03-17 15:43:15 UTC 🔗 触发的灵感来源： FAME: Force-Adaptive RL for Expanding the Manipulation Envelope of a Full-Scale Humanoid, REFINE-DP: Diffusion Policy Fine-tuning for Humanoid Loco-manipulation via Reinforcement Learning 🔄 深度差量对比： 与过去笔记中的人形机器人（REFINE-DP/FAME）不同，本文聚焦两栖蝾螈机器人的纯运动控制；虽同属基于强化学习的全身控制框架，但缺乏人形特有的双足平衡及操作任务交互，核心差异在于形态学约束与物理模态。 🧠 核心术语库 [[Sim-to-Real Transfer]] [[Whole-Body Control]] [[Amphibious Locomotion]] [[Proprioceptive RL]] 🔬 方法论简析 采用端到端深度强化学习将本体感觉观测与速度指令映射至关节动作，通过系统级实机 - 仿真匹配策略实现高自由度机器人在陆地与水中模式的稳定迁移，无需复杂模型先验。 💬 锐评 该工作在非典型形态机器人上验证了统一全身控制的可行性及模式切换能力，对人形机器人长周期运动的鲁棒性训练有借鉴意义；然而对于人形操作领域而言，其核心痛点在于缺失手 - 物交互建模与力控反馈机制，且两栖环境下的接触动力学与人形负载场景差异巨大，直接迁移价值有限。"
+    },
+    {
+      "title": "DexGrasp-Zero: A Morphology-Aligned Policy for Zero-Shot Cross-Embodiment Dexterous Grasping",
+      "short_review": "显式拓扑保证了物理安全边界优于隐式重映射，但手工构造图结构限制了全未知形态泛化，且缺乏语言模态使其无法像 XL-VLA 那样理解高层意图。",
+      "full_note": "DexGrasp-Zero: A Morphology-Aligned Policy for Zero-Shot Cross-Embodiment Dexterous Grasping 🔥 推荐指数： 必读 👤 作者： Yuliang Wu, Yanhan Lin, WengKit Lao, Yuhao Lin, Yi-Lin Wei, Wei-Shi Zheng, Ancong Wu 🕒 arXiv上传时间： 2026-03-17 17:10:29 UTC 🔗 触发的灵感来源： One-Policy-Fits-All: Geometry-Aware Action Latents for Cross-Embodiment Manipulation, Cross-Hand Latent Representation for Vision-Language-Action Models 🔄 深度差量对比： 与 OPFA 及 XL-VLA 的隐式跨实体表征不同，本文采用显式形态图对齐与物理注入，旨在解决异质机械臂运动学约束导致的零样本迁移失效问题。 🧠 核心术语库 [[形态对齐图表示]] [[物理属性注入]] [[零样本跨实体抓握]] 🔬 方法论简析 提出形态对齐图表示，将不同手型关键点映射至具有三轴正交运动原语的解剖节点，并通过 MAGCN 结合物理属性注入机制，在特征层补偿连杆长度与驱动限制差异。 💬 锐评 显式拓扑保证了物理安全边界优于隐式重映射，但手工构造图结构限制了全未知形态泛化，且缺乏语言模态使其无法像 XL-VLA 那样理解高层意图。"
+    },
+    {
       "title": "TransDex: Pre-training Visuo-Tactile Policy with Point Cloud Reconstruction for Dexterous Manipulation of Transparent Objects",
       "short_review": "创新性地引入触觉辅助解决透明物体深度缺失痛点，显著提升了特定物理场景下的感知鲁棒性。然而，其缺乏高层语义理解（无语言模态）限制了复杂任务的规划能力，且触觉传感器的硬件泛化性及预训练数据规模对冷启动阶段的影响仍需进一步评估。",
       "full_note": "TransDex: Pre-training Visuo-Tactile Policy with Point Cloud Reconstruction for Dexterous Manipulation of Transparent Objects 🔥 推荐指数： 值得看 👤 作者： Fengguan Li, Yifan Ma, Chen Qian, Wentao Rao, Weiwei Shang 🕒 arXiv上传时间： 2026-03-14 09:59:34 UTC 🔗 触发的灵感来源： DexHiL: A Human-in-the-Loop Framework for Vision-Language-Action Model Post-Training in Dexterous Manipulation, Contact Coverage-Guided Exploration for General-Purpose Dexterous Manipulation 🔄 深度差量对比： 相较于 DexHiL 的 VLA 人机回环后训练范式，TransDex 侧重于底层视触感知的预训练以解决透明度导致的深度丢失；相比 CCGE 的任务无关接触覆盖探索，它更关注物理世界中的具体感知噪声抑制。 🧠 核心术语库 [[视触融合 (Visuo-Tactile Fusion)]] [[点云重建 (Point Cloud Reconstruction)]] [[透明物体操作 (Transparent Object Manipulation)]] [[自监督预训练 (Self-Supervised Pre-training)]] 🔬 方法论简析 构建基于 Transformer 的自监督点云重建预训练框架，通过灵巧手交互点云恢复透明物体结构，采用分层编码与多轮注意力机制实现机械臂与灵巧手的特征自适应融合及差异化运动预测。 💬 锐评 创新性地引入触觉辅助解决透明物体深度缺失痛点，显著提升了特定物理场景下的感知鲁棒性。然而，其缺乏高层语义理解（无语言模态）限制了复杂任务的规划能力，且触觉传感器的硬件泛化性及预训练数据规模对冷启动阶段的影响仍需进一步评估。"
@@ -122,6 +132,26 @@
     }
   ],
   "MARL": [
+    {
+      "title": "MA-VLCM: A Vision Language Critic Model for Value Estimation of Policies in Multi-Agent Team Settings",
+      "short_review": "该方法巧妙利用大模型推理能力转化为价值评估器，有效规避了传统 critic 训练的不稳定性与数据低效性，但忽略了预训练 VLM 在特定物理环境下的值函数校准偏差风险、高推理延迟对多智能体实时协同的潜在拖累以及异构机器人系统下视觉表征对齐的计算成本",
+      "full_note": "MA-VLCM: A Vision Language Critic Model for Value Estimation of Policies in Multi-Agent Team Settings 🔥 推荐指数： 必读 👤 作者： Shahil Shaik, Aditya Parameshwaran, Anshul Nayak, Jonathon M. Smereka, Yue Wang 🕒 arXiv上传时间： 2026-03-16 15:29:41 UTC 🔗 触发的灵感来源： Intent-aware Multi-agent Reinforcement Learning, Learning to Assist: Physics-Grounded Human-Human Control via Multi-Agent Reinforcement Learning, Mean Field Multi-Agent Reinforcement Learning 🔄 深度差量对比： 相比笔记中“平均场”通过统计聚合应对规模扩展、“意图感知”通过线性假设规避博弈计算，MA-VLCM 引入外部知识驱动的大模型替代内部价值网络，以预训练先验换取策略优化的零样本泛化性与样本效率 🧠 核心术语库 [[多智能体强化学习 (MARL)]] [[视觉语言模型 (Vision-Language Model)]] [[集中式评论家 (Centralized Critic)]] [[零样本泛化 (Zero-shot Generalization)]] [[样本效率 (Sample Efficiency)]] 🔬 方法论简析 提出 MA-VLCM 框架，将 MARL 中的集中式评论家替换为经微调的预训练视觉语言模型（VLM），该模型条件化于自然语言任务描述、视觉轨迹观察及结构化多智能体状态信息以执行价值评估，从而在策略优化过程中完全消除评论家学习环节 💬 锐评 该方法巧妙利用大模型推理能力转化为价值评估器，有效规避了传统 critic 训练的不稳定性与数据低效性，但忽略了预训练 VLM 在特定物理环境下的值函数校准偏差风险、高推理延迟对多智能体实时协同的潜在拖累以及异构机器人系统下视觉表征对齐的计算成本"
+    },
+    {
+      "title": "Interference-Aware K-Step Reachable Communication in Multi-Agent Reinforcement Learning",
+      "short_review": "虽然针对带宽受限场景提出拓扑约束，但未量化通信开销对 MARL 训练稳定性的具体影响，且“干扰预测”在真实非平稳无线环境中的模型偏差可能导致协同失效；评估仅强调仿真鲁棒性，缺乏如笔记三般的大规模路网或云原生集群实测验证，实际部署中物理通信延迟与计算预测延迟的权衡机制尚不明确。",
+      "full_note": "Interference-Aware K-Step Reachable Communication in Multi-Agent Reinforcement Learning 🔥 推荐指数： 值得看 👤 作者： Ziyu Cheng, Jinsheng Ren, Zhouxian Jiang, Chenzhihang Li, Rongye Shi, Bin Liang, Jun Yang 🕒 arXiv上传时间： 2026-03-16 10:07:33 UTC 🔗 触发的灵感来源： AGMARL-DKS: An Adaptive Graph-Enhanced Multi-Agent Reinforcement Learning for Dynamic Kubernetes Scheduling, A Robust and Efficient Multi-Agent Reinforcement Learning Framework for Traffic Signal Control, Intent-aware Multi-agent Reinforcement Learning 🔄 深度差量对比： 相较于笔记三的 MAPPO-邻居观测侧重局部状态泛化，本文聚焦物理层通信拓扑约束与抗干扰优化；相比笔记二的 GNN 全局表征依赖，本文采用硬性的 K 步可达性限制更适应动态信道环境。 🧠 核心术语库 [[Interference-Aware Communication]] [[K-Step Reachability Protocol]] [[Partner Selection under Uncertainty]] [[Dynamic Topology Adaptation]] 🔬 方法论简析 提出干扰感知的 K 步可达通信框架，包含限定消息传递范围的 K 步协议及最大化效用与最小化干扰的干扰预测模块。 💬 锐评 虽然针对带宽受限场景提出拓扑约束，但未量化通信开销对 MARL 训练稳定性的具体影响，且“干扰预测”在真实非平稳无线环境中的模型偏差可能导致协同失效；评估仅强调仿真鲁棒性，缺乏如笔记三般的大规模路网或云原生集群实测验证，实际部署中物理通信延迟与计算预测延迟的权衡机制尚不明确。"
+    },
+    {
+      "title": "Communication-Aware Multi-Agent Reinforcement Learning for Decentralized Cooperative UAV Deployment",
+      "short_review": "该方案显著提升了通信受限场景下的覆盖性能与零样本扩展能力，但摘要未披露通信协议的具体实现细节及真实网络延迟模型的影响；相较于《软体机械臂》工作对物理仿真的依赖，本文同样面临从仿真到实机的迁移验证缺口，且对极端干扰下通信拓扑动态重构的计算开销分析不足。",
+      "full_note": "Communication-Aware Multi-Agent Reinforcement Learning for Decentralized Cooperative UAV Deployment 🔥 推荐指数： 值得看 👤 作者： Enguang Fan, Yifan Chen, Zihan Shan, Matthew Caesar, Jae Kim 🕒 arXiv上传时间： 2026-03-17 05:48:51 UTC 🔗 触发的灵感来源： UAV-MARL: Multi-Agent Reinforcement Learning for Time-Critical and Dynamic Medical Supply Delivery, Symmetries-enhanced Multi-Agent Reinforcement Learning, Octopus-inspired Distributed Control for Soft Robotic Arms: A Graph Neural Network-Based Attention Policy with Environmental Interaction 🔄 深度差量对比： 与《UAV-MARL》的纯 PPO 框架相比，本文引入了 CTDE 与显式通信图建模以处理间歇性链接；区别于《对称性增强》对动力学对称的利用，本文侧重于通信拓扑不确定性下的鲁棒协作。 🧠 核心术语库 [[CTDE]] [[通信感知]] [[图注意力网络]] [[无人机编队部署]] [[零样本泛化]] 🔬 方法论简析 提出基于中心化训练去中心化执行（CTDE）的图强化学习框架，包含编码局部状态与实体的注意力模块，以及基于距离限制通信图的邻居自注意力聚合机制，旨在在部分可观测和链路受限条件下优化无人机编队的协同部署与对抗任务。 💬 锐评 该方案显著提升了通信受限场景下的覆盖性能与零样本扩展能力，但摘要未披露通信协议的具体实现细节及真实网络延迟模型的影响；相较于《软体机械臂》工作对物理仿真的依赖，本文同样面临从仿真到实机的迁移验证缺口，且对极端干扰下通信拓扑动态重构的计算开销分析不足。"
+    },
+    {
+      "title": "Multi-Agent Reinforcement Learning Counteracts Delayed CSI in Multi-Satellite Systems",
+      "short_review": "虽验证了时延鲁棒性与聚合收益，但未阐明双阶段机制在极端异构 Agent 间的参数共享效率；且复杂度的增加是否抵消了部分速率增益需在实际高动态网络中进一步验证。",
+      "full_note": "Multi-Agent Reinforcement Learning Counteracts Delayed CSI in Multi-Satellite Systems 🔥 推荐指数： 值得看 👤 作者： Marios Aristodemou, Yasaman Omid, Sangarapillai Lambotharan, Mahsa Derakhshan, Lajos Hanzo 🕒 arXiv上传时间： 2026-03-17 12:58:22 UTC 🔗 触发的灵感来源： Heterogeneity in Multi-Agent Reinforcement Learning, Decentralized Deterministic Multi-Agent Reinforcement Learning, The price of decentralization in managing engineering systems through multi-agent reinforcement learning 🔄 深度差量对比： 不同于《Decentralized Deterministic Multi-Agent Reinforcement Learning》中构建理论收敛的确定性 Actor-Critic 框架，本文面向高延迟卫星场景提出双层随机 PPO 算法，解决了连续动作空间下 Non-IID 环境的协作与收敛问题。 🧠 核心术语库 [[延迟 CSI]] [[双层 PPO (DS-PPO)]] [[非独立同分布 (Non-IID)]] [[分布式协同]] [[收敛性分析]] 🔬 方法论简析 提出双级优化算法 DS-PPO，分为单星个体速率最大化与多星协作形成分布式天线基站两大阶段，以应对非独立同分布环境与持续动作空间挑战。 💬 锐评 虽验证了时延鲁棒性与聚合收益，但未阐明双阶段机制在极端异构 Agent 间的参数共享效率；且复杂度的增加是否抵消了部分速率增益需在实际高动态网络中进一步验证。"
+    },
     {
       "title": "EcoFair-CH-MARL: Scalable Constrained Hierarchical Multi-Agent RL with Real-Time Emission Budgets and Fairness Guarantees",
       "short_review": "理论上的遗憾界（O(√T)）和数学约束保证了方法的严谨性，但原对偶更新与分层策略在高频实时控制中的计算开销未充分评估；此外，其'公平'聚焦于静态成本分配，忽略了《Kindness in MARL》中强调的动态意图交互与长期协作信任的建立，且海事数字孪生的风浪耦合效应在仿真中可能低估了真实部署的风险成本。",
@@ -321,6 +351,16 @@
     }
   ],
   "UAV_VLN": [
+    {
+      "title": "Thermal Image Refinement with Depth Estimation using Recurrent Networks for Monocular ORB-SLAM3",
+      "short_review": "核心优势在于低成本实现夜间/暗光定位，填补了纯视觉/事件在极端低照度下的盲区，且无需昂贵辐射测温相机。缺陷是热图像纹理特征弱，难以支持高层语义导航（如 VLN），需融合可见光或语义模型才能发挥最大效能；且学习先验存在域偏移风险，不如 LiDAR-MSCKF 物理模型稳健，尺度恢复仍依赖单目启发。",
+      "full_note": "Thermal Image Refinement with Depth Estimation using Recurrent Networks for Monocular ORB-SLAM3 🔥 推荐指数： 值得看 👤 作者： Hürkan Şahin, Huy Xuan Pham, Van Huyen Dang, Alper Yegenoglu, Erdal Kayacan 🕒 arXiv上传时间： 2026-03-16 09:02:57 UTC 🔗 触发的灵感来源： Consistent and Efficient MSCKF-based LiDAR-Inertial Odometry with Inferred Cluster-to-Plane Constraints for UAVs, Edged USLAM: Edge-Aware Event-Based SLAM with Learning-Based Depth Priors 🔄 深度差量对比： 与 Edged USLAM 同属视觉退化场景增强，本方案利用热成像互补可见光失效区，区别于 Edged 的事件相机高动态特性；与 LiDAR-MSCKF 均解决定位精度问题，本方案采用学习式深度补充单目几何约束，相比 MSCKF 的几何优化降低了对环境平面特征的依赖，但牺牲了部分几何一致性。 🧠 核心术语库 [[Thermal SLAM]] [[Learning-based Depth Estimation]] [[Monocular ORB-SLAM3]] [[Non-radiometric Thermal]] 🔬 方法论简析 提出轻量级监督网络结合循环块（RB）捕获时间依赖性，配合热图精炼网络（T-RefNet）提升特征可视性，将预测的深度图与精炼热图像集成至 ORB-SLAM3 实现热成像单目定位。 💬 锐评 核心优势在于低成本实现夜间/暗光定位，填补了纯视觉/事件在极端低照度下的盲区，且无需昂贵辐射测温相机。缺陷是热图像纹理特征弱，难以支持高层语义导航（如 VLN），需融合可见光或语义模型才能发挥最大效能；且学习先验存在域偏移风险，不如 LiDAR-MSCKF 物理模型稳健，尺度恢复仍依赖单目启发。"
+    },
+    {
+      "title": "PA-LVIO: Real-Time LiDAR-Visual-Inertial Odometry and Mapping with Pose-Only Bundle Adjustment",
+      "short_review": "优势在于多传感器融合提升了建图质感（RGB），且通过 Pose-Only 策略平衡了实时性与精度，适合对视觉纹理有需求的复杂环境；局限性在于视觉特征易受光照影响，相比纯 LIO（如前注 MSCKF 方案）在低光或动态场景中鲁棒性可能下降，且仍需依赖上层算法（如 OnFly）进行任务解析，无法直接解决 VLN 的指令理解问题。",
+      "full_note": "PA-LVIO: Real-Time LiDAR-Visual-Inertial Odometry and Mapping with Pose-Only Bundle Adjustment 🔥 推荐指数： 值得看 👤 作者： Hailiang Tang, Tisheng Zhang, Liqiang Wang, Xin Ding, Man Yuan, Xiaoji Niu 🕒 arXiv上传时间： 2026-03-17 08:07:52 UTC 🔗 触发的灵感来源： Consistent and Efficient MSCKF-based LiDAR-Inertial Odometry with Inferred Cluster-to-Plane Constraints for UAVs, OnFly: Onboard Zero-Shot Aerial Vision-Language Navigation toward Safety and Efficiency 🔄 深度差量对比： 相比注中 MSCKF-LIO 方案，本工作升级为多模态（LiDAR+Visual+IMU）并利用 Pose-Only 优化降低计算负载，同时弥补了纯平面约束在纹理丰富场景的不足；与 OnFly 对比，本工作在底层定位与建图质量上提供更强支撑，但未涉及高层语义导航逻辑。 🧠 核心术语库 [[LVIO]] [[Pose-Only Bundle Adjustment]] [[RGB-rendered Point Cloud]] [[无边际化操作]] 🔬 方法论简析 提出基于姿态估计的束调整框架 (PA)，采用无边际化操作的帧 - 地图（F2M）LiDAR 模型以抵消漂移，配合 IMU 中心在线时空校准实现像素级配准，构建高质量 RGB 点云地图并支持端侧实时运行。 💬 锐评 优势在于多传感器融合提升了建图质感（RGB），且通过 Pose-Only 策略平衡了实时性与精度，适合对视觉纹理有需求的复杂环境；局限性在于视觉特征易受光照影响，相比纯 LIO（如前注 MSCKF 方案）在低光或动态场景中鲁棒性可能下降，且仍需依赖上层算法（如 OnFly）进行任务解析，无法直接解决 VLN 的指令理解问题。"
+    },
     {
       "title": "AeroGen: Agentic Drone Autonomy through Single-Shot Structured Prompting & Drone SDK",
       "short_review": "优势在于生成的代码具有极高的可解释性和规则合规性，有效解决了黑盒模型的安全隐患；局限性在于严重依赖预定义 SDK 的完备性，缺乏对未知环境视觉特征的深层泛化与实时感知优化能力。",
