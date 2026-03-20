@@ -1,6 +1,11 @@
 {
   "Humanoid_Manipulation": [
     {
+      "title": "TeleDex: Accessible Dexterous Teleoperation",
+      "short_review": "极大降低了灵巧操作的数据采集门槛并实现开源复用；但相比 CHILD 的力反馈安全机制及 DexHiL 的算法干预逻辑，TeleDex 在高频手指运动下的视觉跟踪鲁棒性未经充分验证，且缺失针对复杂物理交互的动态安全性保障。",
+      "full_note": "TeleDex: Accessible Dexterous Teleoperation 🔥 推荐指数： 值得看 👤 作者： Omar Rayyan, Maximilian Gillesm, Yuchen Cui 🕒 arXiv上传时间： 2026-03-17 18:50:15 UTC 🔗 触发的灵感来源： CHILD (Controller for Humanoid Imitation and Live Demonstration): a Whole-Body Humanoid Teleoperation System, Humanoid Manipulation Interface: Humanoid Whole-Body Manipulation from Robot-Free Demonstrations, DexHiL: A Human-in-the-Loop Framework for Vision-Language-Action Model Post-Training in Dexterous Manipulation 🔄 深度差量对比： 与 CHILD 同为便携遥操系统但 TeleDex 以手机替代穿戴设备聚焦灵巧手，区别于 HuMI 的动作迁移学习则通过实时遥操作采集数据以支持策略微调。 🧠 核心术语库 [[手机端遥操作]] [[灵活手视觉控制]] [[零外部追踪设施]] [[低成本演示采集]] [[视频流姿态估计]] 🔬 方法论简析 利用手机摄像头实时提取 6-DoF 腕姿与 21-DoF 手部关节状态，无需外部追踪即重映射至机械臂/手，提供手持或 3D 打印指套双模式开源方案。 💬 锐评 极大降低了灵巧操作的数据采集门槛并实现开源复用；但相比 CHILD 的力反馈安全机制及 DexHiL 的算法干预逻辑，TeleDex 在高频手指运动下的视觉跟踪鲁棒性未经充分验证，且缺失针对复杂物理交互的动态安全性保障。"
+    },
+    {
       "title": "Learning Whole-Body Control for a Salamander Robot",
       "short_review": "该工作在非典型形态机器人上验证了统一全身控制的可行性及模式切换能力，对人形机器人长周期运动的鲁棒性训练有借鉴意义；然而对于人形操作领域而言，其核心痛点在于缺失手 - 物交互建模与力控反馈机制，且两栖环境下的接触动力学与人形负载场景差异巨大，直接迁移价值有限。",
       "full_note": "Learning Whole-Body Control for a Salamander Robot 🔥 推荐指数： 值得看 (侧重控制迁移) 👤 作者： Mengze Tian, Qiyuan Fu, Chuanfang Ning, Javier Jia Jie Pey, Auke Ijspeert 🕒 arXiv上传时间： 2026-03-17 15:43:15 UTC 🔗 触发的灵感来源： FAME: Force-Adaptive RL for Expanding the Manipulation Envelope of a Full-Scale Humanoid, REFINE-DP: Diffusion Policy Fine-tuning for Humanoid Loco-manipulation via Reinforcement Learning 🔄 深度差量对比： 与过去笔记中的人形机器人（REFINE-DP/FAME）不同，本文聚焦两栖蝾螈机器人的纯运动控制；虽同属基于强化学习的全身控制框架，但缺乏人形特有的双足平衡及操作任务交互，核心差异在于形态学约束与物理模态。 🧠 核心术语库 [[Sim-to-Real Transfer]] [[Whole-Body Control]] [[Amphibious Locomotion]] [[Proprioceptive RL]] 🔬 方法论简析 采用端到端深度强化学习将本体感觉观测与速度指令映射至关节动作，通过系统级实机 - 仿真匹配策略实现高自由度机器人在陆地与水中模式的稳定迁移，无需复杂模型先验。 💬 锐评 该工作在非典型形态机器人上验证了统一全身控制的可行性及模式切换能力，对人形机器人长周期运动的鲁棒性训练有借鉴意义；然而对于人形操作领域而言，其核心痛点在于缺失手 - 物交互建模与力控反馈机制，且两栖环境下的接触动力学与人形负载场景差异巨大，直接迁移价值有限。"
@@ -351,6 +356,11 @@
     }
   ],
   "UAV_VLN": [
+    {
+      "title": "FloorPlan-VLN: A New Paradigm for Floor Plan Guided Vision-Language Navigation",
+      "short_review": "该工作利用预存地图极大简化了智能体的感知负担，对于已知建筑布局的无人机巡检极具价值；然而依赖高精度图纸限制了其在未知或动态开放环境的泛化能力，且当图纸未及时更新时可能引发严重的定位灾难，相比 VER 的在线更新机制，其对现实世界几何变化的敏感度较低。",
+      "full_note": "FloorPlan-VLN: A New Paradigm for Floor Plan Guided Vision-Language Navigation 🔥 推荐指数： 必读 👤 作者： Kehan Chen, Yan Huang, Dong An, Jiawei He, Yifei Su, Jing Liu, Nianfeng Liu, Liang Wang 🕒 arXiv上传时间： 2026-03-18 07:22:48 UTC 🔗 触发的灵感来源： Instance-Level Semantic Maps for Vision Language Navigation, Volumetric Environment Representation for Vision-Language Navigation, SPAN-Nav: Generalized Spatial Awareness for Versatile Vision-Language Navigation 🔄 深度差量对比： 区别于 VER 的在线体素化建图与 SPAN-Nav 的隐式空间 Token 学习，本文引入外部结构化楼层图作为强先验，将 VLN 范式从‘视觉推理’转向‘图文对齐’，显著降低了语言指令复杂度。 🧠 核心术语库 [[结构化楼层图先验]] [[极简导航指令]] [[双视图时空对齐]] [[FP-Nav 框架]] 🔬 方法论简析 构建包含 10k+ 回合的 FloorPlan-VLN 数据集（72 场景/Matterport3D），提出 FP-Nav 方法利用双视角时空对齐的视频序列与辅助推理任务，将观测图像、语义标注楼层图与极简自然语言指令进行对齐，并在模拟噪声下验证了系统对执行漂移和图纸失真的鲁棒性。 💬 锐评 该工作利用预存地图极大简化了智能体的感知负担，对于已知建筑布局的无人机巡检极具价值；然而依赖高精度图纸限制了其在未知或动态开放环境的泛化能力，且当图纸未及时更新时可能引发严重的定位灾难，相比 VER 的在线更新机制，其对现实世界几何变化的敏感度较低。"
+    },
     {
       "title": "Thermal Image Refinement with Depth Estimation using Recurrent Networks for Monocular ORB-SLAM3",
       "short_review": "核心优势在于低成本实现夜间/暗光定位，填补了纯视觉/事件在极端低照度下的盲区，且无需昂贵辐射测温相机。缺陷是热图像纹理特征弱，难以支持高层语义导航（如 VLN），需融合可见光或语义模型才能发挥最大效能；且学习先验存在域偏移风险，不如 LiDAR-MSCKF 物理模型稳健，尺度恢复仍依赖单目启发。",
