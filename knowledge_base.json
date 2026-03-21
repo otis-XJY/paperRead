@@ -138,6 +138,11 @@
   ],
   "MARL": [
     {
+      "title": "Markov Potential Game and Multi-Agent Reinforcement Learning for Autonomous Driving",
+      "short_review": "势博弈构造条件高度依赖特定驾驶动力学假设，难以直接迁移至城市拥堵等非线性复杂场景；虽提供理论收敛性却未深入讨论对手非理性或扰动下的防御能力（对比笔记 1 的鲁棒性分析）；自然数据评估可能隐含过拟合历史人类行为偏差的风险。",
+      "full_note": "Markov Potential Game and Multi-Agent Reinforcement Learning for Autonomous Driving 🔥 推荐指数： 必读 👤 作者： Huiwen Yan, Mushuang Liu 🕒 arXiv上传时间： 2026-03-19 17:43:19 UTC 🔗 触发的灵感来源： A Robust and Efficient Multi-Agent Reinforcement Learning Framework for Traffic Signal Control, Strategically Robust Multi-Agent Reinforcement Learning with Linear Function Approximation, The price of decentralization in managing engineering systems through multi-agent reinforcement learning 🔄 深度差量对比： 区别于笔记 1 以 RQRE 替代脆弱纳什均衡的策略稳健路径，以及与笔记 3 侧重工程化训练技巧的提升方案，本文致力于从博弈结构层面构造势函数以保证纳什均衡的可计算性与收敛性。 🧠 核心术语库 [[Markov Potential Game]] [[Nash Equilibrium]] [[Decentralized Policy Execution]] [[Highway Forced Merge]] [[General Sum Game]] 🔬 方法论简析 推导一般和博弈向马尔可夫势博弈转化的充分条件，设计参数共享神经网络实现去中心化执行，并在高速合流场景及自然主义驾驶数据集中验证政策有效性。 💬 锐评 势博弈构造条件高度依赖特定驾驶动力学假设，难以直接迁移至城市拥堵等非线性复杂场景；虽提供理论收敛性却未深入讨论对手非理性或扰动下的防御能力（对比笔记 1 的鲁棒性分析）；自然数据评估可能隐含过拟合历史人类行为偏差的风险。"
+    },
+    {
       "title": "MA-VLCM: A Vision Language Critic Model for Value Estimation of Policies in Multi-Agent Team Settings",
       "short_review": "该方法巧妙利用大模型推理能力转化为价值评估器，有效规避了传统 critic 训练的不稳定性与数据低效性，但忽略了预训练 VLM 在特定物理环境下的值函数校准偏差风险、高推理延迟对多智能体实时协同的潜在拖累以及异构机器人系统下视觉表征对齐的计算成本",
       "full_note": "MA-VLCM: A Vision Language Critic Model for Value Estimation of Policies in Multi-Agent Team Settings 🔥 推荐指数： 必读 👤 作者： Shahil Shaik, Aditya Parameshwaran, Anshul Nayak, Jonathon M. Smereka, Yue Wang 🕒 arXiv上传时间： 2026-03-16 15:29:41 UTC 🔗 触发的灵感来源： Intent-aware Multi-agent Reinforcement Learning, Learning to Assist: Physics-Grounded Human-Human Control via Multi-Agent Reinforcement Learning, Mean Field Multi-Agent Reinforcement Learning 🔄 深度差量对比： 相比笔记中“平均场”通过统计聚合应对规模扩展、“意图感知”通过线性假设规避博弈计算，MA-VLCM 引入外部知识驱动的大模型替代内部价值网络，以预训练先验换取策略优化的零样本泛化性与样本效率 🧠 核心术语库 [[多智能体强化学习 (MARL)]] [[视觉语言模型 (Vision-Language Model)]] [[集中式评论家 (Centralized Critic)]] [[零样本泛化 (Zero-shot Generalization)]] [[样本效率 (Sample Efficiency)]] 🔬 方法论简析 提出 MA-VLCM 框架，将 MARL 中的集中式评论家替换为经微调的预训练视觉语言模型（VLM），该模型条件化于自然语言任务描述、视觉轨迹观察及结构化多智能体状态信息以执行价值评估，从而在策略优化过程中完全消除评论家学习环节 💬 锐评 该方法巧妙利用大模型推理能力转化为价值评估器，有效规避了传统 critic 训练的不稳定性与数据低效性，但忽略了预训练 VLM 在特定物理环境下的值函数校准偏差风险、高推理延迟对多智能体实时协同的潜在拖累以及异构机器人系统下视觉表征对齐的计算成本"
@@ -356,6 +361,11 @@
     }
   ],
   "UAV_VLN": [
+    {
+      "title": "Meanings and Measurements: Multi-Agent Probabilistic Grounding for Vision-Language Navigation",
+      "short_review": "工作精准捕捉到 VLM 难以处理具体物理距离和空间关系的痛点，提出的概率组合机制具有理论创新性，但作为通用机器人框架，其尚未针对无人机高空作业、强风扰动下的感知不确定性及实时避障规划进行适配，实际应用至闭环空航时需考量计算复杂度与安全冗余设计。",
+      "full_note": "Meanings and Measurements: Multi-Agent Probabilistic Grounding for Vision-Language Navigation 🔥 推荐指数： 值得看 👤 作者： Swagat Padhan, Lakshya Jain, Bhavya Minesh Shah, Omkar Patil, Thao Nguyen, Nakul Gopalan 🕒 arXiv上传时间： 2026-03-19 17:20:56 UTC 🔗 触发的灵感来源： OnFly: Onboard Zero-Shot Aerial Vision-Language Navigation toward Safety and Efficiency, Volumetric Environment Representation for Vision-Language Navigation, ViSA-Enhanced Aerial VLN: A Visual-Spatial Reasoning Enhanced Framework for Aerial Vision-Language Navigation 🔄 深度差量对比： 对比笔记中 VER 对体素场景构建的侧重、OnFly 对无人飞机载安全架构的优化，该论文专注于解决 VLM 在度量约束（如距离/方位）语义接地上的缺陷，采用多智能体概率合成而非单一模型直接决策。 🧠 核心术语库 [[Multi-Agent Probabilistic Grounding (多智能体概率接地)]] [[Metric-Semantic Constraints (度量 - 语义约束)]] [[Structured Scene Representation (结构化场景表示)]] [[MAPG-Bench]] 🔬 方法论简析 提出 MAPG 框架，将自然语言指令分解为结构化子组件并分别调用 VLM 进行接地，随后通过概率组合机制生成具有一致度量的 3D 决策；同时发布针对度量 - 语义目标接地的新基准 MAPG-Bench 并在真实机器人上验证了可迁移性。 💬 锐评 工作精准捕捉到 VLM 难以处理具体物理距离和空间关系的痛点，提出的概率组合机制具有理论创新性，但作为通用机器人框架，其尚未针对无人机高空作业、强风扰动下的感知不确定性及实时避障规划进行适配，实际应用至闭环空航时需考量计算复杂度与安全冗余设计。"
+    },
     {
       "title": "FloorPlan-VLN: A New Paradigm for Floor Plan Guided Vision-Language Navigation",
       "short_review": "该工作利用预存地图极大简化了智能体的感知负担，对于已知建筑布局的无人机巡检极具价值；然而依赖高精度图纸限制了其在未知或动态开放环境的泛化能力，且当图纸未及时更新时可能引发严重的定位灾难，相比 VER 的在线更新机制，其对现实世界几何变化的敏感度较低。",
