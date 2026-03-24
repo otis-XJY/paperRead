@@ -1,0 +1,56 @@
+name: Daily Paper Fetch
+
+on:
+  schedule:
+    # Run every day at 9:00 AM UTC (adjust time as needed)
+    - cron: '0 9 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  fetch-papers:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Build knowledge base
+      env:
+        ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
+        ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
+      run: |
+        python zotero_indexer.py
+        
+    - name: Fetch and analyze papers
+      env:
+        ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
+        ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
+        MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+        WXWORK_WEBHOOK_URL: ${{ secrets.WXWORK_WEBHOOK_URL }}
+        ENABLE_NOTIFICATION: ${{ secrets.ENABLE_NOTIFICATION || '1' }}
+        DEBUG_PHASE_ONE: ${{ secrets.DEBUG_PHASE_ONE || '0' }}
+      run: |
+        python main.py
+        
+    - name: Upload state files
+      uses: actions/upload-artifact@v4
+      with:
+        name: state-files
+        path: |
+          state.json
+          history.json
+          knowledge_base.json
+        retention-days: 7

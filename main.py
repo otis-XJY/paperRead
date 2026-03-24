@@ -1,3 +1,13 @@
+"""
+Zotero AI Daily Papers - Main Module
+
+An intelligent academic paper fetching, analysis, and archiving system.
+
+Author: paperRead Contributors
+Version: 1.0.0
+License: MIT
+"""
+
 import asyncio
 import aiohttp
 import feedparser
@@ -10,6 +20,8 @@ from datetime import datetime
 from openai import OpenAI
 from pyzotero import zotero
 from notifier import notifier
+
+__version__ = "1.0.0"
 
 # ================= 1. 配置区 =================
 CONFIG = {

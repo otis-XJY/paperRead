@@ -1,7 +1,10 @@
-aiohttp
-feedparser
-openai
-httpx
-pyzotero
-beautifulsoup4
-requests
+# Core dependencies
+aiohttp>=3.9.0
+feedparser>=6.0.10
+openai>=1.12.0
+pyzotero>=1.5.22
+beautifulsoup4>=4.12.0
+httpx>=0.26.0
+
+# Optional dependencies for notifications
+requests>=2.31.0

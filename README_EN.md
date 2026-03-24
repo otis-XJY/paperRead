@@ -1,0 +1,503 @@
+# Zotero AI Daily Papers
+
+<div align="center">
+
+![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
+![arXiv](https://img.shields.io/badge/arXiv-API-red.svg)
+![Zotero](https://img.shields.io/badge/Zotero-Integration-orange.svg)
+![LLM](https://img.shields.io/badge/Powered%20by-LLM-purple.svg)
+
+**🚀 AI-Powered Automated Academic Paper Fetching, Analysis, and Archiving System**
+
+简体中文 | [English](./README_EN.md)
+
+[Features](#-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [Usage Guide](#-usage-guide) • [Contributing](#-contributing)
+
+</div>
+
+---
+
+## ✨ Features
+
+### 🤖 Intelligent Fetching
+- Automatically fetch latest papers from arXiv in specific research areas
+- Support multiple keywords and categories simultaneously
+- Smart deduplication to avoid duplicate processing
+- Comprehensive rate limiting and retry mechanisms
+
+### 🧠 AI-Driven Analysis
+- **Two-stage analysis pipeline**:
+  - **Stage 1**: Lightweight relevance filtering for quick paper value assessment
+  - **Stage 2**: Deep comparative analysis with existing papers
+- Support custom LLM models (ModelScope Qwen / OpenAI GPT)
+- Generate structured analysis notes: methodology, core concepts, critical reviews
+
+### 📚 Automatic Archiving
+- Automatically create Zotero collections and items
+- Generate HTML-formatted structured notes
+- Support tag classification and priority marking
+- Generate accessible Zotero links
+
+### 📱 Multi-Platform Notifications
+- Support Feishu bot notifications
+- Support WeChat Work bot notifications
+- Real-time workflow status updates
+- Individual detailed analysis for each paper
+
+### 🔄 Incremental Updates
+- Only fetch new papers, saving time and resources
+- Smart state management to avoid duplicate processing
+- Support both cold-start and incremental run modes
+
+### 🎯 Highly Configurable
+- Flexible research area configuration
+- Customizable LLM models
+- Support dry-run mode (DRY_RUN)
+- Rich debugging options
+
+---
+
+## 📸 Preview
+
+### Structured Notes in Zotero
+
+Each paper generates structured notes including:
+
+- 🆕 Ingestion stage indicator
+- 🔥 Recommendation score (Must Read / Worth Reading / Skip)
+- 📂 Category information
+- 👤 Author list
+- 🕒 arXiv upload time
+- 🧧 One-line summary
+- 📄 Complete abstract
+- 🧠 Core terminology
+- 🔬 Methodology overview
+- 💬 Critical review
+- 🔄 Deep comparative analysis (incremental runs)
+
+### Feishu Notification Example
+
+```
+📚 New Paper Recommendation - UAV_VLN
+
+1/1. Vision-Language Navigation for UAVs
+🔥 Recommendation: Must Read | 📂 UAV_VLN
+
+👤 Authors: John Doe, Jane Smith
+
+📄 arXiv Paper | 📚 Zotero Entry
+
+🔬 Methodology:
+Proposed a multi-modal fusion-based UAV navigation framework combining visual perception and language understanding...
+
+🧠 Core Concepts: #MultiModalFusion #PathPlanning #DeepLearning
+
+🔄 Comparative Analysis:
+Compared to your previously read "VLM for Navigation", this paper adds altitude information processing...
+
+💬 Critical Review:
+The proposed method in this paper is innovative, but its performance in complex environments still needs verification...
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Python 3.8+**
+- **Zotero Account**
+- **LLM API Key** (ModelScope or OpenAI)
+- (Optional) **Feishu/WeChat Work Webhook URL**
+
+### 1️⃣ Installation
+
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/your-username/paperRead.git
+cd paperRead
+pip install -r requirements.txt
+```
+
+### 2️⃣ Configuration
+
+Create a `.env` file (or set in environment variables):
+
+```bash
+# Required
+ZOTERO_USER_ID=your_zotero_user_id  # Found in Zotero settings
+ZOTERO_API_KEY=your_api_key          # https://www.zotero.org/settings/keys
+MODELSCOPE_API_KEY=your_modelscope_api_key  # https://modelscope.cn/
+
+# Optional (for notifications)
+FEISHU_WEBHOOK_URL=your_feishu_bot_webhook_url
+WXWORK_WEBHOOK_URL=your_wechat_work_bot_webhook_url
+
+# Optional configuration
+ENABLE_NOTIFICATION=1  # Enable notifications (1: enable, 0: disable)
+DRY_RUN=0  # Dry run mode (1: don't write to Zotero, 0: normal mode)
+DEBUG_PHASE_ONE=1  # Debug stage one (1: verbose output, 0: concise mode)
+```
+
+### 3️⃣ Get Zotero API Key
+
+1. Login to [Zotero](https://www.zotero.org/)
+2. Go to [User Settings](https://www.zotero.org/settings/keys)
+3. Create a new API key with recommended permissions:
+   - ✅ Read access
+   - ✅ Write access
+   - ✅ Allow notes access
+
+### 4️⃣ Build Knowledge Base Index
+
+For the first run, export existing papers from Zotero as a knowledge base:
+
+```bash
+python zotero_indexer.py
+```
+
+This generates `knowledge_base.json` containing index information of your existing Zotero papers.
+
+### 5️⃣ Run Main Program
+
+```bash
+python main.py
+```
+
+**First run will:**
+- Fetch latest 10 papers + top 10 most relevant papers for each category
+- Use LLM for deep analysis
+- Automatically create Zotero collections and items
+- Generate structured analysis notes
+
+**Subsequent runs will:**
+- Only fetch papers newer than last update
+- Compare with knowledge base for relevance
+- Only save relevant papers
+
+---
+
+## ⚙️ Configuration
+
+### Research Area Configuration
+
+Configure your research areas in the `CONFIG` section of `main.py`:
+
+```python
+CONFIG = {
+    "categories": {
+        "CategoryName": {
+            "keywords": ["keyword1", "keyword2"],
+            "desc": "Category description"
+        }
+    },
+    "llm_model": "Qwen/Qwen3.5-35B-A3B",
+    "base_url": "https://api-inference.modelscope.cn/v1/"
+}
+```
+
+**Example Configuration:**
+
+```python
+"UAV_VLN": {
+    "keywords": [
+        'ti:"Vision-Language Navigation"',
+        '(abs:UAV AND abs:Navigation)'
+    ],
+    "desc": "UAV vision-language navigation, spatial perception, and instruction execution."
+}
+```
+
+**arXiv Search Syntax:**
+- `ti:"keyword"` - Search in title
+- `abs:keyword` - Search in abstract
+- `cat:cs.MA` - Limit by category
+- `AND` / `OR` - Logical operators
+- See [arXiv API Documentation](https://export.arxiv.org/api_help/) for more
+
+### LLM Configuration
+
+#### Using ModelScope (Recommended)
+
+```python
+CONFIG = {
+    "llm_model": "Qwen/Qwen3.5-35B-A3B",
+    "base_url": "https://api-inference.modelscope.cn/v1/"
+}
+```
+
+Environment variable: `MODELSCOPE_API_KEY`
+
+#### Using OpenAI
+
+```python
+CONFIG = {
+    "llm_model": "gpt-4",
+    "base_url": "https://api.openai.com/v1/"
+}
+```
+
+Environment variable: `OPENAI_API_KEY`
+
+### Rate Limiting Strategy
+
+To avoid arXiv API rate limits, the program includes intelligent delay mechanisms:
+
+- **First run**: 8-10 seconds between requests
+- **Incremental updates**: 6 seconds between requests
+- **429 errors**: Dynamic waiting 7-19 seconds
+- **Network errors**: Exponential backoff retry
+
+---
+
+## 🔧 Advanced Features
+
+### 1. Dry Run Mode (DRY_RUN)
+
+Don't write to Zotero, only test fetching logic:
+
+```bash
+DRY_RUN=1 python main.py
+```
+
+Use cases:
+- First-time configuration testing
+- Debug keyword effectiveness
+- Estimate LLM token consumption
+
+### 2. Debug Mode
+
+Enable detailed stage one output:
+
+```bash
+DEBUG_PHASE_ONE=1 python main.py
+```
+
+### 3. GitHub Actions Automation
+
+Configure GitHub Actions for daily automatic runs:
+
+1. **Fork this repository**
+2. **Add Secrets in repository settings**:
+   - `ZOTERO_USER_ID`
+   - `ZOTERO_API_KEY`
+   - `MODELSCOPE_API_KEY`
+   - `FEISHU_WEBHOOK_URL` (optional)
+3. **Enable Actions workflow**
+
+See [`.github/workflows/daily.yml`](./.github/workflows/daily.yml) for details
+
+### 4. Message Notifications
+
+#### Feishu Notifications
+
+1. Create a Feishu bot
+2. Get Webhook URL
+3. Set `FEISHU_WEBHOOK_URL` environment variable
+
+#### WeChat Work Notifications
+
+Configure `WXWORK_WEBHOOK_URL` to enable.
+
+---
+
+## 📊 Usage Guide
+
+### Common Use Cases
+
+#### Scenario 1: First-Time Use
+
+```bash
+# 1. Build knowledge base (if you have papers in Zotero)
+python zotero_indexer.py
+
+# 2. Test configuration
+DRY_RUN=1 python main.py
+
+# 3. Run normally
+python main.py
+```
+
+#### Scenario 2: Daily Updates
+
+```bash
+# Run once a day to fetch new papers
+python main.py
+```
+
+#### Scenario 3: Adding New Research Areas
+
+1. Edit `CONFIG` in `main.py`
+2. Re-run `zotero_indexer.py`
+3. Run `main.py`
+
+#### Scenario 4: Periodic Knowledge Base Updates
+
+When you have many papers in Zotero, re-run:
+
+```bash
+python zotero_indexer.py
+```
+
+### Output File Description
+
+| File | Description | Auto-generated |
+|------|-------------|----------------|
+| `knowledge_base.json` | Zotero paper knowledge base index | Yes (by zotero_indexer.py) |
+| `state.json` | Run state record | Yes |
+| `history.json` | Processed paper history | Yes |
+
+---
+
+## 🛠️ Troubleshooting
+
+### Issue 1: HTTP 429 Rate Limit Error
+
+**Cause**: Too frequent arXiv API requests
+
+**Solution**:
+- The program includes built-in delay mechanisms, please wait patiently
+- If it still occurs frequently, increase the `base_delay` parameter in `fetch_arxiv_single`
+
+### Issue 2: LLM Authentication Failed
+
+**Cause**: API Key configuration error
+
+**Solution**:
+- Check if `MODELSCOPE_API_KEY` or `OPENAI_API_KEY` is correct
+- Confirm the API Key has sufficient quota
+- Check network connection
+
+### Issue 3: Zotero Write Failed
+
+**Cause**: Insufficient API permissions or network issues
+
+**Solution**:
+- Confirm ZOTERO_API_KEY has write permissions
+- Check network connection
+- Use `DRY_RUN=1` to test fetching logic
+
+### Issue 4: knowledge_base.json Not Found
+
+**Cause**: Knowledge base not built before first run
+
+**Solution**:
+```bash
+python zotero_indexer.py
+```
+
+### Issue 5: Relevance Judgment Inaccurate
+
+**Cause**: Too few papers in knowledge base
+
+**Solution**:
+- Manually add more relevant papers to Zotero
+- Re-run `zotero_indexer.py` to update knowledge base
+- Adjust LLM model parameters
+
+---
+
+## 🤝 Contributing
+
+We welcome code contributions, bug reports, and suggestions!
+
+### How to Contribute
+
+1. **Fork this repository**
+2. **Create a feature branch**: `git checkout -b feature/AmazingFeature`
+3. **Commit changes**: `git commit -m 'Add some AmazingFeature'`
+4. **Push to branch**: `git push origin feature/AmazingFeature`
+5. **Submit a Pull Request**
+
+### Development Guidelines
+
+- Follow existing code style
+- Add necessary comments and documentation
+- Ensure new features have corresponding tests
+- Update relevant documentation
+
+### Reporting Issues
+
+When submitting an Issue, please include:
+- Python version
+- Error message and stack trace
+- Steps to reproduce
+- Relevant configuration information
+
+---
+
+## 🗺️ Project Structure
+
+```
+paperRead/
+├── main.py                      # Main program
+├── zotero_indexer.py            # Zotero index generator
+├── notifier.py                  # Notification module
+├── requirements.txt             # Python dependencies
+├── README.md                    # Project documentation (Chinese)
+├── README_EN.md                 # Project documentation (English)
+├── LICENSE                      # MIT License
+├── .github/
+│   ├── workflows/
+│   │   └── daily.yml            # GitHub Actions configuration
+│   └── ISSUE_TEMPLATE/          # Issue templates
+├── state.json                   # Run state (auto-generated)
+├── history.json                 # Paper history (auto-generated)
+└── knowledge_base.json          # Knowledge base index (generated on first run)
+```
+
+---
+
+## 🔗 Related Resources
+
+- [arXiv API Documentation](https://export.arxiv.org/api_help/)
+- [Zotero API Documentation](https://www.zotero.org/dev/doc/)
+- [ModelScope](https://modelscope.cn/)
+- [PyZotero](https://github.com/urschrei/pyzotero)
+- [Feishu Open Platform](https://open.feishu.cn/)
+- [WeChat Work Bot](https://developer.work.weixin.qq.com/document/path/91770)
+
+---
+
+## 💡 Tips
+
+1. **First run**: Recommended to use `DRY_RUN=1` to test configuration
+2. **Periodically update knowledge base**: When you have many papers in Zotero, re-run `zotero_indexer.py`
+3. **Adjust categories**: Adjust keyword configuration based on research interests
+4. **View logs**: Pay attention to console output to understand fetching progress and results
+5. **Optimize token consumption**: Adjust knowledge base size appropriately to balance analysis quality and cost
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details
+
+---
+
+## ⭐ Acknowledgments
+
+Thanks to these open source projects:
+
+- [PyZotero](https://github.com/urschrei/pyzotero) - Python Zotero API wrapper
+- [feedparser](https://github.com/kurtmckee/feedparser) - RSS/Atom parser
+- [aiohttp](https://github.com/aio-libs/aiohttp) - Asynchronous HTTP client
+
+---
+
+## 📧 Contact
+
+- Submit [Issue](../../issues)
+- Email: your-email@example.com
+
+---
+
+<div align="center">
+
+**If this project helps you, please give it a Star! ⭐**
+
+Made with ❤️ by researchers, for researchers
+
+</div>
