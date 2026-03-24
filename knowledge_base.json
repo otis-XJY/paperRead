@@ -1,6 +1,11 @@
 {
   "Humanoid_Manipulation": [
     {
+      "title": "AGILE: A Comprehensive Workflow for Humanoid Loco-Manipulation Learning",
+      "short_review": "该工作精准补足了当前研究重算法轻基建的短板，确立了可复现的工程标准，显著降低了试错成本；然而其不直接改进策略性能上限，且高度依赖硬件抽象层与预设配置，对于极端非结构化环境下的深层泛化挑战仍需结合如 REFINE-DP 等先进策略共同解决。",
+      "full_note": "AGILE: A Comprehensive Workflow for Humanoid Loco-Manipulation Learning 🔥 推荐指数： 必读 👤 作者： Huihua Zhao, Rafael Cathomen, Lionel Gulich, Wei Liu, Efe Arda Ongan, Michael Lin, Shalin Jain, Soha Pouya, Yan Chang 🕒 arXiv上传时间： 2026-03-20 17:21:19 UTC 🔗 触发的灵感来源： FAME: Force-Adaptive RL for Expanding the Manipulation Envelope of a Full-Scale Humanoid, REFINE-DP: Diffusion Policy Fine-tuning for Humanoid Loco-manipulation via Reinforcement Learning, $Ψ_0$: An Open Foundation Model Towards Universal Humanoid Loco-Manipulation 🔄 深度差量对比： 相比过去笔记中论文侧重单一策略架构的创新（如 REFINE-DP 扩散微调、FAME 力自适应、$Ψ_0$ 基础模型），本文转向构建标准化的端到端 RL 开发生命周期，旨在解决算法落地的工程复现与部署稳定性问题。 🧠 核心术语库 [[Sim-to-Real Workflow]] [[Unified Evaluation Framework]] [[Descriptor-driven Deployment]] [[Motion-Quality Diagnostics]] 🔬 方法论简析 提出包含交互式环境验证、可复现训练、统一评估及描述符驱动部署的四阶段工作流，并集成训练稳定化技术与跨平台运动质量诊断套件，以实现一致的仿真实验至真机迁移。 💬 锐评 该工作精准补足了当前研究重算法轻基建的短板，确立了可复现的工程标准，显著降低了试错成本；然而其不直接改进策略性能上限，且高度依赖硬件抽象层与预设配置，对于极端非结构化环境下的深层泛化挑战仍需结合如 REFINE-DP 等先进策略共同解决。"
+    },
+    {
       "title": "TeleDex: Accessible Dexterous Teleoperation",
       "short_review": "极大降低了灵巧操作的数据采集门槛并实现开源复用；但相比 CHILD 的力反馈安全机制及 DexHiL 的算法干预逻辑，TeleDex 在高频手指运动下的视觉跟踪鲁棒性未经充分验证，且缺失针对复杂物理交互的动态安全性保障。",
       "full_note": "TeleDex: Accessible Dexterous Teleoperation 🔥 推荐指数： 值得看 👤 作者： Omar Rayyan, Maximilian Gillesm, Yuchen Cui 🕒 arXiv上传时间： 2026-03-17 18:50:15 UTC 🔗 触发的灵感来源： CHILD (Controller for Humanoid Imitation and Live Demonstration): a Whole-Body Humanoid Teleoperation System, Humanoid Manipulation Interface: Humanoid Whole-Body Manipulation from Robot-Free Demonstrations, DexHiL: A Human-in-the-Loop Framework for Vision-Language-Action Model Post-Training in Dexterous Manipulation 🔄 深度差量对比： 与 CHILD 同为便携遥操系统但 TeleDex 以手机替代穿戴设备聚焦灵巧手，区别于 HuMI 的动作迁移学习则通过实时遥操作采集数据以支持策略微调。 🧠 核心术语库 [[手机端遥操作]] [[灵活手视觉控制]] [[零外部追踪设施]] [[低成本演示采集]] [[视频流姿态估计]] 🔬 方法论简析 利用手机摄像头实时提取 6-DoF 腕姿与 21-DoF 手部关节状态，无需外部追踪即重映射至机械臂/手，提供手持或 3D 打印指套双模式开源方案。 💬 锐评 极大降低了灵巧操作的数据采集门槛并实现开源复用；但相比 CHILD 的力反馈安全机制及 DexHiL 的算法干预逻辑，TeleDex 在高频手指运动下的视觉跟踪鲁棒性未经充分验证，且缺失针对复杂物理交互的动态安全性保障。"
@@ -361,6 +366,11 @@
     }
   ],
   "UAV_VLN": [
+    {
+      "title": "HUGE-Bench: A Benchmark for High-Level UAV Vision-Language-Action Tasks",
+      "short_review": "该基准填补了现有长路径规划中缺乏高层意图理解与安全过程监控的空白，但作为评测工具而非算法创新，其价值在于揭示现有端到端模型（如 AerialVLA）在复杂任务拆解上的不足；需注意其依赖数字孪生物理引擎的真实性是否足以反映实机（如 OnFly 所述）面临的传感器噪声与延迟挑战，可能存在评估过拟合风险。",
+      "full_note": "HUGE-Bench: A Benchmark for High-Level UAV Vision-Language-Action Tasks 🔥 推荐指数： 必读 👤 作者： Jingyu Guo, Ziye Chen, Ziwen Li, Zhengqing Gao, Jiaxin Huang, Hanlue Zhang, Fengming Huang, Yu Yao, Tongliang Liu, Mingming Gong 🕒 arXiv上传时间： 2026-03-20 10:08:42 UTC 🔗 触发的灵感来源： OnFly: Onboard Zero-Shot Aerial Vision-Language Navigation toward Safety and Efficiency, AerialVLA: A Vision-Language-Action Model for UAV Navigation via Minimalist End-to-End Control, SPAN-Nav: Generalized Spatial Awareness for Versatile Vision-Language Navigation, FreeFly-Thinking : Aligning Chain-of-Thought Reasoning with Continuous UAV Navigation 🔄 深度差量对比： 不同于 AerialVLA 的端到端控制架构与 OnFly 的安全验证模块，本文聚焦于构建评估高层级意图执行的基准；相比 FreeFly-Thinking 的 CoT 推理探索，本文通过 3DGS-Mesh 提供具备碰撞能力的物理环境，专门诊断现有模型在多阶段行为分解中的安全性缺口。 🧠 核心术语库 [[高层级视觉 - 语言 - 动作 (HL-VLA)]] [[3D Gaussian Splatting-Mesh]] [[过程导向评估指标]] [[碰撞感知基准]] 🔬 方法论简析 提出 HUGE-Bench 高层级 UAV 视觉 - 语言 - 动作（HL-VLA）基准测试，采用对齐的 3D Gaussian Splatting(3DGS) 与 Mesh 表示法融合光影渲染与碰撞几何；包含 4 个数字孪生场景、8 个高层任务及 2.56M 米轨迹数据，引入过程导向与碰撞感知双重指标评估过程保真度与终端精度。 💬 锐评 该基准填补了现有长路径规划中缺乏高层意图理解与安全过程监控的空白，但作为评测工具而非算法创新，其价值在于揭示现有端到端模型（如 AerialVLA）在复杂任务拆解上的不足；需注意其依赖数字孪生物理引擎的真实性是否足以反映实机（如 OnFly 所述）面临的传感器噪声与延迟挑战，可能存在评估过拟合风险。"
+    },
     {
       "title": "Meanings and Measurements: Multi-Agent Probabilistic Grounding for Vision-Language Navigation",
       "short_review": "工作精准捕捉到 VLM 难以处理具体物理距离和空间关系的痛点，提出的概率组合机制具有理论创新性，但作为通用机器人框架，其尚未针对无人机高空作业、强风扰动下的感知不确定性及实时避障规划进行适配，实际应用至闭环空航时需考量计算复杂度与安全冗余设计。",
