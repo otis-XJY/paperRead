@@ -1,6 +1,16 @@
 {
   "Humanoid_Manipulation": [
     {
+      "title": "Make Tracking Easy: Neural Motion Retargeting for Humanoid Whole-body Control",
+      "short_review": "虽然有效解决了运动学约束导致的物理伪影问题，但引入 '并行 RL 专家' 进行离线数据修复的计算开销巨大，可能抵消训练效率增益；且作为底层数据工具，需评估其与 Ψ0 等顶层基座模型的兼容性，防止数据清洗过度导致高层语义丢失。",
+      "full_note": "Make Tracking Easy: Neural Motion Retargeting for Humanoid Whole-body Control 🔥 推荐指数： 必读 👤 作者： Qingrui Zhao, Kaiyue Yang, Xiyu Wang, Shiqi Zhao, Yi Lu, Xinfang Zhang, Wei Yin, Qiu Shen, Xiao-Xiao Long, Xun Cao 🕒 arXiv上传时间： 2026-03-23 16:59:00 UTC 🔗 触发的灵感来源： Humanoid Manipulation Interface: Humanoid Whole-Body Manipulation from Robot-Free Demonstrations, $Ψ_0$: An Open Foundation Model Towards Universal Humanoid Loco-Manipulation, One-Policy-Fits-All: Geometry-Aware Action Latents for Cross-Embodiment Manipulation 🔄 深度差量对比： 不同于 OPFA 侧重跨本体策略共享及Ψ0 强调分阶段视觉 - 动作解耦，本工作聚焦于动作生成前的数据清洗环节，通过分布学习替代传统优化解决动力学可行性问题。 🧠 核心术语库 [[Neural Motion Retargeting (NMR)]] [[Clustered-Expert Physics Refinement (CEPR)]] [[Feasible Motion Manifold]] [[Distribution-Based Retargeting]] 🔬 方法论简析 提出 NMR 框架，通过 VAE 聚类构建分层数据管线（CEPR），利用并行 RL 专家将人类演示修复至机器人可行流形；采用非自回归 CNN-Transformer 架构推理全局时序上下文，抑制重建噪声并规避几何陷阱。 💬 锐评 虽然有效解决了运动学约束导致的物理伪影问题，但引入 '并行 RL 专家' 进行离线数据修复的计算开销巨大，可能抵消训练效率增益；且作为底层数据工具，需评估其与 Ψ0 等顶层基座模型的兼容性，防止数据清洗过度导致高层语义丢失。"
+    },
+    {
+      "title": "UniDex: A Robot Foundation Suite for Universal Dexterous Hand Control from Egocentric Human Videos",
+      "short_review": "FAAS 空间对异构自由度结构的泛化上限存在理论风险，'任务进度'指标缺乏细粒度评估定义，且基于掩蔽点云的重定向算法在处理复杂接触力学时的鲁棒性未得到充分验证，可能在实际物理交互中出现动作断层。",
+      "full_note": "UniDex: A Robot Foundation Suite for Universal Dexterous Hand Control from Egocentric Human Videos 🔥 推荐指数： 必读 👤 作者： Gu Zhang, Qicheng Xu, Haozhe Zhang, Jianhan Ma, Long He, Yiming Bao, Zeyu Ping, Zhecheng Yuan, Chenhao Lu, Chengbo Yuan, Tianhai Liang, Xiaoyu Tian, Maanping Shao, Feihong Zhang, Mingyu Ding, Yang Gao, Hao Zhao, Hang Zhao, Huazhe Xu 🕒 arXiv上传时间： 2026-03-23 17:49:12 UTC 🔗 触发的灵感来源： Cross-Hand Latent Representation for Vision-Language-Action Models, $Ψ_0$: An Open Foundation Model Towards Universal Humanoid Loco-Manipulation, Humanoid Manipulation Interface: Humanoid Whole-Body Manipulation from Robot-Free Demonstrations, DexHiL: A Human-in-the-Loop Framework for Vision-Language-Action Model Post-Training in Dexterous Manipulation 🔄 深度差量对比： 相较于过往笔记中 XL-VLA 的隐式跨本体方案，UniDex 通过显式的 FAAS 功能对齐空间设计了更物理可解释的动作映射，并配套构建了大规模多手数据集；对比 DexHiL，UniDex 从执行时干预转向数据构建阶段的人机回环重定向与 3D VLA 预训练。 🧠 核心术语库 [[[[UniDex Dataset]]]] [[[[Function-Actuator-Aligned Space (FAAS)]]]] [[[[Egocentric Human Videos]]]] [[[[Cross-Hand Generalization]]]] [[[[Human-in-the-loop Retargeting]]]] 🔬 方法论简析 提出包含 50K 轨迹的 UniDex-Dataset（覆盖 8 种灵巧手），设计 Function-Actuator-Aligned Space (FAAS) 统一不同机械结构的功能坐标，利用便携式捕获设备 UniDex-Cap 进行 RGB-D 与人手姿态同步采集，经人机回环重定向后训练 3D VLA 策略。 💬 锐评 FAAS 空间对异构自由度结构的泛化上限存在理论风险，'任务进度'指标缺乏细粒度评估定义，且基于掩蔽点云的重定向算法在处理复杂接触力学时的鲁棒性未得到充分验证，可能在实际物理交互中出现动作断层。"
+    },
+    {
       "title": "AGILE: A Comprehensive Workflow for Humanoid Loco-Manipulation Learning",
       "short_review": "该工作精准补足了当前研究重算法轻基建的短板，确立了可复现的工程标准，显著降低了试错成本；然而其不直接改进策略性能上限，且高度依赖硬件抽象层与预设配置，对于极端非结构化环境下的深层泛化挑战仍需结合如 REFINE-DP 等先进策略共同解决。",
       "full_note": "AGILE: A Comprehensive Workflow for Humanoid Loco-Manipulation Learning 🔥 推荐指数： 必读 👤 作者： Huihua Zhao, Rafael Cathomen, Lionel Gulich, Wei Liu, Efe Arda Ongan, Michael Lin, Shalin Jain, Soha Pouya, Yan Chang 🕒 arXiv上传时间： 2026-03-20 17:21:19 UTC 🔗 触发的灵感来源： FAME: Force-Adaptive RL for Expanding the Manipulation Envelope of a Full-Scale Humanoid, REFINE-DP: Diffusion Policy Fine-tuning for Humanoid Loco-manipulation via Reinforcement Learning, $Ψ_0$: An Open Foundation Model Towards Universal Humanoid Loco-Manipulation 🔄 深度差量对比： 相比过去笔记中论文侧重单一策略架构的创新（如 REFINE-DP 扩散微调、FAME 力自适应、$Ψ_0$ 基础模型），本文转向构建标准化的端到端 RL 开发生命周期，旨在解决算法落地的工程复现与部署稳定性问题。 🧠 核心术语库 [[Sim-to-Real Workflow]] [[Unified Evaluation Framework]] [[Descriptor-driven Deployment]] [[Motion-Quality Diagnostics]] 🔬 方法论简析 提出包含交互式环境验证、可复现训练、统一评估及描述符驱动部署的四阶段工作流，并集成训练稳定化技术与跨平台运动质量诊断套件，以实现一致的仿真实验至真机迁移。 💬 锐评 该工作精准补足了当前研究重算法轻基建的短板，确立了可复现的工程标准，显著降低了试错成本；然而其不直接改进策略性能上限，且高度依赖硬件抽象层与预设配置，对于极端非结构化环境下的深层泛化挑战仍需结合如 REFINE-DP 等先进策略共同解决。"
@@ -142,6 +152,26 @@
     }
   ],
   "MARL": [
+    {
+      "title": "CAMA: Exploring Collusive Adversarial Attacks in c-MARL",
+      "short_review": "虽填补了合谋攻击的理论空白，但实验限于 SMAC II 离散环境且缺乏动态防御评估，其结论难以直接推广至笔记 1 所述的非线性连续控制场景，且未深入探讨非理性对手下的攻击边界判定问题。",
+      "full_note": "CAMA: Exploring Collusive Adversarial Attacks in c-MARL 🔥 推荐指数： 值得看 👤 作者： Men Niu, Xinxin Fan, Quanliang Jing, Shaoye Luo, Yunfeng Lu 🕒 arXiv上传时间： 2026-03-20 18:09:54 UTC 🔗 触发的灵感来源： Strategically Robust Multi-Agent Reinforcement Learning with Linear Function Approximation, Markov Potential Game and Multi-Agent Reinforcement Learning for Autonomous Driving 🔄 深度差量对比： 不同于笔记 1 与 2 致力于从博弈结构或价值迭代层面构建收敛性与鲁棒性，本文转向攻击视角，揭示了协作场景中恶意合谋如何通过操纵效用感知来瓦解既有算法的信任假设。 🧠 核心术语库 [[Collusive Adversarial Attacks]] [[Policy-Level Manipulation]] [[c-MARL Security]] [[Agent Trustworthiness]] 🔬 方法论简析 提出统一政策级攻击框架 CAMA，设计集体、伪装及间谍三种合谋模式，通过观测信息融合与触发控制实现高隐蔽性的协同干扰，并从破坏性、隐蔽性与成本三方面进行理论分析。 💬 锐评 虽填补了合谋攻击的理论空白，但实验限于 SMAC II 离散环境且缺乏动态防御评估，其结论难以直接推广至笔记 1 所述的非线性连续控制场景，且未深入探讨非理性对手下的攻击边界判定问题。"
+    },
+    {
+      "title": "Fluid Antenna Networks Beyond Beamforming: An AI-Native Control Paradigm for 6G",
+      "short_review": "该研究拓展了 MARL 动作空间的物理维度，但未量化机械调节时延与学习步长的耦合效应，存在与笔记一类似的训练稳定性未定量问题；且相较于笔记三中实测验证的缺失，其对硬件非理想误差及复杂场景下的泛化能力评估仍需加强。",
+      "full_note": "Fluid Antenna Networks Beyond Beamforming: An AI-Native Control Paradigm for 6G 🔥 推荐指数： 值得看 👤 作者： Ian F. Akyildiz, Tuğçe Bilen 🕒 arXiv上传时间： 2026-03-20 20:29:05 UTC 🔗 触发的灵感来源： Multi-Agent Reinforcement Learning Counteracts Delayed CSI in Multi-Satellite Systems, Interference-Aware K-Step Reachable Communication in Multi-Agent Reinforcement Learning 🔄 深度差量对比： 不同于笔记一侧重通信拓扑与干扰感知的链路级约束，以及笔记二针对延迟 CSI 的双层补偿机制，本文开创性地将天线物理位置重构纳入动作空间，实现硬件自由度与资源管理的联合闭环控制。 🧠 核心术语库 [[Fluid Antenna Systems (FAS)]] [[AI-Native Control Paradigm]] [[Joint Positioning and RRM]] [[Distributed MARL]] 🔬 方法论简析 构建 AI 原生闭环控制架构，利用分布式 MARL 协调多基站决策，将实时网络观测映射为协同的天线重配置与无线资源管理（RRM）组合动作，以应对非平稳信道与用户动态。 💬 锐评 该研究拓展了 MARL 动作空间的物理维度，但未量化机械调节时延与学习步长的耦合效应，存在与笔记一类似的训练稳定性未定量问题；且相较于笔记三中实测验证的缺失，其对硬件非理想误差及复杂场景下的泛化能力评估仍需加强。"
+    },
+    {
+      "title": "AI-Driven Multi-Agent Simulation of Stratified Polyamory Systems: A Computational Framework for Optimizing Social Reproductive Efficiency",
+      "short_review": "该研究试图用工程手段解决宏观社会学难题，极具野心但存在显著的方法论风险。相较于《EcoFair-CH-MARL》通过原对偶优化保证的 O(√T) 理论界限，其‘社会福利’Reward 函数难以量化且易陷入伦理黑箱；相比《AGMARL-DKS》在真实云集群上的验证，人类行为仿真缺乏确定性环境反馈，算法收敛性与外部效度存疑。需警惕将 MARL 强加于非理性人类决策的‘算法决定主义’倾向，且未明确讨论策略泄露对社会结构的潜在冲击。",
+      "full_note": "AI-Driven Multi-Agent Simulation of Stratified Polyamory Systems: A Computational Framework for Optimizing Social Reproductive Efficiency 🔥 推荐指数： 值得看 👤 作者： Yicai Xing 🕒 arXiv上传时间： 2026-03-21 06:38:17 UTC 🔗 触发的灵感来源： Heterogeneity in Multi-Agent Reinforcement Learning, EcoFair-CH-MARL: Scalable Constrained Hierarchical Multi-Agent RL with Real-Time Emission Budgets and Fairness Guarantees, AGMARL-DKS: An Adaptive Graph-Enhanced Multi-Agent Reinforcement Learning for Dynamic Kubernetes Scheduling 🔄 深度差量对比： 与《EcoFair-CH-MARL》均涉及系统约束下的公平性优化，但前者基于严格的物理排放预算，后者将‘公平’映射为社会阶层与生育效率的复杂软目标；与《Heterogeneity in MARL》相比，同利用异构体建模，但前者构建了数学距离度量，后者仅定义为社会学 A/B/C 分层抽象。 🧠 核心术语库 [[Social MARL]] [[Reproductive Efficiency Optimization]] [[LLM-Augmented Simulation]] [[Pareto Social Welfare]] 🔬 方法论简析 融合 Agent-Based Modeling (ABM) 构建社会仿真环境，利用 PPO 算法求解多智能体匹配策略，引入 GNN 表征交配网络拓扑，并结合 LLM 增强对个体社会行为的语义理解以优化社会福利函数。 💬 锐评 该研究试图用工程手段解决宏观社会学难题，极具野心但存在显著的方法论风险。相较于《EcoFair-CH-MARL》通过原对偶优化保证的 O(√T) 理论界限，其‘社会福利’Reward 函数难以量化且易陷入伦理黑箱；相比《AGMARL-DKS》在真实云集群上的验证，人类行为仿真缺乏确定性环境反馈，算法收敛性与外部效度存疑。需警惕将 MARL 强加于非理性人类决策的‘算法决定主义’倾向，且未明确讨论策略泄露对社会结构的潜在冲击。"
+    },
+    {
+      "title": "Adaptive Robust Estimator for Multi-Agent Reinforcement Learning",
+      "short_review": "虽有效应对噪声奖励引发的训练发散，但未提供类似 SVN 般的理论收敛证明；方法高度依赖 LLM 自身的批判与修正能力，若基座模型存在幻觉可能导致 DACR 流水线产生系统性偏差；相较于传统连续控制环境，数学推理与具身智能任务的评估维度较窄。",
+      "full_note": "Adaptive Robust Estimator for Multi-Agent Reinforcement Learning 🔥 推荐指数： 值得看 👤 作者： Zhongyi Li, Wan Tian, Jingyu Chen, Kangyao Huang, Huiming Zhang, Hui Yang, Tao Ren, Jinyang Jiang, Yijie Peng, Yikun Ban, Fuzhen Zhuang 🕒 arXiv上传时间： 2026-03-23 04:51:15 UTC 🔗 触发的灵感来源： A Recipe for Stable Offline Multi-agent Reinforcement Learning, Strategically Robust Multi-Agent Reinforcement Learning with Linear Function Approximation, Kindness in Multi-Agent Reinforcement Learning 🔄 深度差量对比： 相较于《Kindness》利用反事实意图促进协作及《Strategically Robust》基于风险敏感均衡的理论稳健，本文聚焦于 LLM 协同场景下高频交互产生的奖励噪声与信用分配难题，从优化统计特性层面解决训练不稳定，而非博弈均衡或价值分解层面。 🧠 核心术语库 [[奖励噪声鲁棒性]] [[信用分配]] [[LLM 协同推理]] [[自适应鲁棒估计]] 🔬 方法论简析 构建双智能体答案 - 批评 - 重写（DACR）结构化流水线以实现明确的边际贡献归属，并设计自适应鲁棒估计器（ARE）在批处理经验中抗噪计算均值，以增强策略优化过程对重尾和噪声奖励信号的鲁棒性。 💬 锐评 虽有效应对噪声奖励引发的训练发散，但未提供类似 SVN 般的理论收敛证明；方法高度依赖 LLM 自身的批判与修正能力，若基座模型存在幻觉可能导致 DACR 流水线产生系统性偏差；相较于传统连续控制环境，数学推理与具身智能任务的评估维度较窄。"
+    },
     {
       "title": "Markov Potential Game and Multi-Agent Reinforcement Learning for Autonomous Driving",
       "short_review": "势博弈构造条件高度依赖特定驾驶动力学假设，难以直接迁移至城市拥堵等非线性复杂场景；虽提供理论收敛性却未深入讨论对手非理性或扰动下的防御能力（对比笔记 1 的鲁棒性分析）；自然数据评估可能隐含过拟合历史人类行为偏差的风险。",
@@ -366,6 +396,21 @@
     }
   ],
   "UAV_VLN": [
+    {
+      "title": "Beyond Matching to Tiles: Bridging Unaligned Aerial and Satellite Views for Vision-Only UAV Navigation",
+      "short_review": "该方案有效缓解了传统交叉视图匹配的存储与精度权衡，但未解决 VLN 核心痛点（文本指令理解）；过度依赖静态卫星先验地图导致在动态未知环境中泛化能力存疑，相比 OnFly 具备的在线记忆机制与几何验证器，其在复杂场景下的安全性保障较弱。",
+      "full_note": "Beyond Matching to Tiles: Bridging Unaligned Aerial and Satellite Views for Vision-Only UAV Navigation 🔥 推荐指数： 值得看 👤 作者： Kejia Liu, Haoyang Zhou, Ruoyu Xu, Peicheng Wang, Mingli Song, Haofei Zhang 🕒 arXiv上传时间： 2026-03-23 16:17:39 UTC 🔗 触发的灵感来源： OnFly: Onboard Zero-Shot Aerial Vision-Language Navigation toward Safety and Efficiency, AerialVLA: A Vision-Language-Action Model for UAV Navigation via Minimalist End-to-End Control, HUGE-Bench: A Benchmark for High-Level UAV Vision-Language-Action Tasks 🔄 深度差量对比： 与 OnFly/AerialVLA 基于 VLM 的语义决策及路径规划不同，本文聚焦于纯视觉驱动的多视角地理定位（CVGL），旨在解决 GNSS 拒止环境下的绝对位置与航向预测问题，补足了长距离 VLN 任务中高精度定位基座层的需求。 🧠 核心术语库 [[[[跨视角地理定位 (CVGL)]]]] [[[[纯视觉导航 (Vision-Only Navigation)]]]] [[[[航向预测 (Heading Prediction)]]]] 🔬 方法论简析 利用全局与局部结构特征显式编码相对空间关系，联合预测 UAV 绝对位置与航向角，并提出 Bearing-UAV-90k 多城市基准测试集以评估跨视角定位性能，减少了对传统图块匹配的依赖。 💬 锐评 该方案有效缓解了传统交叉视图匹配的存储与精度权衡，但未解决 VLN 核心痛点（文本指令理解）；过度依赖静态卫星先验地图导致在动态未知环境中泛化能力存疑，相比 OnFly 具备的在线记忆机制与几何验证器，其在复杂场景下的安全性保障较弱。"
+    },
+    {
+      "title": "Does Peer Observation Help? Vision-Sharing Collaboration for Vision-Language Navigation",
+      "short_review": "虽验证了共享机制有效性，但 R2R 基准缺乏 UAV 的高动态性与三维环境特征；且依赖‘共同路径点’的强假设限制了在异构或稀疏通信 UAV 群中的泛化能力，不如 GoalSwarm 的分布式价值图规划灵活，未解决长距离复杂环境下的主动任务分配问题。",
+      "full_note": "Does Peer Observation Help? Vision-Sharing Collaboration for Vision-Language Navigation 🔥 推荐指数： 值得看 👤 作者： Qunchao Jin, Yiliao Song, Qi Wu 🕒 arXiv上传时间： 2026-03-21 12:59:31 UTC 🔗 触发的灵感来源： GoalSwarm: Multi-UAV Semantic Coordination for Open-Vocabulary Object Navigation 🔄 深度差量对比： GoalSwarm 聚焦无人机多目标语义协调与主动竞标策略，Co-VLN 则侧重于地面场景下基于位置重叠的被动视觉信息复用。 🧠 核心术语库 [[部分可观测性（Partial Observability）]] [[协同感知记忆（Perceptual Memory Exchange）]] [[模型无关协作（Model-Agnostic Collaboration）]] [[接收野扩展（Receptive Field Expansion）]] 🔬 方法论简析 提出 Co-VLN 极简框架，让独立导航智能体在交叉点交换结构化感知记忆以扩大单 agent 接收野且无需额外探索成本。 💬 锐评 虽验证了共享机制有效性，但 R2R 基准缺乏 UAV 的高动态性与三维环境特征；且依赖‘共同路径点’的强假设限制了在异构或稀疏通信 UAV 群中的泛化能力，不如 GoalSwarm 的分布式价值图规划灵活，未解决长距离复杂环境下的主动任务分配问题。"
+    },
+    {
+      "title": "DyGeoVLN: Infusing Dynamic Geometry Foundation Model into Vision-Language Navigation",
+      "short_review": "该工作在处理非静态场景上具有显著优势，是对 VER 静态假设的重要补充。然而，\"动态几何基础模型\"可能带来比 VER 更重的实时推理负载，需警惕对 UAV 机载算力的挑战；此外，\"无姿态\"剪枝策略虽降低了对位姿传感器的依赖，但在高动态模糊或强遮挡下，其轨迹一致性维持能力可能弱于 OnFly 的显式关键帧记忆机制。",
+      "full_note": "DyGeoVLN: Infusing Dynamic Geometry Foundation Model into Vision-Language Navigation 🔥 推荐指数： 必读 👤 作者： Xiangchen Liu, Hanghan Zheng, Jeil Jeong, Minsung Yoon, Lin Zhao, Zhide Zhong, Haoang Li, Sung-Eui Yoon 🕒 arXiv上传时间： 2026-03-22 14:56:59 UTC 🔗 触发的灵感来源： History-Conditioned Spatio-Temporal Visual Token Pruning for Efficient Vision-Language Navigation, Volumetric Environment Representation for Vision-Language Navigation, OnFly: Onboard Zero-Shot Aerial Vision-Language Navigation toward Safety and Efficiency 🔄 深度差量对比： 相比 Liu et al.(VER) 的静态体素表征，本作通过动态几何基础模型增强时变场景理解；借鉴 Wang et al. (Pruning) 的 Token 压缩思路但采用无姿态自适应策略，同时弥补了 OnFly 在底层动态几何感知上的不足，兼顾长视界推理的成本控制。 🧠 核心术语库 [[Dynamic Geometry Foundation Model]] [[Cross-Branch Feature Fusion]] [[Pose-Free Token Pruning]] [[Adaptive Resolution]] 🔬 方法论简析 将动态几何基础模型注入 VLN 框架并通过跨分支特征融合实现显式 3D 空间表示与视觉语义推理；引入无姿态且自适应分辨率的 Token 剪枝策略以压缩历史Token信息，降低长视界动态导航的推理成本。 💬 锐评 该工作在处理非静态场景上具有显著优势，是对 VER 静态假设的重要补充。然而，\"动态几何基础模型\"可能带来比 VER 更重的实时推理负载，需警惕对 UAV 机载算力的挑战；此外，\"无姿态\"剪枝策略虽降低了对位姿传感器的依赖，但在高动态模糊或强遮挡下，其轨迹一致性维持能力可能弱于 OnFly 的显式关键帧记忆机制。"
+    },
     {
       "title": "HUGE-Bench: A Benchmark for High-Level UAV Vision-Language-Action Tasks",
       "short_review": "该基准填补了现有长路径规划中缺乏高层意图理解与安全过程监控的空白，但作为评测工具而非算法创新，其价值在于揭示现有端到端模型（如 AerialVLA）在复杂任务拆解上的不足；需注意其依赖数字孪生物理引擎的真实性是否足以反映实机（如 OnFly 所述）面临的传感器噪声与延迟挑战，可能存在评估过拟合风险。",
