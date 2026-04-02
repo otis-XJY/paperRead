@@ -1,6 +1,11 @@
 {
   "Humanoid_Manipulation": [
     {
+      "title": "Kilohertz-Safe: A Scalable Framework for Constrained Dexterous Retargeting",
+      "short_review": "虽通过 QP 实现了毫秒级延迟与安全边界保证，但强制线性化假设在处理强耦合接触力学时可能存在物理模型失配风险；需进一步评估其与 UniDex 等视觉策略模型串联时的计算负载上限及真实物理碰撞下的保守性代价。",
+      "full_note": "Kilohertz-Safe: A Scalable Framework for Constrained Dexterous Retargeting 🔥 推荐指数： 必读 👤 作者： Yinxiao Tian, Ziyi Yang, Zinan Zhao, Zhen Kan 🕒 arXiv上传时间： 2026-03-31 03:28:04 UTC 🔗 触发的灵感来源： UniDex: A Robot Foundation Suite for Universal Dexterous Hand Control from Egocentric Human Videos, Make Tracking Easy: Neural Motion Retargeting for Humanoid Whole-body Control, TeleDex: Accessible Dexterous Teleoperation 🔄 深度差量对比： 相较于 UniDex 的 FAAS 空间构建与 Make Tracking 的离线数据修复，本工作聚焦执行层实时约束，以凸优化补充学习方法的‘黑盒’安全问题。 🧠 核心术语库 [[Convex Quadratic Program (QP)]] [[Control Barrier Functions (CBF)]] [[Joint Differential Space]] [[Real-time Constraint Enforcement]] 🔬 方法论简析 将非线性重定向重构为关节微分空间的凸二次规划，结合控制障碍函数（CBF）进行系统性线性化处理以保障安全性与高频运行。 💬 锐评 虽通过 QP 实现了毫秒级延迟与安全边界保证，但强制线性化假设在处理强耦合接触力学时可能存在物理模型失配风险；需进一步评估其与 UniDex 等视觉策略模型串联时的计算负载上限及真实物理碰撞下的保守性代价。"
+    },
+    {
       "title": "UniDex: A Robot Foundation Suite for Universal Dexterous Hand Control from Egocentric Human Videos",
       "short_review": "FAAS 空间对异构自由度结构的泛化上限存在理论风险，'任务进度'指标缺乏细粒度评估定义，且基于掩蔽点云的重定向算法在处理复杂接触力学时的鲁棒性未得到充分验证，可能在实际物理交互中出现动作断层。",
       "full_note": "UniDex: A Robot Foundation Suite for Universal Dexterous Hand Control from Egocentric Human Videos 🔥 推荐指数： 必读 👤 作者： Gu Zhang, Qicheng Xu, Haozhe Zhang, Jianhan Ma, Long He, Yiming Bao, Zeyu Ping, Zhecheng Yuan, Chenhao Lu, Chengbo Yuan, Tianhai Liang, Xiaoyu Tian, Maanping Shao, Feihong Zhang, Mingyu Ding, Yang Gao, Hao Zhao, Hang Zhao, Huazhe Xu 🕒 arXiv上传时间： 2026-03-23 17:49:12 UTC 🔗 触发的灵感来源： Cross-Hand Latent Representation for Vision-Language-Action Models, $Ψ_0$: An Open Foundation Model Towards Universal Humanoid Loco-Manipulation, Humanoid Manipulation Interface: Humanoid Whole-Body Manipulation from Robot-Free Demonstrations, DexHiL: A Human-in-the-Loop Framework for Vision-Language-Action Model Post-Training in Dexterous Manipulation 🔄 深度差量对比： 相较于过往笔记中 XL-VLA 的隐式跨本体方案，UniDex 通过显式的 FAAS 功能对齐空间设计了更物理可解释的动作映射，并配套构建了大规模多手数据集；对比 DexHiL，UniDex 从执行时干预转向数据构建阶段的人机回环重定向与 3D VLA 预训练。 🧠 核心术语库 [[[[UniDex Dataset]]]] [[[[Function-Actuator-Aligned Space (FAAS)]]]] [[[[Egocentric Human Videos]]]] [[[[Cross-Hand Generalization]]]] [[[[Human-in-the-loop Retargeting]]]] 🔬 方法论简析 提出包含 50K 轨迹的 UniDex-Dataset（覆盖 8 种灵巧手），设计 Function-Actuator-Aligned Space (FAAS) 统一不同机械结构的功能坐标，利用便携式捕获设备 UniDex-Cap 进行 RGB-D 与人手姿态同步采集，经人机回环重定向后训练 3D VLA 策略。 💬 锐评 FAAS 空间对异构自由度结构的泛化上限存在理论风险，'任务进度'指标缺乏细粒度评估定义，且基于掩蔽点云的重定向算法在处理复杂接触力学时的鲁棒性未得到充分验证，可能在实际物理交互中出现动作断层。"
@@ -157,6 +162,16 @@
     }
   ],
   "MARL": [
+    {
+      "title": "Robust Multi-Agent Reinforcement Learning for Small UAS Separation Assurance under GPS Degradation and Spoofing",
+      "short_review": "该方法通过解析解法极大降低了在线计算开销，避免了传统对抗训练不收敛问题；但模型依赖概率化破坏假设（R），未验证复杂地理环境下的真实干扰传播机理，且相比同期实机验证工作，仍停留在高保真仿真层面，存在从理论界到物理落地的不确定性。",
+      "full_note": "Robust Multi-Agent Reinforcement Learning for Small UAS Separation Assurance under GPS Degradation and Spoofing 🔥 推荐指数： 必读 👤 作者： Alex Zongo, Filippos Fotiadis, Ufuk Topcu, Peng Wei 🕒 arXiv上传时间： 2026-03-30 18:26:59 UTC 🔗 触发的灵感来源： Decentralized End-to-End Multi-AAV Pursuit Using Predictive Spatio-Temporal Observation via Deep Reinforcement Learning, Communication-Aware Multi-Agent Reinforcement Learning for Decentralized Cooperative UAV Deployment, Corruption-robust Offline Multi-agent Reinforcement Learning From Human Feedback 🔄 深度差量对比： 区别于《Corruption-robust Offline...》在离线数据污染下的粗相关均衡解，本文聚焦在线 sUAS 碰撞避免中的实时定位欺骗，通过闭式推导替代迭代对抗训练，且不同于《通信感知》关注通信链路拓扑失效，本文直击感知层状态观测的鲁棒性构建。 🧠 核心术语库 [[[[GPS 欺骗]]]] [[[[分离保障]]]] [[[[闭式对抗策略]]]] [[[[安全性边界证明]]]] 🔬 方法论简析 将 GPS 观测污染建模为智能体与敌手的零和博弈，推导闭合形式的最大对抗扰动表达式，利用 KL 正则化约束安全性能下降上界，并将该策略集成至多智能体策略梯度算法中以实现稳健分离保障。 💬 锐评 该方法通过解析解法极大降低了在线计算开销，避免了传统对抗训练不收敛问题；但模型依赖概率化破坏假设（R），未验证复杂地理环境下的真实干扰传播机理，且相比同期实机验证工作，仍停留在高保真仿真层面，存在从理论界到物理落地的不确定性。"
+    },
+    {
+      "title": "Multi-AUV Cooperative Target Tracking Based on Supervised Diffusion-Aided Multi-Agent Reinforcement Learning",
+      "short_review": "尽管引入扩散模型提升了样本质量与收敛效率，但其离线采样过程与在线实时控制的延迟权衡未充分讨论，可能破坏水下系统的实时性；行为克隆所依赖的高质‘回放动作’在非稳态环境中难以持续保证，可能导致智能体陷入局部次优；此外，相比前作在实机上的尝试，本文仍停留在仿真验证阶段，仿真到真实的迁移鸿沟风险依然严峻。",
+      "full_note": "Multi-AUV Cooperative Target Tracking Based on Supervised Diffusion-Aided Multi-Agent Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Jiaao Ma, Chuan Lin, Guangjie Han, Shengchao Zhu, Zhenyu Wang, Chen An 🕒 arXiv上传时间： 2026-03-31 08:32:32 UTC 🔗 触发的灵感来源： Multi-AUV Ad-hoc Networks-Based Multi-Target Tracking Based on Scene-Adaptive Embodied Intelligence, EcoFair-CH-MARL: Scalable Constrained Hierarchical Multi-Agent RL with Real-Time Emission Budgets and Fairness Guarantees, Decentralized End-to-End Multi-AAV Pursuit Using Predictive Spatio-Temporal Observation via Deep Reinforcement Learning 🔄 深度差量对比： 相比前作《Scene-Adaptive...》基于双路 Critic 显式解耦任务与安全约束，本文聚焦于利用监督扩散模型优化数据分布并引入行为克隆损失以应对稀疏奖励和环境扰动，而非仅依赖奖励工程或通信抽象。 🧠 核心术语库 [[监督扩散辅助 MARL]] [[分离式经验回放池]] [[行为克隆正则化]] [[分层协同决策]] [[无手工奖励鲁棒策略]] 🔬 方法论简析 提出分层 MARL 架构（全局调度至实时执行），核心算法 SDA-MARL 包含：1）双决策分离经验池缓解非平稳性；2）监督学习引导扩散逆向去噪生成高保真训练样本加速收敛；3）结合行为克隆损失辅助 DDPG 更新，减少对人工奖励的依赖。 💬 锐评 尽管引入扩散模型提升了样本质量与收敛效率，但其离线采样过程与在线实时控制的延迟权衡未充分讨论，可能破坏水下系统的实时性；行为克隆所依赖的高质‘回放动作’在非稳态环境中难以持续保证，可能导致智能体陷入局部次优；此外，相比前作在实机上的尝试，本文仍停留在仿真验证阶段，仿真到真实的迁移鸿沟风险依然严峻。"
+    },
     {
       "title": "Multi-AUV Ad-hoc Networks-Based Multi-Target Tracking Based on Scene-Adaptive Embodied Intelligence",
       "short_review": "创新性地利用双路 Critic 解决了单一策略中任务贪婪与生存安全的冲突，弥补了前作隐式协作缺乏安全边界的缺陷；然而，类似过往研究，其水下声信道模型在实机部署时的鲁棒性存疑，且动态权重融合的高频更新可能加剧通信带宽压力，需警惕仿真到真实的迁移鸿沟。",
@@ -364,6 +379,11 @@
     }
   ],
   "MultiAgent_Game_Theory": [
+    {
+      "title": "Friends, Foes, and First Authors: A Game Theory Model of How Power Plays Rewrite Academic Co-Authorship Networks",
+      "short_review": "虽成功利用 ABM+RL 揭示了网络结构下的声誉反馈机制，但与【Viswonathan Manoranjan, 2026】中强调的表征身份对决策的非理性干扰相比，本文仍停留在标准理性预期框架内，未考虑认知架构对策略学习的内在约束；不过其为宏观治理设计提供了有效的计算基准。",
+      "full_note": "Friends, Foes, and First Authors: A Game Theory Model of How Power Plays Rewrite Academic Co-Authorship Networks 🔥 推荐指数： 必读 👤 作者： Amit Bengal, Teddy Lazebnik 🕒 arXiv上传时间： 2026-03-31 14:57:25 UTC 🔗 触发的灵感来源： When Personas Override Payoffs: Role Identity Bias in Multi-Agent LLM Decision-Making, Game Theory and Multi-Agent Reinforcement Learning : From Nash Equilibria to Evolutionary Dynamics, Understanding Emergent Behaviours in Multi-Agent Systems with Evolutionary Game Theory 🔄 深度差量对比： 融合了【The Anh Han, 2022】的 ABM 网络演化分析与【Neil De La Fuente, 2024】的进化动力学习算法，但聚焦于学术合作网络的具体政策情境而非通用策略收敛。 🧠 核心术语库 [[重复博弈网络 (Repeated Networked Games)]] [[声誉动力学 (Reputation Dynamics)]] [[代理基础建模 (ABM)]] [[深度合作强化学习]] [[学术合作政策弹性]] 🔬 方法论简析 构建重复博弈的网络模型，结合大规模基于代理的模拟（ABM）与深度强化学习（Deep RL）训练向前看（Forward-looking）的代理人策略，对比短视与长视行为对网络稳定性的影响。 💬 锐评 虽成功利用 ABM+RL 揭示了网络结构下的声誉反馈机制，但与【Viswonathan Manoranjan, 2026】中强调的表征身份对决策的非理性干扰相比，本文仍停留在标准理性预期框架内，未考虑认知架构对策略学习的内在约束；不过其为宏观治理设计提供了有效的计算基准。"
+    },
     {
       "title": "Distributed Online Submodular Maximization under Communication Delays: A Simultaneous Decision-Making Approach",
       "short_review": "虽构建了通信延迟与性能的普适边界，但仍基于协作假设忽略节点自私行为；将复杂动态环境简化为收益递减模型，可能低估高维非线性交互下的真实博弈均衡偏差；需警惕实际硬件中延迟波动对同步贪婪策略稳定性的影响。",
