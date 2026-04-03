@@ -1,6 +1,16 @@
 {
   "Humanoid_Manipulation": [
     {
+      "title": "DreamControl-v2: Simpler and Scalable Autonomous Humanoid Skills via Trainable Guided Diffusion Priors",
+      "short_review": "该工作实机验证显著增强了可信度，但其核心假设——构建能完美融合人类与机器人动力学特征的‘统一化身空间’仍具高风险，若处理不当可能复现$\\Psi_0$所指出的动作分布灾难；此外，扩散先验本身的训练计算成本未明确说明，在长序列任务中其生成质量的不确定性可能成为新的瓶颈。",
+      "full_note": "DreamControl-v2: Simpler and Scalable Autonomous Humanoid Skills via Trainable Guided Diffusion Priors 🔥 推荐指数： 必读 👤 作者： Sudarshan Harithas, Sangkyung Kwak, Pushkal Katara, Srujan Deolasee, Dvij Kalaria, Srinath Sridhar, Sai Vemprala, Ashish Kapoor, Jonathan Chung-Kuan Huang 🕒 arXiv上传时间： 2026-03-31 20:11:49 UTC 🔗 触发的灵感来源： REFINE-DP: Diffusion Policy Fine-tuning for Humanoid Loco-manipulation via Reinforcement Learning, $Ψ_0$: An Open Foundation Model Towards Universal Humanoid Loco-Manipulation 🔄 深度差量对比： 相比 REFINE-DP 侧重通过 RL 梯度微调扩散策略以对齐执行分布，本文主张直接在统一化身空间训练可导扩散先验以提升技能广度，且与$\\Psi_0$提出的‘拒绝盲目混训’相悖却通过统一空间表征尝试解决人机运动学差异问题。 🧠 核心术语库 [[Trainable Guided Diffusion Priors]] [[Unified Embodiment Space]] [[Reference Trajectory Scaling]] [[Automated Skill Pipeline]] 🔬 方法论简析 提出可训练的引导式扩散先验架构，将多样化的人机数据集映射至统一机器人运动空间进行联合训练，移除人工筛选环节并通过规模化参考轨迹生成增强下游 RL 策略的鲁棒性。 💬 锐评 该工作实机验证显著增强了可信度，但其核心假设——构建能完美融合人类与机器人动力学特征的‘统一化身空间’仍具高风险，若处理不当可能复现$\\Psi_0$所指出的动作分布灾难；此外，扩散先验本身的训练计算成本未明确说明，在长序列任务中其生成质量的不确定性可能成为新的瓶颈。"
+    },
+    {
+      "title": "BAT: Balancing Agility and Stability via Online Policy Switching for Long-Horizon Whole-Body Humanoid Control",
+      "short_review": "优势在于真机（Unitree G1）验证了复杂长周期任务的灵活性与稳定性平衡，解决了单体策略在模态切换时的性能割裂问题；局限性在于滑窗预评估可能增加推理延迟影响高频实时性，VQ-VAE 的离散化假设对精细动作连续性的损失需进一步验证，且未像 MetaWorld-X 那样引入 VLM 处理语义理解导致的跨场景泛化挑战。",
+      "full_note": "BAT: Balancing Agility and Stability via Online Policy Switching for Long-Horizon Whole-Body Humanoid Control 🔥 推荐指数： 必读 👤 作者： Donghoon Baek, Sang-Hun Kim, Sehoon Ha 🕒 arXiv上传时间： 2026-04-01 16:03:27 UTC 🔗 触发的灵感来源： MetaWorld-X: Hierarchical World Modeling via VLM-Orchestrated Experts for Humanoid Loco-Manipulation, REFINE-DP: Diffusion Policy Fine-tuning for Humanoid Loco-manipulation via Reinforcement Learning, FAME: Force-Adaptive RL for Expanding the Manipulation Envelope of a Full-Scale Humanoid 🔄 深度差量对比： BAT 提出基于在线策略切换的双控制器融合框架解决长周期任务中敏捷与稳定的固有冲突，区别于 REFINE-DP 的扩散微调对齐、MetaWorld-X 的 VLM 语义专家路由及 FAME 的力自适应平衡控制。 🧠 核心术语库 [[Online Policy Switching]] [[Agility-Stability Trade-off]] [[VQ-VAE Motion Token Prediction]] [[Confidence-Weighted Fusion]] 🔬 方法论简析 构建分层强化学习切换策略与选项感知的 VQ-VAE 模型，前者利用滑窗预测评估切换时机，后者从离散运动 token 序列预测选项偏好，最终通过置信加权融合实现动态决策。 💬 锐评 优势在于真机（Unitree G1）验证了复杂长周期任务的灵活性与稳定性平衡，解决了单体策略在模态切换时的性能割裂问题；局限性在于滑窗预评估可能增加推理延迟影响高频实时性，VQ-VAE 的离散化假设对精细动作连续性的损失需进一步验证，且未像 MetaWorld-X 那样引入 VLM 处理语义理解导致的跨场景泛化挑战。"
+    },
+    {
       "title": "Kilohertz-Safe: A Scalable Framework for Constrained Dexterous Retargeting",
       "short_review": "虽通过 QP 实现了毫秒级延迟与安全边界保证，但强制线性化假设在处理强耦合接触力学时可能存在物理模型失配风险；需进一步评估其与 UniDex 等视觉策略模型串联时的计算负载上限及真实物理碰撞下的保守性代价。",
       "full_note": "Kilohertz-Safe: A Scalable Framework for Constrained Dexterous Retargeting 🔥 推荐指数： 必读 👤 作者： Yinxiao Tian, Ziyi Yang, Zinan Zhao, Zhen Kan 🕒 arXiv上传时间： 2026-03-31 03:28:04 UTC 🔗 触发的灵感来源： UniDex: A Robot Foundation Suite for Universal Dexterous Hand Control from Egocentric Human Videos, Make Tracking Easy: Neural Motion Retargeting for Humanoid Whole-body Control, TeleDex: Accessible Dexterous Teleoperation 🔄 深度差量对比： 相较于 UniDex 的 FAAS 空间构建与 Make Tracking 的离线数据修复，本工作聚焦执行层实时约束，以凸优化补充学习方法的‘黑盒’安全问题。 🧠 核心术语库 [[Convex Quadratic Program (QP)]] [[Control Barrier Functions (CBF)]] [[Joint Differential Space]] [[Real-time Constraint Enforcement]] 🔬 方法论简析 将非线性重定向重构为关节微分空间的凸二次规划，结合控制障碍函数（CBF）进行系统性线性化处理以保障安全性与高频运行。 💬 锐评 虽通过 QP 实现了毫秒级延迟与安全边界保证，但强制线性化假设在处理强耦合接触力学时可能存在物理模型失配风险；需进一步评估其与 UniDex 等视觉策略模型串联时的计算负载上限及真实物理碰撞下的保守性代价。"
@@ -162,6 +172,21 @@
     }
   ],
   "MARL": [
+    {
+      "title": "GRASP: Gradient Realignment via Active Shared Perception for Multi-Agent Collaborative Optimization",
+      "short_review": "理论虽引入 Kakutani 定理保障均衡存在，但未阐明完全去中心化下‘主动感知’的具体信息传递开销，可能导致通信瓶颈；SMAC 实验验证了可扩展性，但在极度稀疏奖励或异构团队中‘共识梯度’的鲁棒性仍需进一步验证；且未讨论计算共识梯度带来的额外实时性延迟对高速博弈的影响。",
+      "full_note": "GRASP: Gradient Realignment via Active Shared Perception for Multi-Agent Collaborative Optimization 🔥 推荐指数： 必读 👤 作者： Sihan Zhou, Tiantian He, Yifan Lu, Yaqing Hou, Yew-Soon Ong 🕒 arXiv上传时间： 2026-04-01 10:26:22 UTC 🔗 触发的灵感来源： Decentralized MARL for Coarse Correlated Equilibrium in Aggregative Markov Games, Offline Decentralized Multi-Agent Reinforcement Learning, A Recipe for Stable Offline Multi-agent Reinforcement Learning 🔄 深度差量对比： 相较于笔记 1 利用聚合博弈奖励结构在去中心化下收敛至粗相关均衡，本文针对通用协同场景的并发更新导致的非平稳性问题，提出主动共享感知与共识梯度机制以替代被动采样；区别于笔记 2 和 3 专注于离线数据的分布偏移与价值分解不稳定，本文解决的是在线交互环境下的策略振荡与收敛速度问题。 🧠 核心术语库 [[[[非平稳性]]]] [[[[共识梯度]]]] [[[[广义贝尔曼均衡]]]] [[[[主动感知]]]] 🔬 方法论简析 提出 GRASP 框架，定义广义贝尔曼均衡为目标，利用智能体独立梯度推导共识梯度以实现主动感知策略更新，并通过 Kakutani 不动点定理证明均衡方向的存在性与可达性。 💬 锐评 理论虽引入 Kakutani 定理保障均衡存在，但未阐明完全去中心化下‘主动感知’的具体信息传递开销，可能导致通信瓶颈；SMAC 实验验证了可扩展性，但在极度稀疏奖励或异构团队中‘共识梯度’的鲁棒性仍需进一步验证；且未讨论计算共识梯度带来的额外实时性延迟对高速博弈的影响。"
+    },
+    {
+      "title": "Agent Q-Mix: Selecting the Right Action for LLM Multi-Agent Systems through Reinforcement Learning",
+      "short_review": "虽然基准测试表现优异，但离散通信动作空间在 Agent 增多时易陷入局部最优；过度优化 Token 成本可能在长链推理任务中诱发“早退”行为，且未像《EcoFair-CH-MARL》所示的理论约束边界保障长期演化安全，RL 与 LLM 推理的端到端延迟协同问题仍需实机验证",
+      "full_note": "Agent Q-Mix: Selecting the Right Action for LLM Multi-Agent Systems through Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Eric Hanchen Jiang, Levina Li, Rui Sun, Xiao Liang, Yubei Li, Yuchen Wu, Haozheng Luo, Hengli Li, Zhi Zhang, Zhaolu Kang, Kai-Wei Chang, Ying Nian Wu 🕒 arXiv上传时间： 2026-04-01 00:38:24 UTC 🔗 触发的灵感来源： MARCH: Multi-Agent Reinforced Self-Check for LLM Hallucination, Large Language Model Guided Incentive Aware Reward Design for Cooperative Multi-Agent Reinforcement Learning, Communication-Aware Multi-Agent Reinforcement Learning for Decentralized Cooperative UAV Deployment 🔄 深度差量对比： 融合《MARCH》的 LLM 应用语境与《通信感知...UAV》的图拓扑建模思路，但以去中心化通信图构建替代前者的事实校验分工，且比后者更强调计算资源（Token）的经济性约束而非单纯通信可靠性 🧠 核心术语库 [[通信拓扑选择]] [[QMIX 值分解]] [[Token 成本效率]] [[CTDE 范式]] [[LLM 智能体协同]] 🔬 方法论简析 采用 CTDE 范式，利用 QMIX 进行价值分解以学习各智能体间的通信动作序列，结合拓扑感知 GNN 编码器与 GRU 记忆处理历史状态，通过联合优化任务精度与 Token 消耗构建自适应通信子图 💬 锐评 虽然基准测试表现优异，但离散通信动作空间在 Agent 增多时易陷入局部最优；过度优化 Token 成本可能在长链推理任务中诱发“早退”行为，且未像《EcoFair-CH-MARL》所示的理论约束边界保障长期演化安全，RL 与 LLM 推理的端到端延迟协同问题仍需实机验证"
+    },
+    {
+      "title": "LangMARL: Natural Language Multi-Agent Reinforcement Learning",
+      "short_review": "该方法虽突破了离散 Token 难以优化的瓶颈，但在实际训练中面临语言空间梯度不可导的风险；此外，依赖大模型自动总结‘因果关联’可能引入新的语义幻觉偏差，且缺乏如《EcoFair-CH-MARL》般的理论收敛边界保障，长期协作鲁棒性尚待验证。",
+      "full_note": "LangMARL: Natural Language Multi-Agent Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Huaiyuan Yao, Longchao Da, Xiaoou Liu, Charles Fleming, Tianlong Chen, Hua Wei 🕒 arXiv上传时间： 2026-04-01 10:32:00 UTC 🔗 触发的灵感来源： Large Language Model Guided Incentive Aware Reward Design for Cooperative Multi-Agent Reinforcement Learning, MA-VLCM: A Vision Language Critic Model for Value Estimation of Policies in Multi-Agent Team Settings 🔄 深度差量对比： 相较于笔记中《LLM Guided Reward》侧重外部奖励塑形、《MA-VLCM》侧重外部价值评估，本文主张将经典 MARL 信用分配与策略梯度内化进语言空间，实现端到端的协作策略进化。 🧠 核心术语库 [[多智能体信用分配]] [[语言空间策略梯度]] [[因果归纳]] [[自然语言强化学习]] 🔬 方法论简析 提出代理级语言信用分配机制，通过在语言空间执行策略梯度更新，并从重放轨迹中自动总结任务相关因果关联以生成密集反馈，解决稀疏奖励下的局部策略优化难题。 💬 锐评 该方法虽突破了离散 Token 难以优化的瓶颈，但在实际训练中面临语言空间梯度不可导的风险；此外，依赖大模型自动总结‘因果关联’可能引入新的语义幻觉偏差，且缺乏如《EcoFair-CH-MARL》般的理论收敛边界保障，长期协作鲁棒性尚待验证。"
+    },
     {
       "title": "Robust Multi-Agent Reinforcement Learning for Small UAS Separation Assurance under GPS Degradation and Spoofing",
       "short_review": "该方法通过解析解法极大降低了在线计算开销，避免了传统对抗训练不收敛问题；但模型依赖概率化破坏假设（R），未验证复杂地理环境下的真实干扰传播机理，且相比同期实机验证工作，仍停留在高保真仿真层面，存在从理论界到物理落地的不确定性。",
