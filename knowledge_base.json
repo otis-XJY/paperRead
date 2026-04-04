@@ -173,6 +173,11 @@
   ],
   "MARL": [
     {
+      "title": "Multi-Agent Video Recommenders: Evolution, Patterns, and Open Challenges",
+      "short_review": "该文的‘开放挑战’部分精准指出了商业场景中奖励函数设计的复杂性，弥补了既往技术论文忽略工程约束的短板，但作为方法论密度较低的综述，其在解决长尾数据稀疏性及跨域迁移泛化上提供的具体技术指引远少于《Agent Q-Mix》，仅适合作为选题方向的启发。",
+      "full_note": "Multi-Agent Video Recommenders: Evolution, Patterns, and Open Challenges 🔥 推荐指数： 值得看 👤 作者： Srivaths Ranganathan, Abhishek Dharmaratnakar, Anushree Sinha, Debanshu Das 🕒 arXiv上传时间： 2026-04-02 16:04:52 UTC 🔗 触发的灵感来源： Agent Q-Mix: Selecting the Right Action for LLM Multi-Agent Systems through Reinforcement Learning, LangMARL: Natural Language Multi-Agent Reinforcement Learning, Large Language Model Guided Incentive Aware Reward Design for Cooperative Multi-Agent Reinforcement Learning 🔄 深度差量对比： 区别于《Agent Q-Mix》和《LangMARL》对通信拓扑与语言空间策略梯度的微观算法优化，本文作为领域综述，重点在于将 MARL 范式映射至视频推荐这一高维动态场景，验证了《LLM Guided Reward》中‘激励对齐’问题的实际应用边界。 🧠 核心术语库 [[多智能体推荐系统]] [[LLM 驱动协同]] [[激励对齐挑战]] [[终身个性化学习]] 🔬 方法论简析 通过历史梳理建立 MAVRS 分类体系，对比早期强化学习框架（MMRF）与新兴 LLM 驱动架构（MACRec, Agent4Rec），系统解构用户 - 内容交互中的多智能体协同机制与长期目标优化路径。 💬 锐评 该文的‘开放挑战’部分精准指出了商业场景中奖励函数设计的复杂性，弥补了既往技术论文忽略工程约束的短板，但作为方法论密度较低的综述，其在解决长尾数据稀疏性及跨域迁移泛化上提供的具体技术指引远少于《Agent Q-Mix》，仅适合作为选题方向的启发。"
+    },
+    {
       "title": "GRASP: Gradient Realignment via Active Shared Perception for Multi-Agent Collaborative Optimization",
       "short_review": "理论虽引入 Kakutani 定理保障均衡存在，但未阐明完全去中心化下‘主动感知’的具体信息传递开销，可能导致通信瓶颈；SMAC 实验验证了可扩展性，但在极度稀疏奖励或异构团队中‘共识梯度’的鲁棒性仍需进一步验证；且未讨论计算共识梯度带来的额外实时性延迟对高速博弈的影响。",
       "full_note": "GRASP: Gradient Realignment via Active Shared Perception for Multi-Agent Collaborative Optimization 🔥 推荐指数： 必读 👤 作者： Sihan Zhou, Tiantian He, Yifan Lu, Yaqing Hou, Yew-Soon Ong 🕒 arXiv上传时间： 2026-04-01 10:26:22 UTC 🔗 触发的灵感来源： Decentralized MARL for Coarse Correlated Equilibrium in Aggregative Markov Games, Offline Decentralized Multi-Agent Reinforcement Learning, A Recipe for Stable Offline Multi-agent Reinforcement Learning 🔄 深度差量对比： 相较于笔记 1 利用聚合博弈奖励结构在去中心化下收敛至粗相关均衡，本文针对通用协同场景的并发更新导致的非平稳性问题，提出主动共享感知与共识梯度机制以替代被动采样；区别于笔记 2 和 3 专注于离线数据的分布偏移与价值分解不稳定，本文解决的是在线交互环境下的策略振荡与收敛速度问题。 🧠 核心术语库 [[[[非平稳性]]]] [[[[共识梯度]]]] [[[[广义贝尔曼均衡]]]] [[[[主动感知]]]] 🔬 方法论简析 提出 GRASP 框架，定义广义贝尔曼均衡为目标，利用智能体独立梯度推导共识梯度以实现主动感知策略更新，并通过 Kakutani 不动点定理证明均衡方向的存在性与可达性。 💬 锐评 理论虽引入 Kakutani 定理保障均衡存在，但未阐明完全去中心化下‘主动感知’的具体信息传递开销，可能导致通信瓶颈；SMAC 实验验证了可扩展性，但在极度稀疏奖励或异构团队中‘共识梯度’的鲁棒性仍需进一步验证；且未讨论计算共识梯度带来的额外实时性延迟对高速博弈的影响。"
@@ -516,6 +521,11 @@
     }
   ],
   "UAV_VLN": [
+    {
+      "title": "Stop Wandering: Efficient Vision-Language Navigation via Metacognitive Reasoning",
+      "short_review": "虽显著降低 VLM 查询成本（20.7%），但相较于 OnFly 的实机全在线验证，该工作侧重于仿真基准（GOAT-Bench 等），缺乏对 UAV 机载受限算力下 3D 语义建图开销的实测；且元认知机制在强风等动态户外扰动下的鲁棒性存疑，可作为 Indoor VLN 的高效组件借鉴，但在复杂 UAV 场景落地前需验证其泛化能力",
+      "full_note": "Stop Wandering: Efficient Vision-Language Navigation via Metacognitive Reasoning 🔥 推荐指数： 值得看 👤 作者： Xueying Li, Feng Lyu, Hao Wu, Mingliu Liu, Jia-Nan Liu, Guozi Liu 🕒 arXiv上传时间： 2026-04-02 17:58:08 UTC 🔗 触发的灵感来源： OnFly: Onboard Zero-Shot Aerial Vision-Language Navigation toward Safety and Efficiency, FreeFly-Thinking : Aligning Chain-of-Thought Reasoning with Continuous UAV Navigation, HaltNav: Reactive Visual Halting over Lightweight Topological Priors for Robust Vision-Language Navigation 🔄 深度差量对比： 区别于 HaltNav 的拓扑先验停航、OnFly 的双智能体安全架构及 FreeFly-Thinking 的训练式思维链，MetaNav 提出无需训练的元认知反馈闭环，专注解决多步探索中的路径冗余与决策停滞问题 🧠 核心术语库 [[元认知推理]] [[无训练导航 (Training-free)]] [[历史感知规划]] [[反射性修正]] [[3D 语义地图]] 🔬 方法论简析 构建持久化 3D 语义空间记忆，利用历史感知规划惩罚重复访问以提升效率，并通过 LLM 执行的元认知反射纠正检测停滞并生成规则优化前沿选择 💬 锐评 虽显著降低 VLM 查询成本（20.7%），但相较于 OnFly 的实机全在线验证，该工作侧重于仿真基准（GOAT-Bench 等），缺乏对 UAV 机载受限算力下 3D 语义建图开销的实测；且元认知机制在强风等动态户外扰动下的鲁棒性存疑，可作为 Indoor VLN 的高效组件借鉴，但在复杂 UAV 场景落地前需验证其泛化能力"
+    },
     {
       "title": "LLM-Enabled Low-Altitude UAV Natural Language Navigation via Signal Temporal Logic Specification Translation and Repair",
       "short_review": "优势在于通过逻辑规范实现了飞行安全性的形式化验证，弥补了纯神经网络模型不可解释且难保证安全的缺陷；潜在瓶颈在于 MILP 实时计算开销对机载算力的要求可能高于 OnFly 的后退时域规划器，且 STL 语义生成质量高度依赖环境动力学模型的精度，复杂动态场景下的修复效率仍需实证检验。",
