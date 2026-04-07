@@ -173,6 +173,16 @@
   ],
   "MARL": [
     {
+      "title": "Fully Byzantine-Resilient Distributed Multi-Agent Q-Learning",
+      "short_review": "虽然理论上突破了以往鲁棒 MARL 仅收敛至近优解的限制，但其前提假设要求网络满足特定的强连接拓扑结构，这在动态或高损耗的无人集群通信中极难维持；此外，相比笔记中《GPS 欺骗》对物理感知干扰的建模，本工作未覆盖链路延迟与丢包的复合影响，工程迁移存在边界不确定性。",
+      "full_note": "Fully Byzantine-Resilient Distributed Multi-Agent Q-Learning 🔥 推荐指数： 必读 👤 作者： Haejoon Lee, Dimitra Panagou 🕒 arXiv上传时间： 2026-04-03 06:57:45 UTC 🔗 触发的灵感来源： Corruption-robust Offline Multi-agent Reinforcement Learning From Human Feedback, Robust Multi-Agent Reinforcement Learning for Small UAS Separation Assurance under GPS Degradation and Spoofing, Adaptive Robust Estimator for Multi-Agent Reinforcement Learning 🔄 深度差量对比： 区别于笔记中《Corruption-robust Offline...》面对数据污染退化为粗相关均衡（CCE）以规避计算不可行，本文聚焦分布式在线通信层拜占庭攻击，通过构造特定拓扑条件直接在强对抗下实现最优值函数收敛，而非近似解。 🧠 核心术语库 [[拜占庭鲁棒性]] [[分布式 Q 学习]] [[两跳邻居冗余]] [[拓扑收敛条件]] 🔬 方法论简析 设计基于两跳邻居信息冗余的消息过滤机制验证输入合法性，保留双向信息流，并推导一种可在多项式时间内验证的新拓扑收敛条件，确保在拜占庭边缘攻击下全局价值函数渐近收敛至最优。 💬 锐评 虽然理论上突破了以往鲁棒 MARL 仅收敛至近优解的限制，但其前提假设要求网络满足特定的强连接拓扑结构，这在动态或高损耗的无人集群通信中极难维持；此外，相比笔记中《GPS 欺骗》对物理感知干扰的建模，本工作未覆盖链路延迟与丢包的复合影响，工程迁移存在边界不确定性。"
+    },
+    {
+      "title": "Multi-agent Reinforcement Learning-based Joint Design of Low-Carbon P2P Market and Bidding Strategy in Microgrids",
+      "short_review": "虽有效解决了部分协调难题，但相比《EcoFair》缺乏严格的数学约束保障（如无 O(√T) 界证明），且未评估策略性报价下的纳什均衡风险，仿真中的社会福利最大化假设可能低估了真实电力市场的博弈复杂性与攻击面。",
+      "full_note": "Multi-agent Reinforcement Learning-based Joint Design of Low-Carbon P2P Market and Bidding Strategy in Microgrids 🔥 推荐指数： 必读 👤 作者： Junhao Ren, Honglin Gao, Sijie Wang, Lan Zhao, Qiyu Kang, Aniq Ashan, Yajuan Sun, Gaoxi Xiao 🕒 arXiv上传时间： 2026-04-03 04:41:54 UTC 🔗 触发的灵感来源： EcoFair-CH-MARL: Scalable Constrained Hierarchical Multi-Agent RL with Real-Time Emission Budgets and Fairness Guarantees, The price of decentralization in managing engineering systems through multi-agent reinforcement learning 🔄 深度差量对比： 相较于《EcoFair》基于原对偶优化的硬性排放约束，本文采用市场激励实现软性低碳引导；对比《去中心化代价》，本文将去中心化劣势转化为博弈设计优势而非单纯量化成本损失。 🧠 核心术语库 [[DEC-POMDP]] [[P2P 电力市场]] [[低碳激励机制]] [[市场出清算法]] 🔬 方法论简析 将微电网决策建模为 DEC-POMDP，引入新型市场出清算子作为宏观调节机制，在保留个体经济利益的同时通过 P2P 交易规则实现社区级碳减排目标。 💬 锐评 虽有效解决了部分协调难题，但相比《EcoFair》缺乏严格的数学约束保障（如无 O(√T) 界证明），且未评估策略性报价下的纳什均衡风险，仿真中的社会福利最大化假设可能低估了真实电力市场的博弈复杂性与攻击面。"
+    },
+    {
       "title": "Multi-Agent Video Recommenders: Evolution, Patterns, and Open Challenges",
       "short_review": "该文的‘开放挑战’部分精准指出了商业场景中奖励函数设计的复杂性，弥补了既往技术论文忽略工程约束的短板，但作为方法论密度较低的综述，其在解决长尾数据稀疏性及跨域迁移泛化上提供的具体技术指引远少于《Agent Q-Mix》，仅适合作为选题方向的启发。",
       "full_note": "Multi-Agent Video Recommenders: Evolution, Patterns, and Open Challenges 🔥 推荐指数： 值得看 👤 作者： Srivaths Ranganathan, Abhishek Dharmaratnakar, Anushree Sinha, Debanshu Das 🕒 arXiv上传时间： 2026-04-02 16:04:52 UTC 🔗 触发的灵感来源： Agent Q-Mix: Selecting the Right Action for LLM Multi-Agent Systems through Reinforcement Learning, LangMARL: Natural Language Multi-Agent Reinforcement Learning, Large Language Model Guided Incentive Aware Reward Design for Cooperative Multi-Agent Reinforcement Learning 🔄 深度差量对比： 区别于《Agent Q-Mix》和《LangMARL》对通信拓扑与语言空间策略梯度的微观算法优化，本文作为领域综述，重点在于将 MARL 范式映射至视频推荐这一高维动态场景，验证了《LLM Guided Reward》中‘激励对齐’问题的实际应用边界。 🧠 核心术语库 [[多智能体推荐系统]] [[LLM 驱动协同]] [[激励对齐挑战]] [[终身个性化学习]] 🔬 方法论简析 通过历史梳理建立 MAVRS 分类体系，对比早期强化学习框架（MMRF）与新兴 LLM 驱动架构（MACRec, Agent4Rec），系统解构用户 - 内容交互中的多智能体协同机制与长期目标优化路径。 💬 锐评 该文的‘开放挑战’部分精准指出了商业场景中奖励函数设计的复杂性，弥补了既往技术论文忽略工程约束的短板，但作为方法论密度较低的综述，其在解决长尾数据稀疏性及跨域迁移泛化上提供的具体技术指引远少于《Agent Q-Mix》，仅适合作为选题方向的启发。"
@@ -521,6 +531,11 @@
     }
   ],
   "UAV_VLN": [
+    {
+      "title": "SCC-Loc: A Unified Semantic Cascade Consensus Framework for UAV Thermal Geo-Localization",
+      "short_review": "该工作以 SOTA 精度解决了热成像下的绝对定位难题，弥补了‘Beyond Matching’在暗光环境的不足及‘Thermal SLAM'无法提供全局坐标的短板；但核心瓶颈未变，仍强依赖预先更新的卫星热图数据库导致动态泛化受限，且缺乏在线记忆与文本理解机制，尚不足以独立支撑端到端 VLN 任务闭环。",
+      "full_note": "SCC-Loc: A Unified Semantic Cascade Consensus Framework for UAV Thermal Geo-Localization 🔥 推荐指数： 必读 👤 作者： Xiaoran Zhang, Yu Liu, Jinyu Liang, Kangqiushi Li, Zhiwei Huang, Huaxin Xiao 🕒 arXiv上传时间： 2026-04-03 15:44:47 UTC 🔗 触发的灵感来源： Beyond Matching to Tiles: Bridging Unaligned Aerial and Satellite Views for Vision-Only UAV Navigation, Thermal Image Refinement with Depth Estimation using Recurrent Networks for Monocular ORB-SLAM3 🔄 深度差量对比： 相比笔记中‘Beyond Matching’的可见光静态地图匹配，本文突破至热 - 可见跨模态全局定位以解决低光照痛点，较‘Thermal SLAM’方案将局部视觉里程计升级为具备绝对地理坐标解算能力的独立模块。 🧠 核心术语库 [[跨模态热地理定位]] [[DINOv2 统一表征]] [[级联一致性约束]] [[Thermal-UAV 基准]] 🔬 方法论简析 采用 DINOv2 统一骨干支撑检索与匹配，集成语义引导视口对齐（SGVA）、级联空间纹理结构过滤（C-SATSF）及共识驱动可靠性选择（CD-RAPS），并通过自建的 Thermal-UAV 数据集验证了热图在卫星底图上的零样本高精度定位性能。 💬 锐评 该工作以 SOTA 精度解决了热成像下的绝对定位难题，弥补了‘Beyond Matching’在暗光环境的不足及‘Thermal SLAM'无法提供全局坐标的短板；但核心瓶颈未变，仍强依赖预先更新的卫星热图数据库导致动态泛化受限，且缺乏在线记忆与文本理解机制，尚不足以独立支撑端到端 VLN 任务闭环。"
+    },
     {
       "title": "Stop Wandering: Efficient Vision-Language Navigation via Metacognitive Reasoning",
       "short_review": "虽显著降低 VLM 查询成本（20.7%），但相较于 OnFly 的实机全在线验证，该工作侧重于仿真基准（GOAT-Bench 等），缺乏对 UAV 机载受限算力下 3D 语义建图开销的实测；且元认知机制在强风等动态户外扰动下的鲁棒性存疑，可作为 Indoor VLN 的高效组件借鉴，但在复杂 UAV 场景落地前需验证其泛化能力",
