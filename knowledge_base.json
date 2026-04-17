@@ -1,6 +1,11 @@
 {
   "Humanoid_Manipulation": [
     {
+      "title": "Vectorizing Projection in Manifold-Constrained Motion Planning for Real-Time Whole-Body Control",
+      "short_review": "尽管实现了 100-1000 倍的加速并在真机验证，但其‘准静态’假设限制了高动态场景的适用性；且 SIMD 强依赖于硬件架构，通用性较弱，尚未涉及高层任务逻辑与底层规划的端到端融合。",
+      "full_note": "Vectorizing Projection in Manifold-Constrained Motion Planning for Real-Time Whole-Body Control 🔥 推荐指数： 必读 👤 作者： Shrutheesh R Iyer, I-Chia Chang, Andrew Z. Liu, Yan Gu, Zachary Kingston 🕒 arXiv上传时间： 2026-04-14 22:00:53 UTC 🔗 触发的灵感来源： Task and Motion Planning for Humanoid Loco-manipulation, Motion Planning for a Humanoid Mobile Manipulator System 🔄 深度差量对比： 相较于旧笔记中基于仿生的启发式搜索（Wei 等）及抽象的任务层接触规划（Ciebielski 等），本工作专注于底层约束投影的算力瓶颈，通过 SIMD 并行化在真机上实现了毫秒级实时运动规划。 🧠 核心术语库 [[SIMD 并行加速]] [[流形约束运动规划]] [[实时刻划]] [[硬件验证]] [[投影算子]] 🔬 方法论简析 提出基于 CPU SIMD 加速器的流形约束运动规划器，将投影满足约束的计算转化为可并行结构，实现约束解的实时生成与全身准静态计划。 💬 锐评 尽管实现了 100-1000 倍的加速并在真机验证，但其‘准静态’假设限制了高动态场景的适用性；且 SIMD 强依赖于硬件架构，通用性较弱，尚未涉及高层任务逻辑与底层规划的端到端融合。"
+    },
+    {
       "title": "FastGrasp: Learning-based Whole-body Control method for Fast Dexterous Grasping with Mobile Manipulators",
       "short_review": "该工作有效突破了移动操作中的速度与稳定性矛盾，具有显著的工程落地价值。但过度依赖高成本触觉传感器限制了泛化性，且缺乏高层语义意图理解，在复杂任务规划灵活性上不及当前 VLA 架构，对仿真到真机的动态误差容忍度仍需进一步验证。",
       "full_note": "FastGrasp: Learning-based Whole-body Control method for Fast Dexterous Grasping with Mobile Manipulators 🔥 推荐指数： 必读 👤 作者： Heng Tao, Yiming Zhong, Zemin Yang, Yuexin Ma 🕒 arXiv上传时间： 2026-04-14 15:30:57 UTC 🔗 触发的灵感来源： FAME: Force-Adaptive RL for Expanding the Manipulation Envelope of a Full-Scale Humanoid, TransDex: Pre-training Visuo-Tactile Policy with Point Cloud Reconstruction for Dexterous Manipulation of Transparent Objects, DexGrasp-Zero: A Morphology-Aligned Policy for Zero-Shot Cross-Embodiment Dexterous Grasping 🔄 深度差量对比： 相比 FAME 侧重于人形机器人在静态交互力下的姿态平衡，本方案聚焦移动基座在高速抓取过程中的冲击稳定与全身协同；不同于 DexGrasp-Zero 的跨本体形态映射，更强调移动底盘与机械臂的物理运动学耦合及触觉反馈。 🧠 核心术语库 [[移动操作 (Mobile Manipulation)]] [[全身协同控制 (Whole-body Coordination)]] [[高速冲击抑制 (High-speed Impact Stabilization)]] [[触觉反馈调节 (Tactile Feedback Adjustment)]] 🔬 方法论简析 提出两阶段深度强化学习策略：第一阶段利用基于点云的条件变分自编码器生成多样化抓取候选，第二阶段融合触觉反馈实现移动基座、机械臂与灵巧手的高速协同运动规划及接触调整。 💬 锐评 该工作有效突破了移动操作中的速度与稳定性矛盾，具有显著的工程落地价值。但过度依赖高成本触觉传感器限制了泛化性，且缺乏高层语义意图理解，在复杂任务规划灵活性上不及当前 VLA 架构，对仿真到真机的动态误差容忍度仍需进一步验证。"
@@ -192,6 +197,11 @@
     }
   ],
   "MARL": [
+    {
+      "title": "Bridging MARL to SARL: An Order-Independent Multi-Agent Transformer via Latent Consensus",
+      "short_review": "尽管巧妙规避了序列决策的次序偏差，但其‘中心化’本质限制了在强去中心化或通信受限场景（如 GRASP 所涉）的应用广度；相比 GRASP 引入 Kakutani 定理提供均衡保障，本文对非平稳性的理论收敛性分析较弱；且将复杂的多智能体信用分配简化为单智能体 PPO，在高维异构任务中可能因信息压缩导致协作失效。",
+      "full_note": "Bridging MARL to SARL: An Order-Independent Multi-Agent Transformer via Latent Consensus 🔥 推荐指数： 必读 👤 作者： Zijian Zhao, Jing Gao, Sen Li 🕒 arXiv上传时间： 2026-04-15 04:52:22 UTC 🔗 触发的灵感来源： GRASP: Gradient Realignment via Active Shared Perception for Multi-Agent Collaborative Optimization, EcoFair-CH-MARL: Scalable Constrained Hierarchical Multi-Agent RL with Real-Time Emission Budgets and Fairness Guarantees 🔄 深度差量对比： 区别于 GRASP 基于去中心化梯度对齐解决非平稳性的路径，本文采用中心化统一视角，利用潜在共识向量替代显式通信以消除传统 Transformer 架构中的动作顺序敏感性。 🧠 核心术语库 [[潜在共识向量]] [[中心化统一建模]] [[自回归决策解码]] [[顺序无关行动生成]] 🔬 方法论简析 构建 Consensus Multi-Agent Transformer (CMAT)，通过编码器融合联合观测，解码器自回归生成高层共识向量模拟隐性协议，据此条件化并行输出各智能体动作，将协同任务简化为单智能体 PPO 优化问题。 💬 锐评 尽管巧妙规避了序列决策的次序偏差，但其‘中心化’本质限制了在强去中心化或通信受限场景（如 GRASP 所涉）的应用广度；相比 GRASP 引入 Kakutani 定理提供均衡保障，本文对非平稳性的理论收敛性分析较弱；且将复杂的多智能体信用分配简化为单智能体 PPO，在高维异构任务中可能因信息压缩导致协作失效。"
+    },
     {
       "title": "EvoNash-MARL: A Closed-Loop Multi-Agent Reinforcement Learning Framework for Medium-Horizon Equity Allocation",
       "short_review": "虽然实现了优于 SPY 的年化收益与高夏普比率，但相比《EcoFair》提供的 O(√T) 理论界，该方法仅依赖 SPA-lite 统计检验，缺乏对非平稳市场下的收敛性保证；其规避了传统纳什均衡分析，转而强调样本外泛化，适合金融场景参考但难以迁移到强约束的工程协同控制领域。",
@@ -436,11 +446,6 @@
       "title": "Offline Decentralized Multi-Agent Reinforcement Learning",
       "short_review": "摘要中提到的理论收敛性证明基于被修改的非平稳动态，其假设前提需严格验证；‘值偏差’依赖离线数据中对‘高价值状态’的识别，若存在评估噪声可能放大误差；此外，文中未说明该框架在稀疏奖励或极高维状态空间下的泛化瓶颈及计算开销。",
       "full_note": "Offline Decentralized Multi-Agent Reinforcement Learning 🆕 入库阶段： 首次运行（冷启动） 🔥 推荐指数： 值得看 📂 分类： MARL 👤 作者： Jiechuan Jiang, Zongqing Lu 🕒 arXiv上传时间： 2021-08-04 03:53:33 UTC 🔗 原文： https://arxiv.org/abs/2108.01832v2 🧾 一句话总结： 针对离线多智能体协作中的动态分布偏移问题，通过修正转移概率机制使智能体在无需在线交互的情况下学习到协调且高性能的策略。 📄 摘要： In many real-world multi-agent cooperative tasks, due to high cost and risk, agents cannot continuously interact with the environment and collect experiences during learning, but have to learn from offline datasets. However, the transition dynamics in the dataset of each agent can be much different from the ones induced by the learned policies of other agents in execution, creating large errors in value estimates. Consequently, agents learn uncoordinated low-performing policies. In this paper, we propose a framework for offline decentralized multi-agent reinforcement learning, which exploits value deviation and transition normalization to deliberately modify the transition probabilities. Value deviation optimistically increases the transition probabilities of high-value next states, and transition normalization normalizes the transition probabilities of next states. They together enable agents to learn high-performing and coordinated policies. Theoretically, we prove the convergence of Q-learning under the altered non-stationary transition dynamics. Empirically, we show that the framework can be easily built on many existing offline reinforcement learning algorithms and achieve substantial improvement in a variety of multi-agent tasks. 🧠 核心术语库 [[离线去中心化多智能体强化学习]] [[值偏差 (Value Deviation)]] [[转移归一化 (Transition Normalization)]] [[非平稳转移动态]] 🔬 核心方法简述 提出一种离线去中心化多智能体强化学习框架，利用值偏差（Value Deviation）乐观增加高价值下一状态的转移概率，并结合转移归一化（Transition Normalization）调整概率分布，以此修正因数据集与执行策略动态不一致导致的估计误差，从而习得协调的高性能策略。 💬 锐评 摘要中提到的理论收敛性证明基于被修改的非平稳动态，其假设前提需严格验证；‘值偏差’依赖离线数据中对‘高价值状态’的识别，若存在评估噪声可能放大误差；此外，文中未说明该框架在稀疏奖励或极高维状态空间下的泛化瓶颈及计算开销。 📝 说明： 该条目在冷启动阶段按关键词检索后完成单篇深读分析，后续增量任务将继续进行相关性对比与深度比较。"
-    },
-    {
-      "title": "BenchMARL: Benchmarking Multi-Agent Reinforcement Learning",
-      "short_review": "摘要强调解决了复现性危机，但将标准化工具强依赖于单一开源项目（Facebook/TorchRL）存在生态锁定风险；‘一行命令’宣称简化了流程，却未阐明如何处理 MARL 特有的复杂交互逻辑在自动化配置中的边界情况",
-      "full_note": "BenchMARL: Benchmarking Multi-Agent Reinforcement Learning 🆕 入库阶段： 首次运行（冷启动） 🔥 推荐指数： 值得看 📂 分类： MARL 👤 作者： Matteo Bettini, Amanda Prorok, Vincent Moens 🕒 arXiv上传时间： 2023-12-03 18:15:58 UTC 🔗 原文： https://arxiv.org/abs/2312.01472v3 🧾 一句话总结： 一款面向 PyTorch 社区的开源 MARL 基准测试工具，旨在通过统一框架解决多智能体强化学习研究的复现性与标准化难题 📄 摘要： The field of Multi-Agent Reinforcement Learning (MARL) is currently facing a reproducibility crisis. While solutions for standardized reporting have been proposed to address the issue, we still lack a benchmarking tool that enables standardization and reproducibility, while leveraging cutting-edge Reinforcement Learning (RL) implementations. In this paper, we introduce BenchMARL, the first MARL training library created to enable standardized benchmarking across different algorithms, models, and environments. BenchMARL uses TorchRL as its backend, granting it high performance and maintained state-of-the-art implementations while addressing the broad community of MARL PyTorch users. Its design enables systematic configuration and reporting, thus allowing users to create and run complex benchmarks from simple one-line inputs. BenchMARL is open-sourced on GitHub: https://github.com/facebookresearch/BenchMARL 🧠 核心术语库 [[多智能体强化学习]] [[复现性危机]] [[基准测试]] [[TorchRL]] [[标准化报告]] 🔬 核心方法简述 基于 TorchRL 构建开源训练库，利用其高性能与 SOTA 实现作为后端，通过系统化配置和自动报告机制，支持跨算法、模型和环境的标准化基准测试 💬 锐评 摘要强调解决了复现性危机，但将标准化工具强依赖于单一开源项目（Facebook/TorchRL）存在生态锁定风险；‘一行命令’宣称简化了流程，却未阐明如何处理 MARL 特有的复杂交互逻辑在自动化配置中的边界情况 📝 说明： 该条目在冷启动阶段按关键词检索后完成单篇深读分析，后续增量任务将继续进行相关性对比与深度比较。"
     }
   ],
   "MultiAgent_Game_Theory": [
@@ -571,6 +576,11 @@
     }
   ],
   "UAV_VLN": [
+    {
+      "title": "Vision-and-Language Navigation for UAVs: Progress, Challenges, and a Research Roadmap",
+      "short_review": "作为宏观路线图，其价值在于战略指引而非单点突破；虽然覆盖了 Note 1 提到的基准缺陷，但未提供新的实测数据来填补 Sim2Real 鸿沟的具体方案，建议结合 Note 1 中的算法清单互补使用以构建完整认知框架。",
+      "full_note": "Vision-and-Language Navigation for UAVs: Progress, Challenges, and a Research Roadmap 🔥 推荐指数： 必读 👤 作者： Hanxuan Chen, Jie Zheng, Siqi Yang, Tianle Zeng, Siwei Feng, Songsheng Cheng, Ruilong Ren, Hanzhong Guo, Shuai Yuan, Xiangyue Wang, Kangli Wang, Ji Pei 🕒 arXiv上传时间： 2026-04-15 09:20:02 UTC 🔗 触发的灵感来源： Vision-Language Navigation for Aerial Robots: Towards the Era of Large Language Models, Vision-Language Navigation: A Survey and Taxonomy 🔄 深度差量对比： 相比 Note 1(2026) 侧重 LLM/VLM 算法实例盘点，本文更强调技术演进路线（模块化→基础模型→生成式世界模型）及空地协同战略；对比 Note 2(2021) 通用 VLN 综述，本文专攻 UAV 三维物理约束与室外动态环境挑战。 🧠 核心术语库 [[UAV-VLN]] [[Foundation Models]] [[Agentic Systems]] [[Generative World Models]] [[Simulation-to-Reality Gap]] [[Air-Ground Collaboration]] 🔬 方法论简析 建立从传统深度学习到大模型驱动 Agent 系统的方法论分类，系统化梳理仿真器、数据集与指标生态，批判性分析 Sim2Real 与边缘计算瓶颈并提出多智能体协同蓝图。 💬 锐评 作为宏观路线图，其价值在于战略指引而非单点突破；虽然覆盖了 Note 1 提到的基准缺陷，但未提供新的实测数据来填补 Sim2Real 鸿沟的具体方案，建议结合 Note 1 中的算法清单互补使用以构建完整认知框架。"
+    },
     {
       "title": "DeCoNav: Dialog enhanced Long-Horizon Collaborative Vision-Language Navigation",
       "short_review": "该工作在协作逻辑与任务切换机制上显著优于静态基线，但训练数据集基于 HM3D（典型室内地面/人形环境），缺乏 UAV_VLN 关注的三维体积感知与高速机动约束；且自然语言推理延迟远高于向量通信，在高动态空域实时避障场景中需结合 OnFly 的安全架构进行异构适配。",
