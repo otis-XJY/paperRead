@@ -1,6 +1,11 @@
 {
   "Humanoid_Manipulation": [
     {
+      "title": "DEX-Mouse: A Low-cost Portable and Universal Interface with Force Feedback for Data Collection of Dexterous Robotic Hands",
+      "short_review": "该方案通过机器人 - 人类肢体对齐有效降低了 Sim-to-Real 差距，填补了 TeleDex 在力觉维度的空白；然而其单手固定模式限制了与人形机器人躯干/下肢的协同拓展能力，且未如 CHILD 那样验证复杂动态交互下的安全性与负载能力。",
+      "full_note": "DEX-Mouse: A Low-cost Portable and Universal Interface with Force Feedback for Data Collection of Dexterous Robotic Hands 🔥 推荐指数： 必读 👤 作者： Joonho Koh, Haechan Jung, Nayoung Kim, Wook Ko, Changjoo Nam 🕒 arXiv上传时间： 2026-04-16 13:41:07 UTC 🔗 触发的灵感来源： TeleDex: Accessible Dexterous Teleoperation, CHILD (Controller for Humanoid Imitation and Live Demonstration): a Whole-Body Humanoid Teleoperation System 🔄 深度差量对比： 相较于笔记中 TeleDex 依赖手机摄像头的纯视觉方案，本工作引入了硬件级力反馈以解决触觉缺失，且不同于 CHILD 针对全身控制的穿戴式架构，它专注于灵巧手数据的物理一致性采集。 🧠 核心术语库 [[低成本便携式遥操]] [[无校准操作]] [[集成式力反馈]] [[人机肢体对齐]] 🔬 方法论简析 采用商用现成组件构建低于 150 美元的低成本手持遥操接口，集成运动学力反馈机制，提出机器人手与操作者前臂直连的佩戴模式使目标机器手与肢体对齐，实现免校准跨平台部署并验证了降低工作负载的可行性。 💬 锐评 该方案通过机器人 - 人类肢体对齐有效降低了 Sim-to-Real 差距，填补了 TeleDex 在力觉维度的空白；然而其单手固定模式限制了与人形机器人躯干/下肢的协同拓展能力，且未如 CHILD 那样验证复杂动态交互下的安全性与负载能力。"
+    },
+    {
       "title": "Vectorizing Projection in Manifold-Constrained Motion Planning for Real-Time Whole-Body Control",
       "short_review": "尽管实现了 100-1000 倍的加速并在真机验证，但其‘准静态’假设限制了高动态场景的适用性；且 SIMD 强依赖于硬件架构，通用性较弱，尚未涉及高层任务逻辑与底层规划的端到端融合。",
       "full_note": "Vectorizing Projection in Manifold-Constrained Motion Planning for Real-Time Whole-Body Control 🔥 推荐指数： 必读 👤 作者： Shrutheesh R Iyer, I-Chia Chang, Andrew Z. Liu, Yan Gu, Zachary Kingston 🕒 arXiv上传时间： 2026-04-14 22:00:53 UTC 🔗 触发的灵感来源： Task and Motion Planning for Humanoid Loco-manipulation, Motion Planning for a Humanoid Mobile Manipulator System 🔄 深度差量对比： 相较于旧笔记中基于仿生的启发式搜索（Wei 等）及抽象的任务层接触规划（Ciebielski 等），本工作专注于底层约束投影的算力瓶颈，通过 SIMD 并行化在真机上实现了毫秒级实时运动规划。 🧠 核心术语库 [[SIMD 并行加速]] [[流形约束运动规划]] [[实时刻划]] [[硬件验证]] [[投影算子]] 🔬 方法论简析 提出基于 CPU SIMD 加速器的流形约束运动规划器，将投影满足约束的计算转化为可并行结构，实现约束解的实时生成与全身准静态计划。 💬 锐评 尽管实现了 100-1000 倍的加速并在真机验证，但其‘准静态’假设限制了高动态场景的适用性；且 SIMD 强依赖于硬件架构，通用性较弱，尚未涉及高层任务逻辑与底层规划的端到端融合。"
