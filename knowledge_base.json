@@ -1,6 +1,11 @@
 {
   "Humanoid_Manipulation": [
     {
+      "title": "DeVI: Physics-based Dexterous Human-Object Interaction via Synthetic Video Imitation",
+      "short_review": "该方法虽通过混合奖励缓解了纯 2D 视频缺乏物理一致性的问题，但生成视频中隐含的接触力学噪声仍可能误导动力学建模；此外，相较于 DreamControl-v2 的可训练扩散先验，本文仅将视频作为静态模仿目标，缺乏对策略本身的显式微调机制，在面对未见过的复杂物理接触场景时，其泛化上限可能受限于视频生成器本身对力学的理解偏差。",
+      "full_note": "DeVI: Physics-based Dexterous Human-Object Interaction via Synthetic Video Imitation 🔥 推荐指数： 必读 👤 作者： Hyeonwoo Kim, Jeonghwan Kim, Kyungwon Cho, Hanbyul Joo 🕒 arXiv上传时间： 2026-04-22 17:59:55 UTC 🔗 触发的灵感来源： UniDex: A Robot Foundation Suite for Universal Dexterous Hand Control from Egocentric Human Videos, Veo-Act: How Far Can Frontier Video Models Advance Generalizable Robot Manipulation?, DreamControl-v2: Simpler and Scalable Autonomous Humanoid Skills via Trainable Guided Diffusion Priors 🔄 深度差量对比： 针对 Veo-Act 指出的视频模型在灵巧操作层面物理精度不足且难以反推关节的问题，本文通过混合追踪奖励将 2D 合成视频转化为 3D 物理控制信号；区别于 UniDex 依赖真实动作捕捉构建 FAAS 空间的方法，本工作证明了利用生成式视频替代高成本数据采集实现零样本泛化的可行性。 🧠 核心术语库 [[[[Synthetic Video Imitation]]]] [[[[Hybrid Tracking Reward]]]] [[[[Zero-shot Object Generalization]]]] [[[[Video to Physics Alignment]]]] 🔬 方法论简析 利用文本条件驱动的视频生成模型创建合成交互视频，设计融合 3D 人体姿态估计与鲁棒 2D 物体追踪的混合奖励函数，以此作为监督信号驱动底层物理控制器进行模仿学习，无需真实运动捕捉数据即可掌握复杂的灵巧手物交互技能。 💬 锐评 该方法虽通过混合奖励缓解了纯 2D 视频缺乏物理一致性的问题，但生成视频中隐含的接触力学噪声仍可能误导动力学建模；此外，相较于 DreamControl-v2 的可训练扩散先验，本文仅将视频作为静态模仿目标，缺乏对策略本身的显式微调机制，在面对未见过的复杂物理接触场景时，其泛化上限可能受限于视频生成器本身对力学的理解偏差。"
+    },
+    {
       "title": "Assessing VLM-Driven Semantic-Affordance Inference for Non-Humanoid Robot Morphologies",
       "short_review": "此文虽非直接控制方法创新，但为 HEX 与 MetaWorld-X 提供了关键的风险校验：VLM 语义路由若未经过动力学校准，在面对非标工具或非常规操作时，其固有的保守偏置将导致‘不可用’而非‘不安全’的决策；建议在引入 VLA 架构时，需像 HEX 那样注入动力学前验以修正 VLM 的过保守感知，避免路由机制因低召回率而失效。",
       "full_note": "Assessing VLM-Driven Semantic-Affordance Inference for Non-Humanoid Robot Morphologies 🔥 推荐指数： 值得看 👤 作者： Jess Jones, Raul Santos-Rodriguez, Sabine Hauert 🕒 arXiv上传时间： 2026-04-21 14:26:29 UTC 🔗 触发的灵感来源： MetaWorld-X: Hierarchical World Modeling via VLM-Orchestrated Experts for Humanoid Loco-Manipulation, HEX: Humanoid-Aligned Experts for Cross-Embodiment Whole-Body Manipulation 🔄 深度差量对比： 与前注 HEX 和 MetaWorld-X 聚焦人形本体 VLM 路由与控制策略生成不同，本文侧重于验证 VLM 在非人形形态下的感知边界，揭示了语义推理中普遍存在的高假阴性风险。 🧠 核心术语库 [[VLM Affordance Inference]] [[Non-Humanoid Morphologies]] [[High False Negative Bias]] 🔬 方法论简析 构建真实标注与 VLM 合成混合数据集，跨多物体类别与机器人形态进行实证分析，统计评估 VLM 推理工况下的假阳性与假阴性分布模式。 💬 锐评 此文虽非直接控制方法创新，但为 HEX 与 MetaWorld-X 提供了关键的风险校验：VLM 语义路由若未经过动力学校准，在面对非标工具或非常规操作时，其固有的保守偏置将导致‘不可用’而非‘不安全’的决策；建议在引入 VLA 架构时，需像 HEX 那样注入动力学前验以修正 VLM 的过保守感知，避免路由机制因低召回率而失效。"
@@ -227,6 +232,11 @@
     }
   ],
   "MARL": [
+    {
+      "title": "A Hierarchical MARL-Based Approach for Coordinated Retail P2P Trading and Wholesale Market Participation of DERs",
+      "short_review": "虽然该工作在市场参与广度上优于既往 Ren 等人的 P2P 局部视角，解决了部分去中心化代价问题；但摘要未提及环境排放的硬约束机制（如原对偶方法或预算边界），存在重效率轻低碳优化的风险，且分层结构可能导致信息传递延迟，需验证其在博弈均衡中的收敛稳定性与计算复杂度是否可控。",
+      "full_note": "A Hierarchical MARL-Based Approach for Coordinated Retail P2P Trading and Wholesale Market Participation of DERs 🔥 推荐指数： 值得看 👤 作者： Patrick Wilk, Ethan Cantor, Yikui Liu, Jie Li 🕒 arXiv上传时间： 2026-04-22 14:02:56 UTC 🔗 触发的灵感来源： Multi-agent Reinforcement Learning for Low-Carbon P2P Energy Trading among Self-Interested Microgrids, Multi-agent Reinforcement Learning-based Joint Design of Low-Carbon P2P Market and Bidding Strategy in Microgrids 🔄 深度差量对比： 相较于笔记中Ren等人聚焦微电网内部低碳 P2P 交易的软性激励设计，本新论文扩展至零售与批发两级市场的层级架构，利用 Stackelberg 博弈协调分布式能源聚合而非单一社区交易。 🧠 核心术语库 [[分层 MARL]] [[零售 - 批发耦合]] [[Stackelberg 博弈]] [[DERs 聚合]] 🔬 方法论简析 构建分层多智能体深度强化学习框架，底层个体代理参与零售拍卖，上层聚合代理进入批发市场，通过Stackelberg博弈机制实现跨层级决策协调与全局性能优化。 💬 锐评 虽然该工作在市场参与广度上优于既往 Ren 等人的 P2P 局部视角，解决了部分去中心化代价问题；但摘要未提及环境排放的硬约束机制（如原对偶方法或预算边界），存在重效率轻低碳优化的风险，且分层结构可能导致信息传递延迟，需验证其在博弈均衡中的收敛稳定性与计算复杂度是否可控。"
+    },
     {
       "title": "M$^{2}$GRPO: Mamba-based Multi-Agent Group Relative Policy Optimization for Biomimetic Underwater Robots Pursuit",
       "short_review": "虽然引入 Mamba 提升了长视距决策能力并宣称水池实测成功，但水下低带宽/高延迟环境对 Mamba 连续输入构成挑战；此外，GRPO 在稀疏奖励下的梯度稳定性未明确论证，且轻量化 SSM 算子在嵌入式 AUV 上的部署开销需进一步评估，以确保持续优于 MAPPO。",
@@ -471,11 +481,6 @@
       "title": "MA-VLCM: A Vision Language Critic Model for Value Estimation of Policies in Multi-Agent Team Settings",
       "short_review": "该方法巧妙利用大模型推理能力转化为价值评估器，有效规避了传统 critic 训练的不稳定性与数据低效性，但忽略了预训练 VLM 在特定物理环境下的值函数校准偏差风险、高推理延迟对多智能体实时协同的潜在拖累以及异构机器人系统下视觉表征对齐的计算成本",
       "full_note": "MA-VLCM: A Vision Language Critic Model for Value Estimation of Policies in Multi-Agent Team Settings 🔥 推荐指数： 必读 👤 作者： Shahil Shaik, Aditya Parameshwaran, Anshul Nayak, Jonathon M. Smereka, Yue Wang 🕒 arXiv上传时间： 2026-03-16 15:29:41 UTC 🔗 触发的灵感来源： Intent-aware Multi-agent Reinforcement Learning, Learning to Assist: Physics-Grounded Human-Human Control via Multi-Agent Reinforcement Learning, Mean Field Multi-Agent Reinforcement Learning 🔄 深度差量对比： 相比笔记中“平均场”通过统计聚合应对规模扩展、“意图感知”通过线性假设规避博弈计算，MA-VLCM 引入外部知识驱动的大模型替代内部价值网络，以预训练先验换取策略优化的零样本泛化性与样本效率 🧠 核心术语库 [[多智能体强化学习 (MARL)]] [[视觉语言模型 (Vision-Language Model)]] [[集中式评论家 (Centralized Critic)]] [[零样本泛化 (Zero-shot Generalization)]] [[样本效率 (Sample Efficiency)]] 🔬 方法论简析 提出 MA-VLCM 框架，将 MARL 中的集中式评论家替换为经微调的预训练视觉语言模型（VLM），该模型条件化于自然语言任务描述、视觉轨迹观察及结构化多智能体状态信息以执行价值评估，从而在策略优化过程中完全消除评论家学习环节 💬 锐评 该方法巧妙利用大模型推理能力转化为价值评估器，有效规避了传统 critic 训练的不稳定性与数据低效性，但忽略了预训练 VLM 在特定物理环境下的值函数校准偏差风险、高推理延迟对多智能体实时协同的潜在拖累以及异构机器人系统下视觉表征对齐的计算成本"
-    },
-    {
-      "title": "Interference-Aware K-Step Reachable Communication in Multi-Agent Reinforcement Learning",
-      "short_review": "虽然针对带宽受限场景提出拓扑约束，但未量化通信开销对 MARL 训练稳定性的具体影响，且“干扰预测”在真实非平稳无线环境中的模型偏差可能导致协同失效；评估仅强调仿真鲁棒性，缺乏如笔记三般的大规模路网或云原生集群实测验证，实际部署中物理通信延迟与计算预测延迟的权衡机制尚不明确。",
-      "full_note": "Interference-Aware K-Step Reachable Communication in Multi-Agent Reinforcement Learning 🔥 推荐指数： 值得看 👤 作者： Ziyu Cheng, Jinsheng Ren, Zhouxian Jiang, Chenzhihang Li, Rongye Shi, Bin Liang, Jun Yang 🕒 arXiv上传时间： 2026-03-16 10:07:33 UTC 🔗 触发的灵感来源： AGMARL-DKS: An Adaptive Graph-Enhanced Multi-Agent Reinforcement Learning for Dynamic Kubernetes Scheduling, A Robust and Efficient Multi-Agent Reinforcement Learning Framework for Traffic Signal Control, Intent-aware Multi-agent Reinforcement Learning 🔄 深度差量对比： 相较于笔记三的 MAPPO-邻居观测侧重局部状态泛化，本文聚焦物理层通信拓扑约束与抗干扰优化；相比笔记二的 GNN 全局表征依赖，本文采用硬性的 K 步可达性限制更适应动态信道环境。 🧠 核心术语库 [[Interference-Aware Communication]] [[K-Step Reachability Protocol]] [[Partner Selection under Uncertainty]] [[Dynamic Topology Adaptation]] 🔬 方法论简析 提出干扰感知的 K 步可达通信框架，包含限定消息传递范围的 K 步协议及最大化效用与最小化干扰的干扰预测模块。 💬 锐评 虽然针对带宽受限场景提出拓扑约束，但未量化通信开销对 MARL 训练稳定性的具体影响，且“干扰预测”在真实非平稳无线环境中的模型偏差可能导致协同失效；评估仅强调仿真鲁棒性，缺乏如笔记三般的大规模路网或云原生集群实测验证，实际部署中物理通信延迟与计算预测延迟的权衡机制尚不明确。"
     }
   ],
   "MultiAgent_Game_Theory": [
