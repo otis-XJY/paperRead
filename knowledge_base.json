@@ -238,6 +238,11 @@
   ],
   "MARL": [
     {
+      "title": "A Survey of Multi-Agent Deep Reinforcement Learning with Graph Neural Network-Based Communication",
+      "short_review": "虽有助于理清概念脉络，但缺失笔记 1 中的 ODE 建模细节、笔记 2 的超网络增益分析及笔记 3 的价值损失上界证明，在指导实系统部署方面不如前文提供的技术深度。",
+      "full_note": "A Survey of Multi-Agent Deep Reinforcement Learning with Graph Neural Network-Based Communication 🔥 推荐指数： 值得看 👤 作者： Valentin Cuzin-Rambaud, Laetitia Matignon, Maxime Morge 🕒 arXiv上传时间： 2026-04-28 07:50:24 UTC 🔗 触发的灵感来源： Event-Driven Temporal Graph Networks for Asynchronous Multi-Agent Cyber Defense in NetForge_RL, Decomposing Communication Gain and Delay Cost Under Cross-Timestep Delays in Cooperative Multi-Agent Reinforcement Learning, Wireless Communication Enhanced Value Decomposition for Multi-Agent Reinforcement Learning 🔄 深度差量对比： 不同于笔记 1、2、3 针对异步网络防御、无线信道及跨步延迟的具体算法突破，本文旨在建立 GNN 通信的分类框架而非优化特定物理约束下的性能瓶颈。 🧠 核心术语库 [[GNN 通信通用架构]] [[多智能体交互图谱]] [[表征增强分类体系]] 🔬 方法论简析 提出广义 GNN 通信过程模型，通过交互图结构对现有方法进行显式分类，梳理信息交换与表征增强的底层逻辑。 💬 锐评 虽有助于理清概念脉络，但缺失笔记 1 中的 ODE 建模细节、笔记 2 的超网络增益分析及笔记 3 的价值损失上界证明，在指导实系统部署方面不如前文提供的技术深度。"
+    },
+    {
       "title": "Zero Shot Coordination for Sparse Reward Tasks with Diverse Reward Shapings",
       "short_review": "虽然解决了零样本协作中奖励定义不一致的现实痛点，但缺乏对奖励形状空间的系统性探索（仅依赖随机选择），且在非结构化环境中的泛化能力未获验证；相较于旧注文中的理论约束保障，该方法更偏向经验式优化，长期演化下的策略一致性仍存疑。",
       "full_note": "Zero Shot Coordination for Sparse Reward Tasks with Diverse Reward Shapings 🔥 推荐指数： 值得看 👤 作者： Keenan Powell, Peihong Yu, Pratap Tokekar 🕒 arXiv上传时间： 2026-04-28 00:09:28 UTC 🔗 触发的灵感来源： Large Language Model Guided Incentive Aware Reward Design for Cooperative Multi-Agent Reinforcement Learning 🔄 深度差量对比： 与旧笔记中利用 LLM 自动化生成单一最优奖励塑形函数不同，本文聚焦于训练智能体对合作者异构奖励形状的鲁棒性，而非奖励本身的设计优化。 🧠 核心术语库 [[Zero-Shot Coordination]] [[Reward Shaping Diversity]] [[Policy Robustness]] [[Ensemble Training]] 🔬 方法论简析 采用集成学习方法，利用四种选择算法随机组合多种奖励塑形方案进行联合训练，在 Overcooked 环境下验证了对异构奖励策略的适应性。 💬 锐评 虽然解决了零样本协作中奖励定义不一致的现实痛点，但缺乏对奖励形状空间的系统性探索（仅依赖随机选择），且在非结构化环境中的泛化能力未获验证；相较于旧注文中的理论约束保障，该方法更偏向经验式优化，长期演化下的策略一致性仍存疑。"
@@ -481,11 +486,6 @@
       "title": "CAMA: Exploring Collusive Adversarial Attacks in c-MARL",
       "short_review": "虽填补了合谋攻击的理论空白，但实验限于 SMAC II 离散环境且缺乏动态防御评估，其结论难以直接推广至笔记 1 所述的非线性连续控制场景，且未深入探讨非理性对手下的攻击边界判定问题。",
       "full_note": "CAMA: Exploring Collusive Adversarial Attacks in c-MARL 🔥 推荐指数： 值得看 👤 作者： Men Niu, Xinxin Fan, Quanliang Jing, Shaoye Luo, Yunfeng Lu 🕒 arXiv上传时间： 2026-03-20 18:09:54 UTC 🔗 触发的灵感来源： Strategically Robust Multi-Agent Reinforcement Learning with Linear Function Approximation, Markov Potential Game and Multi-Agent Reinforcement Learning for Autonomous Driving 🔄 深度差量对比： 不同于笔记 1 与 2 致力于从博弈结构或价值迭代层面构建收敛性与鲁棒性，本文转向攻击视角，揭示了协作场景中恶意合谋如何通过操纵效用感知来瓦解既有算法的信任假设。 🧠 核心术语库 [[Collusive Adversarial Attacks]] [[Policy-Level Manipulation]] [[c-MARL Security]] [[Agent Trustworthiness]] 🔬 方法论简析 提出统一政策级攻击框架 CAMA，设计集体、伪装及间谍三种合谋模式，通过观测信息融合与触发控制实现高隐蔽性的协同干扰，并从破坏性、隐蔽性与成本三方面进行理论分析。 💬 锐评 虽填补了合谋攻击的理论空白，但实验限于 SMAC II 离散环境且缺乏动态防御评估，其结论难以直接推广至笔记 1 所述的非线性连续控制场景，且未深入探讨非理性对手下的攻击边界判定问题。"
-    },
-    {
-      "title": "Fluid Antenna Networks Beyond Beamforming: An AI-Native Control Paradigm for 6G",
-      "short_review": "该研究拓展了 MARL 动作空间的物理维度，但未量化机械调节时延与学习步长的耦合效应，存在与笔记一类似的训练稳定性未定量问题；且相较于笔记三中实测验证的缺失，其对硬件非理想误差及复杂场景下的泛化能力评估仍需加强。",
-      "full_note": "Fluid Antenna Networks Beyond Beamforming: An AI-Native Control Paradigm for 6G 🔥 推荐指数： 值得看 👤 作者： Ian F. Akyildiz, Tuğçe Bilen 🕒 arXiv上传时间： 2026-03-20 20:29:05 UTC 🔗 触发的灵感来源： Multi-Agent Reinforcement Learning Counteracts Delayed CSI in Multi-Satellite Systems, Interference-Aware K-Step Reachable Communication in Multi-Agent Reinforcement Learning 🔄 深度差量对比： 不同于笔记一侧重通信拓扑与干扰感知的链路级约束，以及笔记二针对延迟 CSI 的双层补偿机制，本文开创性地将天线物理位置重构纳入动作空间，实现硬件自由度与资源管理的联合闭环控制。 🧠 核心术语库 [[Fluid Antenna Systems (FAS)]] [[AI-Native Control Paradigm]] [[Joint Positioning and RRM]] [[Distributed MARL]] 🔬 方法论简析 构建 AI 原生闭环控制架构，利用分布式 MARL 协调多基站决策，将实时网络观测映射为协同的天线重配置与无线资源管理（RRM）组合动作，以应对非平稳信道与用户动态。 💬 锐评 该研究拓展了 MARL 动作空间的物理维度，但未量化机械调节时延与学习步长的耦合效应，存在与笔记一类似的训练稳定性未定量问题；且相较于笔记三中实测验证的缺失，其对硬件非理想误差及复杂场景下的泛化能力评估仍需加强。"
     }
   ],
   "MultiAgent_Game_Theory": [
