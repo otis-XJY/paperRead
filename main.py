@@ -41,13 +41,7 @@ CONFIG = {
          ['ti:"Multi-Agent Reinforcement Learning"', 
           'all:MARL', 
           'all:CTDE'], 
-          "desc": "多智能体强化学习算法、协作机制及通信协议。"},
-        "Humanoid_Manipulation": 
-        {"keywords":
-         ['ti:Humanoid AND abs:Manipulation', 
-          'abs:"Dexterous Hand"', 
-          'ti:"Whole-body Control"'], 
-          "desc": "人形机器人操作、灵巧手抓取及全身协调控制。"}
+          "desc": "多智能体强化学习算法、协作机制及通信协议。"}
     },
     "llm_model": "Qwen/Qwen3.5-35B-A3B",
     "base_url": "https://api-inference.modelscope.cn/v1/"
