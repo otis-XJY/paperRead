@@ -15,13 +15,22 @@ import requests
 
 CACHE_FILE = "feishu_wiki_node_cache.json"
 FEISHU_BASE = "https://open.feishu.cn/open-apis"
+# 浏览器打开云文档用 /docx/{document_id}；/wiki/{token} 只能是知识库节点 token，不能与 document_id 混用
+FEISHU_WEB_BASE_DEFAULT = "https://my.feishu.cn"
 
 
 class FeishuWikiClient:
-    def __init__(self, app_id, app_secret, root_node_token):
+    def __init__(
+        self,
+        app_id,
+        app_secret,
+        root_node_token,
+        daily_folder_name="DailyPapers",
+    ):
         self.app_id = app_id
         self.app_secret = app_secret
         self.root_node_token = root_node_token
+        self._daily_folder_name = daily_folder_name or "DailyPapers"
         self._token = None
         self._token_expiry = 0
         self._space_id = None
@@ -121,18 +130,16 @@ class FeishuWikiClient:
             return children[title]
 
         space_id = self._discover_space_id()
-        # 创建方式：先创建文档，再将其作为节点移入 wiki 空间
-        doc_id = self._create_standalone_document(title)
+        # 直接在 Wiki 空间中创建节点（不创建独立文档）
         data = self._api_request(
             "POST",
             f"{FEISHU_BASE}/wiki/v2/spaces/{space_id}/nodes",
             json_body={
                 "obj_type": "docx",
-                "obj_token": doc_id,
-                "node_type": 1,
+                "node_type": "origin",
+                "parent_node_token": parent_node_token,
                 "title": title,
             },
-            params={"parent_node_token": parent_node_token},
         )
         node_token = data.get("node", data).get("node_token", "")
         if node_token:
@@ -140,24 +147,56 @@ class FeishuWikiClient:
             self._save_node_cache(self._cache)
         return node_token
 
+    def _node_is_valid(self, node_token):
+        """检查缓存的节点是否仍然存在于飞书 Wiki 中。"""
+        try:
+            self.list_child_nodes(node_token)
+            return True
+        except (RuntimeError, requests.RequestException):
+            return False
+
+    def _invalidate_cache_prefix(self, prefix):
+        """移除缓存中以指定前缀开头的所有条目。"""
+        keys_to_remove = [k for k in self._cache if k == prefix or k.startswith(prefix + "/")]
+        for k in keys_to_remove:
+            del self._cache[k]
+        if keys_to_remove:
+            self._save_node_cache(self._cache)
+
     def ensure_category_node(self, category):
-        daily_key = f"_root_/DailyPapers"
+        daily_key = f"_root_/{self._daily_folder_name}"
+        if daily_key in self._cache:
+            # 验证缓存的 daily 节点是否仍然有效
+            if not self._node_is_valid(self._cache[daily_key]):
+                self._invalidate_cache_prefix(daily_key)
+
         if daily_key not in self._cache:
             children = self.list_child_nodes(self.root_node_token)
-            if "DailyPapers" in children:
-                self._cache[daily_key] = children["DailyPapers"]
+            if self._daily_folder_name in children:
+                self._cache[daily_key] = children[self._daily_folder_name]
             else:
                 self._cache[daily_key] = self.get_or_create_child_node(
-                    self.root_node_token, "DailyPapers"
+                    self.root_node_token, self._daily_folder_name
                 )
             self._save_node_cache(self._cache)
         daily_node = self._cache[daily_key]
 
         cat_key = f"{daily_key}/{category}"
+        if cat_key in self._cache:
+            # 验证缓存的分类节点是否仍然有效
+            if not self._node_is_valid(self._cache[cat_key]):
+                self._invalidate_cache_prefix(cat_key)
+
         if cat_key not in self._cache:
             self._cache[cat_key] = self.get_or_create_child_node(daily_node, category)
             self._save_node_cache(self._cache)
         return self._cache[cat_key]
+
+    def bootstrap_layout(self, categories):
+        """预先创建「根 → 日更目录 → 各分类」节点，无需跑主流程即可在知识库中看到目录。"""
+        for name in categories:
+            node_token = self.ensure_category_node(name)
+            print(f"  ✅ {self._daily_folder_name}/{name} → {node_token}")
 
     # ── 文档操作 ─────────────────────────────────────────────────
 
@@ -182,14 +221,29 @@ class FeishuWikiClient:
         document_id = doc.get("document_id", "")
         return document_id, document_id
 
-    def write_document_blocks(self, document_id, block_id, blocks):
+    def write_document_blocks(self, document_id, parent_block_id, blocks):
+        """向父块追加内容，使用「创建嵌套块」descendant 接口（旧版 /children 已不可用）。"""
         chunk_size = 50
         for i in range(0, len(blocks), chunk_size):
-            chunk = blocks[i:i + chunk_size]
+            chunk = blocks[i : i + chunk_size]
+            children_id = []
+            descendants = []
+            for j, raw in enumerate(chunk):
+                bid = f"_tmp_{i}_{j}"
+                children_id.append(bid)
+                node = dict(raw)
+                node["block_id"] = bid
+                node.setdefault("children", [])
+                descendants.append(node)
             self._api_request(
                 "POST",
-                f"{FEISHU_BASE}/docx/v1/documents/{document_id}/blocks/{block_id}/children",
-                json_body={"children": chunk},
+                f"{FEISHU_BASE}/docx/v1/documents/{document_id}/blocks/{parent_block_id}/descendant",
+                params={"document_revision_id": -1},
+                json_body={
+                    "index": -1,
+                    "children_id": children_id,
+                    "descendants": descendants,
+                },
             )
         return True
 
@@ -213,9 +267,9 @@ class FeishuWikiClient:
 
         def paragraph_block(elements, heading_level=0):
             if heading_level > 0:
-                htype = heading_level + 1
+                # 飞书枚举：heading1=3 … heading9=11，故 headingN → block_type = N + 2
                 return {
-                    "block_type": htype,
+                    "block_type": heading_level + 2,
                     f"heading{heading_level}": {
                         "elements": elements,
                     },
@@ -226,7 +280,7 @@ class FeishuWikiClient:
             }
 
         def divider_block():
-            return {"block_type": 22, "divider": {}}
+            return {"block_type": 22, "divider": {}, "children": []}
 
         # 标题
         blocks.append(paragraph_block([text_el(paper_info.get("title", ""), bold=True)], heading_level=2))
@@ -305,7 +359,8 @@ class FeishuWikiClient:
         document_id, block_id = self.create_document_in_node(category_node, title)
         blocks = self._paper_info_to_blocks(paper_info)
         self.write_document_blocks(document_id, block_id, blocks)
-        return f"https://my.feishu.cn/wiki/{document_id}"
+        base = os.getenv("FEISHU_WEB_BASE", FEISHU_WEB_BASE_DEFAULT).rstrip("/")
+        return f"{base}/docx/{document_id}"
 
     # ── 缓存 ─────────────────────────────────────────────────────
 
