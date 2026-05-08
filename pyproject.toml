@@ -37,10 +37,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/paperRead"
-Documentation = "https://github.com/your-username/paperRead/blob/main/README.md"
-Repository = "https://github.com/your-username/paperRead"
-"Bug Tracker" = "https://github.com/your-username/paperRead/issues"
+Homepage = "https://github.com/otis-XJY/paperRead"
+Documentation = "https://github.com/otis-XJY/paperRead/blob/main/README.md"
+Repository = "https://github.com/otis-XJY/paperRead"
+"Bug Tracker" = "https://github.com/otis-XJY/paperRead/issues"
 
 [project.scripts]
 paperread = "main:main"

@@ -186,7 +186,7 @@ If you're upgrading from a development version:
 
 1. **Clone and install**:
    ```bash
-   git clone https://github.com/your-username/paperRead.git
+   git clone https://github.com/otis-XJY/paperRead.git
    cd paperRead
    pip install -r requirements.txt
    ```

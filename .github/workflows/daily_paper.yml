@@ -42,6 +42,9 @@ jobs:
           ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
           WXWORK_WEBHOOK_URL: ${{ secrets.WXWORK_WEBHOOK_URL }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_WIKI_ROOT_NODE_TOKEN: ${{ secrets.FEISHU_WIKI_ROOT_NODE_TOKEN }}
           ENABLE_NOTIFICATION: "1"
           PYTHONUNBUFFERED: "1"
         run: python -u main.py

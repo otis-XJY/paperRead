@@ -21,7 +21,7 @@ This guide covers different deployment options for Zotero AI Daily Papers.
 
 1. Clone the repository
 ```bash
-git clone https://github.com/your-username/paperRead.git
+git clone https://github.com/otis-XJY/paperRead.git
 cd paperRead
 ```
 
@@ -176,7 +176,7 @@ ssh user@your-server.com
 2. Clone repository
 ```bash
 cd /opt
-git clone https://github.com/your-username/paperRead.git
+git clone https://github.com/otis-XJY/paperRead.git
 cd paperRead
 ```
 
@@ -220,7 +220,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=your-username
+User=otis-XJY
 WorkingDirectory=/opt/paperRead
 Environment="PATH=/opt/paperRead/venv/bin"
 ExecStart=/opt/paperRead/venv/bin/python main.py

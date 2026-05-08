@@ -46,5 +46,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/your-username/paperRead/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/your-username/paperRead/releases/tag/v1.0.0
+[Unreleased]: https://github.com/otis-XJY/paperRead/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/otis-XJY/paperRead/releases/tag/v1.0.0

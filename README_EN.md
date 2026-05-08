@@ -38,12 +38,19 @@
 - Generate HTML-formatted structured notes
 - Support tag classification and priority marking
 - Generate accessible Zotero links
+- **Auto-download recommended paper PDFs and attach to Zotero items**
 
 ### 📱 Multi-Platform Notifications
 - Support Feishu bot notifications
 - Support WeChat Work bot notifications
 - Real-time workflow status updates
 - Individual detailed analysis for each paper
+
+### 📝 Feishu Wiki Sync
+- Automatically mirror Zotero collection structure to Feishu Wiki
+- Create a dedicated Feishu document for each recommended paper
+- Structured note sync: recommendation, methodology, core concepts, critical review
+- Node caching to avoid duplicate creation
 
 ### 🔄 Incremental Updates
 - Only fetch new papers, saving time and resources
@@ -116,7 +123,7 @@ The proposed method in this paper is innovative, but its performance in complex 
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/your-username/paperRead.git
+git clone https://github.com/otis-XJY/paperRead.git
 cd paperRead
 pip install -r requirements.txt
 ```
@@ -134,6 +141,11 @@ MODELSCOPE_API_KEY=your_modelscope_api_key  # https://modelscope.cn/
 # Optional (for notifications)
 FEISHU_WEBHOOK_URL=your_feishu_bot_webhook_url
 WXWORK_WEBHOOK_URL=your_wechat_work_bot_webhook_url
+
+# Optional (Feishu Wiki sync)
+FEISHU_APP_ID=your_feishu_app_id
+FEISHU_APP_SECRET=your_feishu_app_secret
+FEISHU_WIKI_ROOT_NODE_TOKEN=target_wiki_node_token
 
 # Optional configuration
 ENABLE_NOTIFICATION=1  # Enable notifications (1: enable, 0: disable)
@@ -285,6 +297,9 @@ Configure GitHub Actions for daily automatic runs:
    - `ZOTERO_API_KEY`
    - `MODELSCOPE_API_KEY`
    - `FEISHU_WEBHOOK_URL` (optional)
+   - `FEISHU_APP_ID` (optional, for Feishu Wiki)
+   - `FEISHU_APP_SECRET` (optional, for Feishu Wiki)
+   - `FEISHU_WIKI_ROOT_NODE_TOKEN` (optional, for Feishu Wiki)
 3. **Enable Actions workflow**
 
 See [`.github/workflows/daily.yml`](./.github/workflows/daily.yml) for details
@@ -435,14 +450,16 @@ paperRead/
 ├── main.py                      # Main program
 ├── zotero_indexer.py            # Zotero index generator
 ├── notifier.py                  # Notification module
+├── feishu_wiki.py               # Feishu Wiki mirror client
 ├── requirements.txt             # Python dependencies
 ├── README.md                    # Project documentation (Chinese)
 ├── README_EN.md                 # Project documentation (English)
 ├── LICENSE                      # MIT License
+├── .env.example                 # Environment variable template
 ├── .github/
-│   ├── workflows/
-│   │   └── daily.yml            # GitHub Actions configuration
-│   └── ISSUE_TEMPLATE/          # Issue templates
+│   └── workflows/
+│       ├── daily.yml            # GitHub Actions daily fetch
+│       └── daily_paper.yml      # GitHub Actions paper analysis
 ├── state.json                   # Run state (auto-generated)
 ├── history.json                 # Paper history (auto-generated)
 └── knowledge_base.json          # Knowledge base index (generated on first run)
@@ -477,6 +494,26 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 ---
 
+## 📋 Changelog
+
+### v2.0.0 (2026-05-08)
+- **New**: Auto-download recommended paper PDFs and attach to Zotero items
+- **New**: Feishu Wiki mirror — auto-sync paper notes to Feishu Wiki
+  - Mirror Zotero collection structure (DailyPapers → categories)
+  - Create a dedicated Feishu document for each recommended paper
+  - Node caching to avoid duplicate creation
+- **Added**: `feishu_wiki.py` — Feishu Open API client
+- **Improved**: GitHub Actions support for Feishu Wiki credentials
+
+### v1.0.0
+- Initial release
+- arXiv paper fetching with two-stage LLM analysis
+- Zotero auto-archiving with structured notes
+- Feishu/WeChat Work notifications
+- GitHub Actions automation
+
+---
+
 ## ⭐ Acknowledgments
 
 Thanks to these open source projects:
@@ -490,7 +527,6 @@ Thanks to these open source projects:
 ## 📧 Contact
 
 - Submit [Issue](../../issues)
-- Email: your-email@example.com
 
 ---
 

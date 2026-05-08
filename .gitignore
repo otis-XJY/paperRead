@@ -47,3 +47,5 @@ build/
 # Temporary files
 *.tmp
 *.bak
+tmp_pdfs/
+feishu_wiki_node_cache.json

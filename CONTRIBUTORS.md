@@ -4,7 +4,7 @@ Thank you to all the people who have contributed to this project!
 
 ## Core Maintainers
 
-- **[Your Name](https://github.com/your-username)** - Project creator and maintainer
+- **[Your Name](https://github.com/otis-XJY)** - Project creator and maintainer
 
 ## Contributors
 

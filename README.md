@@ -38,12 +38,19 @@
 - 生成 HTML 格式的结构化笔记
 - 支持标签分类和优先级标记
 - 生成可直接访问的 Zotero 链接
+- **自动下载推荐论文 PDF 并附加到 Zotero 条目**
 
 ### 📱 多平台通知
 - 支持飞书机器人推送
 - 支持企业微信机器人推送
 - 实时通知工作流状态
 - 每篇论文独立推送详细分析
+
+### 📝 飞书知识库同步
+- 自动镜像 Zotero 目录结构到飞书 Wiki
+- 每篇推荐论文创建独立飞书文档
+- 结构化笔记同步：推荐指数、方法论、核心术语、锐评等
+- 支持节点缓存，避免重复创建
 
 ### 🔄 增量更新
 - 只抓取新论文，节省时间和资源
@@ -116,7 +123,7 @@
 克隆仓库并安装依赖：
 
 ```bash
-git clone https://github.com/your-username/paperRead.git
+git clone https://github.com/otis-XJY/paperRead.git
 cd paperRead
 pip install -r requirements.txt
 ```
@@ -134,6 +141,11 @@ MODELSCOPE_API_KEY=你的ModelScope_API_Key  # https://modelscope.cn/
 # 可选项（用于消息推送）
 FEISHU_WEBHOOK_URL=你的飞书机器人Webhook地址
 WXWORK_WEBHOOK_URL=你的企业微信机器人Webhook地址
+
+# 可选项（飞书知识库同步）
+FEISHU_APP_ID=你的飞书应用ID
+FEISHU_APP_SECRET=你的飞书应用密钥
+FEISHU_WIKI_ROOT_NODE_TOKEN=目标Wiki节点Token
 
 # 可选配置
 ENABLE_NOTIFICATION=1  # 启用通知（1:启用, 0:禁用）
@@ -285,6 +297,9 @@ DEBUG_PHASE_ONE=1 python main.py
    - `ZOTERO_API_KEY`
    - `MODELSCOPE_API_KEY`
    - `FEISHU_WEBHOOK_URL` (可选)
+   - `FEISHU_APP_ID` (可选，飞书知识库)
+   - `FEISHU_APP_SECRET` (可选，飞书知识库)
+   - `FEISHU_WIKI_ROOT_NODE_TOKEN` (可选，飞书知识库)
 3. **启用 Actions 工作流**
 
 详见 [`.github/workflows/daily.yml`](./.github/workflows/daily.yml)
@@ -435,14 +450,16 @@ paperRead/
 ├── main.py                      # 主程序
 ├── zotero_indexer.py            # Zotero 索引生成器
 ├── notifier.py                  # 消息推送模块
+├── feishu_wiki.py               # 飞书知识库镜像客户端
 ├── requirements.txt             # Python 依赖
 ├── README.md                    # 项目说明（中文）
 ├── README_EN.md                 # 项目说明（英文）
 ├── LICENSE                      # MIT 许可证
+├── .env.example                 # 环境变量模板
 ├── .github/
-│   ├── workflows/
-│   │   └── daily.yml            # GitHub Actions 配置
-│   └── ISSUE_TEMPLATE/          # Issue 模板
+│   └── workflows/
+│       ├── daily.yml            # GitHub Actions 日常抓取
+│       └── daily_paper.yml      # GitHub Actions 论文分析
 ├── state.json                   # 运行状态（自动生成）
 ├── history.json                 # 论文历史（自动生成）
 └── knowledge_base.json          # 知识库索引（首次运行生成）
@@ -477,6 +494,26 @@ paperRead/
 
 ---
 
+## 📋 更新日志
+
+### v2.0.0 (2026-05-08)
+- **新功能**：自动下载推荐论文 PDF 并附加到 Zotero 条目
+- **新功能**：飞书知识库镜像 — 自动同步论文笔记到飞书 Wiki
+  - 镜像 Zotero 目录结构（DailyPapers → 各分类）
+  - 每篇推荐论文创建独立飞书文档
+  - 支持节点缓存，避免重复创建
+- **改进**：新增 `feishu_wiki.py` 飞书 Open API 客户端
+- **改进**：GitHub Actions 支持飞书知识库凭证配置
+
+### v1.0.0
+- 初始版本
+- arXiv 论文自动抓取与两阶段 LLM 分析
+- Zotero 自动归档与结构化笔记生成
+- 飞书/企业微信消息推送
+- GitHub Actions 自动化工作流
+
+---
+
 ## ⭐ 致谢
 
 感谢以下开源项目：
@@ -490,7 +527,6 @@ paperRead/
 ## 📧 联系方式
 
 - 提交 [Issue](../../issues)
-- 发送邮件：your-email@example.com
 
 ---
 

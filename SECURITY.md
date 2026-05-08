@@ -13,7 +13,7 @@ If you discover a security vulnerability, please report it responsibly.
 ### How to Report
 
 1. **Do not** create a public issue
-2. Send an email to: your-email@example.com
+2. Submit a private [Security Advisory](../../security/advisories/new)
 3. Include:
    - Description of the vulnerability
    - Steps to reproduce
