@@ -367,10 +367,10 @@ class NotificationManager:
                 }
             ])
         
-        # arXiv 链接
+        # 链接区域
         arxiv_id = paper.get('arxiv_id')
         if arxiv_id:
-            sections.append([
+            link_row = [
                 {
                     "tag": "a",
                     "text": "📄 arXiv 论文",
@@ -385,11 +385,13 @@ class NotificationManager:
                     "text": "📚 Zotero 条目",
                     "href": paper.get('zotero_link', '')
                 },
-                {
-                    "tag": "text",
-                    "text": "\n\n"
-                }
-            ])
+            ]
+            feishu_wiki_url = paper.get('feishu_wiki_url', '')
+            if feishu_wiki_url:
+                link_row.append({"tag": "text", "text": " | "})
+                link_row.append({"tag": "a", "text": "📝 飞书知识库", "href": feishu_wiki_url})
+            link_row.append({"tag": "text", "text": "\n\n"})
+            sections.append(link_row)
         
         # 方法论
         methodology = paper.get('methodology', '')

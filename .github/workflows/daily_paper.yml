@@ -45,6 +45,7 @@ jobs:
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           FEISHU_WIKI_ROOT_NODE_TOKEN: ${{ secrets.FEISHU_WIKI_ROOT_NODE_TOKEN }}
+          FEISHU_WIKI_DAILY_FOLDER_NAME: ${{ secrets.FEISHU_WIKI_DAILY_FOLDER_NAME || 'PaperRead' }}
           ENABLE_NOTIFICATION: "1"
           PYTHONUNBUFFERED: "1"
         run: python -u main.py
@@ -53,7 +54,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          touch history.json knowledge_base.json state.json
-          git add history.json knowledge_base.json state.json
+          touch history.json knowledge_base.json state.json feishu_wiki_node_cache.json
+          git add history.json knowledge_base.json state.json feishu_wiki_node_cache.json
           git commit -m "chore: update history, knowledge base and state" || echo "No changes to commit"
           git push || echo "No changes to push"

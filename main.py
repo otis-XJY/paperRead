@@ -87,6 +87,7 @@ ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID")
 FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET")
 FEISHU_WIKI_ROOT_NODE_TOKEN = os.getenv("FEISHU_WIKI_ROOT_NODE_TOKEN")
+FEISHU_WIKI_DAILY_FOLDER_NAME = os.getenv("FEISHU_WIKI_DAILY_FOLDER_NAME", "DailyPapers")
 ENABLE_FEISHU_WIKI = bool(FEISHU_APP_ID and FEISHU_APP_SECRET and FEISHU_WIKI_ROOT_NODE_TOKEN)
 feishu_wiki_client = None
 if ENABLE_FEISHU_WIKI:
@@ -94,6 +95,7 @@ if ENABLE_FEISHU_WIKI:
         app_id=FEISHU_APP_ID,
         app_secret=FEISHU_APP_SECRET,
         root_node_token=FEISHU_WIKI_ROOT_NODE_TOKEN,
+        daily_folder_name=FEISHU_WIKI_DAILY_FOLDER_NAME,
     )
 
 
@@ -470,76 +472,6 @@ async def fetch_arxiv_single(session, url, max_retries=3, base_delay=6.0):
     return ""
 
 
-async def download_arxiv_pdf(session, paper_id, tmp_dir="tmp_pdfs"):
-    """下载 arXiv 论文 PDF 到临时目录，返回文件路径或空字符串"""
-    import re as _re
-    safe_id = _re.sub(r'[^\w\-.]', '_', paper_id)
-    os.makedirs(tmp_dir, exist_ok=True)
-    filepath = os.path.join(tmp_dir, f"{safe_id}.pdf")
-    url = f"https://arxiv.org/pdf/{paper_id}"
-
-    await asyncio.sleep(2.0)
-    timeout = aiohttp.ClientTimeout(total=120, connect=15)
-    max_retries = 3
-    base_delay = 6.0
-
-    for attempt in range(max_retries):
-        try:
-            if attempt > 0:
-                delay = base_delay * (2 ** (attempt - 1))
-                print(f"⏳ PDF下载延迟 {delay:.1f}s 后重试...")
-                await asyncio.sleep(delay)
-
-            async with session.get(url, timeout=timeout) as resp:
-                if resp.status == 429:
-                    wait_time = 7 + (attempt * 3)
-                    print(f"⚠️ PDF下载遇到速率限制，等待 {wait_time}s...")
-                    await asyncio.sleep(wait_time)
-                    continue
-                elif resp.status != 200:
-                    raise RuntimeError(f"HTTP {resp.status}")
-
-                with open(filepath, 'wb') as f:
-                    async for chunk in resp.content.iter_chunked(8192):
-                        f.write(chunk)
-                return filepath
-        except Exception as e:
-            if attempt == max_retries - 1:
-                print(f"❌ PDF下载失败: {paper_id}，原因: {e}")
-                return ""
-            delay = 5.0 * (attempt + 1)
-            print(f"⏳ PDF下载错误延迟 {delay:.1f}s 后重试...")
-            await asyncio.sleep(delay)
-
-    return ""
-
-
-def attach_pdf_to_zotero_item(item_key, pdf_path, paper_id):
-    """将下载的 PDF 作为附件上传到 Zotero 条目"""
-    att = zot.item_template('attachment', linkMode='imported_url')
-    att['parentItem'] = item_key
-    att['contentType'] = 'application/pdf'
-    att['title'] = 'Full Text PDF'
-    att['filename'] = f'{paper_id}.pdf'
-    resp = retry_sync(lambda: zot.create_items([att]), "创建PDF附件")
-    att_info = extract_created_item_meta(resp)
-    if not att_info:
-        print(f"⚠️ PDF附件条目创建失败: {paper_id}")
-        return False
-    att_key = att_info['item_key']
-    retry_sync(lambda: zot.upload(att_key, pdf_path), "上传PDF文件")
-    return True
-
-
-def cleanup_tmp_file(filepath):
-    """安全删除临时文件"""
-    try:
-        if filepath and os.path.exists(filepath):
-            os.remove(filepath)
-    except OSError:
-        pass
-
-
 async def fetch_arxiv(session, keywords, state):
     all_papers = {}
     max_published_date = state["last_date"]
@@ -839,19 +771,8 @@ async def _main_impl():
                         except Exception as _note_err:
                             print(f"⚠️ 笔记创建失败，但条目已入库: {p['title'][:40]}... 原因: {_note_err}")
                         print("✅ 首次运行已直存至 Zotero")
-                        # PDF 附件
-                        rec = first_run_analysis.get("recommendation", "值得看")
-                        if rec in ("必读", "值得看"):
-                            pdf_path = await download_arxiv_pdf(session, p['id'])
-                            if pdf_path:
-                                try:
-                                    attach_pdf_to_zotero_item(item_key, pdf_path, p['id'])
-                                    print(f"📎 PDF已附加: {p['id']}.pdf")
-                                except Exception as _pdf_err:
-                                    print(f"⚠️ PDF附加失败: {p['title'][:40]}... 原因: {_pdf_err}")
-                                finally:
-                                    cleanup_tmp_file(pdf_path)
                         # 飞书知识库同步
+                        doc_url = None
                         if feishu_wiki_client:
                             try:
                                 doc_url = feishu_wiki_client.mirror_paper_to_wiki(cat_name, {
@@ -886,6 +807,7 @@ async def _main_impl():
                             "sharp_review": first_run_analysis.get('sharp_review', ''),
                             "summary": first_run_analysis.get('summary', ''),
                             "zotero_link": web_item_link or f"https://www.zotero.org/users/{ZOTERO_USER_ID}/items/{item_key}",
+                            "feishu_wiki_url": doc_url or "",
                         })
                         
                         if web_item_link:
@@ -982,19 +904,8 @@ async def _main_impl():
                     except Exception as _note_err:
                         print(f"⚠️ 笔记创建失败，但条目已入库: {p['title'][:40]}... 原因: {_note_err}")
                     print(f"✅ 成功同步至 Zotero")
-                    # PDF 附件
-                    rec = analysis.get("recommendation", "值得看")
-                    if rec in ("必读", "值得看"):
-                        pdf_path = await download_arxiv_pdf(session, p['id'])
-                        if pdf_path:
-                            try:
-                                attach_pdf_to_zotero_item(item_key, pdf_path, p['id'])
-                                print(f"📎 PDF已附加: {p['id']}.pdf")
-                            except Exception as _pdf_err:
-                                print(f"⚠️ PDF附加失败: {p['title'][:40]}... 原因: {_pdf_err}")
-                            finally:
-                                cleanup_tmp_file(pdf_path)
                     # 飞书知识库同步
+                    doc_url = None
                     if feishu_wiki_client:
                         try:
                             doc_url = feishu_wiki_client.mirror_paper_to_wiki(cat_name, {
@@ -1029,6 +940,7 @@ async def _main_impl():
                         "sharp_review": analysis.get('sharp_review', ''),
                         "comparison": analysis.get('comparison', ''),
                         "zotero_link": web_item_link or f"https://www.zotero.org/users/{ZOTERO_USER_ID}/items/{item_key}",
+                        "feishu_wiki_url": doc_url or "",
                     })
                     
                     if web_item_link:
@@ -1066,13 +978,6 @@ async def _main_impl():
             else:
                 print("📤 发送无新论文通知...")
                 notifier.send_no_papers_notification(state["is_first_run"])
-
-    # 清理临时 PDF 目录
-    try:
-        if os.path.exists("tmp_pdfs") and not os.listdir("tmp_pdfs"):
-            os.rmdir("tmp_pdfs")
-    except OSError:
-        pass
 
 if __name__ == "__main__":
     asyncio.run(main())
