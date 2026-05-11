@@ -32,6 +32,12 @@ CONFIG = {
          ['ti:"Vision-Language Navigation"', 
           '(abs:UAV AND abs:Navigation)'], 
           "desc": "无人机视觉语言导航、空间感知及指令执行。"},
+        "multi_VLN": 
+        {"keywords":
+         ['ti:"Vision-Language Navigation"', 
+          '(abs:multi AND abs:Navigation)',
+          '(all:collaborative AND all:VLN)'], 
+          "desc": "多智能体VLN，协作VLN。"},
         "MultiAgent_Game_Theory": 
         {"keywords":
          ['ti:"Game Theory" AND abs:Multi-agent', 
