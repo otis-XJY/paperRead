@@ -250,13 +250,13 @@
   "MARL": [
     {
       "title": "Coordination Matters: Evaluation of Cooperative Multi-Agent Reinforcement Learning",
-      "short_review": "再次证实单纯基于回报的评估无法揭示组合场景下的协同失效机制，但作为评估基准仍缺乏具体训练优化手段，需配合 Graph-SND 等算法共同使用才能解决动态对抗问题。",
-      "full_note": "Coordination Matters: Evaluation of Cooperative Multi-Agent Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Maria Ana Cardei, Matthew Landers, Afsaneh Doryab 🕒 arXiv上传时间： 2026-05-07 16:50:53 UTC 🔗 触发的灵感来源： Coordination Matters: Evaluation of Cooperative Multi-Agent Reinforcement Learning 🔄 深度差量对比： 与历史笔记确认为同一研究成果的原始摘要版本，内容完全同源，验证了过往关于协调性评估必要性的论断，但无训练干预策略的新增信息。 🧠 核心术语库 [[Coordination-aware Evaluation]] [[STAT Testbed]] [[Assignment Pressure]] [[Process-level Diagnostics]] 🔬 方法论简析 基于 STAT 空间任务分配测试床，固定观测规则下系统变化规模，量化冗余分配、任务效率等过程级指标，评估六种值基 MARL 方法的表现。 💬 锐评 再次证实单纯基于回报的评估无法揭示组合场景下的协同失效机制，但作为评估基准仍缺乏具体训练优化手段，需配合 Graph-SND 等算法共同使用才能解决动态对抗问题。"
+      "short_review": "尽管建立了过程诊断范式以弥补单一回报指标的盲区，但未补充训练干预策略的缺陷与往期笔记一致，解决动态对抗仍需结合 Graph-SND 等专用算法。",
+      "full_note": "Coordination Matters: Evaluation of Cooperative Multi-Agent Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Maria Ana Cardei, Matthew Landers, Afsaneh Doryab 🕒 arXiv上传时间： 2026-05-07 16:50:53 UTC 🔗 触发的灵感来源： Coordination Matters: Evaluation of Cooperative Multi-Agent Reinforcement Learning, Coopetition-Gym v1: A Formally Grounded Platform for Mixed-Motive Multi-Agent Reinforcement Learning under Strategic Coopetition 🔄 深度差量对比： 此篇为既往笔记中《Coordination Matters》的原始文献来源，实证数据与结论高度同源且互补，但并未增加笔记中提到的训练策略改进方案。 🧠 核心术语库 [[Coordination-aware Evaluation]] [[Process-level Diagnostics]] [[Assignment Pressure]] 🔬 方法论简析 构建 STAT 空间任务分配测试床，在固定观测与规则约束下，量化冗余分配与任务效率等过程级指标，通过六种值基算法的性能差异反证协调性评估必要性。 💬 锐评 尽管建立了过程诊断范式以弥补单一回报指标的盲区，但未补充训练干预策略的缺陷与往期笔记一致，解决动态对抗仍需结合 Graph-SND 等专用算法。"
     },
     {
       "title": "Cross-Modal Navigation with Multi-Agent Reinforcement Learning",
-      "short_review": "证实了多智能体提升导航效率，但集中式评论家仍是分布式通信瓶颈；相比 VA-FastNavi，其对动态语义指令的鲁棒性及实机迁移能力尚未充分解决",
-      "full_note": "Cross-Modal Navigation with Multi-Agent Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Shuo Liu, Xinzichen Li, Christopher Amato 🕒 arXiv上传时间： 2026-05-07 17:20:34 UTC 🔗 触发的灵感来源： Cross-Modal Navigation with Multi-Agent Reinforcement Learning, VA-FastNavi-MARL: Real-Time Robot Control with Multimedia-Driven Meta-Reinforcement Learning 🔄 深度差量对比： 与笔记中 Shuo Liu 等人的 CRONA 原稿高度一致，今日摘要进一步明确了异构/同质协作的具体任务边界，验证了核心方法论的有效性 🧠 核心术语库 [[CRONA]] [[模态专用智能体]] [[集中式多模态评论家]] [[视觉 - 声学导航]] [[异构协作]] 🔬 方法论简析 提出 CRONA 框架，利用模态专用轻量级智能体并行处理输入，结合控制相关辅助信念与全局状态集中式评论家优化决策 💬 锐评 证实了多智能体提升导航效率，但集中式评论家仍是分布式通信瓶颈；相比 VA-FastNavi，其对动态语义指令的鲁棒性及实机迁移能力尚未充分解决"
+      "short_review": "重申集中式评论家仍是分布式部署的潜在瓶颈；在长距离复杂环境下对多模态感知依赖增强，但相比 VA-FastNavi 在底层物理动力学建模上仍显不足；实机迁移能力未获充分验证。",
+      "full_note": "Cross-Modal Navigation with Multi-Agent Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Shuo Liu, Xinzichen Li, Christopher Amato 🕒 arXiv上传时间： 2026-05-07 17:20:34 UTC 🔗 触发的灵感来源： Cross-Modal Navigation with Multi-Agent Reinforcement Learning, VA-FastNavi-MARL: Real-Time Robot Control with Multimedia-Driven Meta-Reinforcement Learning 🔄 深度差量对比： 内容与笔记中 Liu 等关于 CRONA 的记录完全一致，补充了同构/异构协作边界；相较于 VA-FastNavi，更侧重视觉 - 声学互补的导航效率，而后者侧重于多媒体指令的元学习迁移。 🧠 核心术语库 [[CRONA]] [[模态专用智能体]] [[集中式多模态评论家]] [[同质/异构协作]] [[视觉 - 声学导航]] 🔬 方法论简析 采用模态专用轻量级智能体并行处理输入，引入控制相关的辅助信念（auxiliary beliefs），结合全局状态的集中式多模态评论家（centralized multi-modal critic）优化决策。 💬 锐评 重申集中式评论家仍是分布式部署的潜在瓶颈；在长距离复杂环境下对多模态感知依赖增强，但相比 VA-FastNavi 在底层物理动力学建模上仍显不足；实机迁移能力未获充分验证。"
     },
     {
       "title": "Structural Equivalence and Learning Dynamics in Delayed MARL",
@@ -447,16 +447,6 @@
       "title": "MARL-GPT: Foundation Model for Multi-Agent Reinforcement Learning",
       "short_review": "虽以数据规模突破通用性瓶颈，但未回应‘稳定配方’中关于非线性价值分解的底层不稳定性风险；且相较于‘STAIRS-Former'的针对性结构创新，其巨大的算力开销可能牺牲小样本场景下的效率与可控性。",
       "full_note": "MARL-GPT: Foundation Model for Multi-Agent Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Maria Nesterova, Mikhail Kolosov, Anton Andreychuk, Egor Cherepanov, Oleg Bulichev, Alexey Kovalev, Konstantin Yakovlev, Aleksandr Panov, Alexey Skrynnik 🕒 arXiv上传时间： 2026-04-07 14:40:01 UTC 🔗 触发的灵感来源： STAIRS-Former: Spatio-Temporal Attention with Interleaved Recursive Structure Transformer for Offline Multi-task Multi-agent Reinforcement Learning, A Recipe for Stable Offline Multi-agent Reinforcement Learning 🔄 深度差量对比： 与‘稳定配方’聚焦算法稳定性修正及‘STAIRS-Former’专注时空架构优化不同，本文主张通过海量离线数据进行基础模型预训练，以统一架构替代多任务的专项算法适配。 🧠 核心术语库 [[[[MARL Foundation Model]]]] [[[[Offline Pre-training]]]] [[[[Unified Transformer Encoder]]]] [[[[Cross-Domain Generalization]]]] 🔬 方法论简析 提出 MARL-GPT 基础模型，采用统一的 Transformer 观测编码器，在 SMACv2、GRF 等环境数亿步专家轨迹上进行大规模离线强化学习预训练，实现跨域零微调泛化。 💬 锐评 虽以数据规模突破通用性瓶颈，但未回应‘稳定配方’中关于非线性价值分解的底层不稳定性风险；且相较于‘STAIRS-Former'的针对性结构创新，其巨大的算力开销可能牺牲小样本场景下的效率与可控性。"
-    },
-    {
-      "title": "VA-FastNavi-MARL: Real-Time Robot Control with Multimedia-Driven Meta-Reinforcement Learning",
-      "short_review": "该工作在提升非结构化指令理解的实时性与泛化性方面具有显著优势，弥补了纯物理状态驱动 MARL 在语义理解上的不足；然而其对底层物理动力学的显式建模弱于 SoftGM，且在非理想多模态感知条件下的仿真到现实迁移能力仍需进一步验证。",
-      "full_note": "VA-FastNavi-MARL: Real-Time Robot Control with Multimedia-Driven Meta-Reinforcement Learning 🔥 推荐指数： 值得看 👤 作者： Yang Zhang, Shengxi Jing, Fengxiang Wang, Yuan Feng, Hong Wang 🕒 arXiv上传时间： 2026-04-05 07:05:49 UTC 🔗 触发的灵感来源： Octopus-inspired Distributed Control for Soft Robotic Arms: A Graph Neural Network-Based Attention Policy with Environmental Interaction, Learning to Assist: Physics-Grounded Human-Human Control via Multi-Agent Reinforcement Learning 🔄 深度差量对比： 区别于过往笔记中 SoftGM 基于图注意力的物理接触协同及 Learning to Assist 基于力交互的辅助模仿，本文聚焦于多媒体指令驱动的元强化学习以适应实时导航控制。 🧠 核心术语库 [[元强化学习]] [[多媒体指令融合]] [[潜在表征对齐]] [[实时导航控制]] 🔬 方法论简析 通过异步音视频对齐生成统一潜在表征，利用元强化学习将自然语言指令映射为目标分布，从而实现跨未见任务的快速迁移与低延迟推理。 💬 锐评 该工作在提升非结构化指令理解的实时性与泛化性方面具有显著优势，弥补了纯物理状态驱动 MARL 在语义理解上的不足；然而其对底层物理动力学的显式建模弱于 SoftGM，且在非理想多模态感知条件下的仿真到现实迁移能力仍需进一步验证。"
-    },
-    {
-      "title": "Decomposing Communication Gain and Delay Cost Under Cross-Timestep Delays in Cooperative Multi-Agent Reinforcement Learning",
-      "short_review": "理论上的价值损失上界提供了新的分析视角，但未充分评估预测模块在非平稳环境下的累积误差对训练稳定性的影响；相较于笔记二对物理链路的模拟，本文在仿真环境中尚未包含真实的网络延迟抖动模型，实际部署中门控决策的开销可能抵消收益。",
-      "full_note": "Decomposing Communication Gain and Delay Cost Under Cross-Timestep Delays in Cooperative Multi-Agent Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Zihong Gao, Hongjian Liang, Lei Hao, Liangjun Ke 🕒 arXiv上传时间： 2026-04-04 16:14:41 UTC 🔗 触发的灵感来源： Communication-Aware Multi-Agent Reinforcement Learning for Decentralized Cooperative UAV Deployment, Interference-Aware K-Step Reachable Communication in Multi-Agent Reinforcement Learning, Multi-Agent Reinforcement Learning Counteracts Delayed CSI in Multi-Satellite Systems 🔄 深度差量对比： 相较于笔记三的卫星场景仅修正信道状态信息的时延，本文直面跨步长通信导致的信息陈旧问题并定义增益 - 成本分解；区别于笔记一的物理层拓扑约束，本文从决策层面量化消息时效性而非连通性。 🧠 核心术语库 [[DeComm-POMG]] [[CGDC Metric]] [[Value-Loss Bound]] [[Future Observation Prediction]] [[CGDC-Guided Attention]] 🔬 方法论简析 提出 DeComm-POMG 形式化跨步延迟问题，构建 CGDC 指标与价值损失界，通过预测未来观测及门控注意力机制筛选高价值消息。 💬 锐评 理论上的价值损失上界提供了新的分析视角，但未充分评估预测模块在非平稳环境下的累积误差对训练稳定性的影响；相较于笔记二对物理链路的模拟，本文在仿真环境中尚未包含真实的网络延迟抖动模型，实际部署中门控决策的开销可能抵消收益。"
     }
   ],
   "MultiAgent_Game_Theory": [
@@ -613,14 +603,14 @@
   ],
   "UAV_VLN": [
     {
+      "title": "NavOne: One-Step Global Planning for Vision-Language Navigation on Top-Down Maps",
+      "short_review": "再次印证其在已知静态环境下的极致效率与误差消除优势，但仍未解决旧笔记指出的对高精度预建地图的强依赖问题，且在复杂城市 UAV 场景下缺乏如 HaltNav 般的实时反应式避障能力，泛化性存疑。",
+      "full_note": "NavOne: One-Step Global Planning for Vision-Language Navigation on Top-Down Maps 🔥 推荐指数： 必读 👤 作者： Dijia Zhan, Jinyi Li, Chenxi Zheng, Shaoyu Huang, Yong Li, Jie Tang, Xuemiao Xu 🕒 arXiv上传时间： 2026-05-07 14:16:58 UTC 🔗 触发的灵感来源： NavOne: One-Step Global Planning for Vision-Language Navigation on Top-Down Maps 🔄 深度差量对比： 新论文内容即为旧笔记中 NavOne 的原文摘要，技术细节（TD-VLN 范式、R2R-TopDown 数据集、注意力机制）与既有记录完全一致，进一步确认了 8x/80x 加速比及 SOTA 性能。 🧠 核心术语库 [[TD-VLN]] [[One-Step Global Planning]] [[Dense Path Probability]] [[Multi-modal Map Fusion]] 🔬 方法论简析 基于预建俯视地图将导航重构为单步全局规划问题；通过 Top-Down Map Fuser 融合多模态地图，并在一次端到端前向传播中直接预测稠密路径概率，利用改进的空间感知深度混合注意力残差机制增强空间理解。 💬 锐评 再次印证其在已知静态环境下的极致效率与误差消除优势，但仍未解决旧笔记指出的对高精度预建地图的强依赖问题，且在复杂城市 UAV 场景下缺乏如 HaltNav 般的实时反应式避障能力，泛化性存疑。"
+    },
+    {
       "title": "Does Peer Observation Help? Vision-Sharing Collaboration for Vision-Language Navigation",
       "short_review": "",
       "full_note": ""
-    },
-    {
-      "title": "NavOne: One-Step Global Planning for Vision-Language Navigation on Top-Down Maps",
-      "short_review": "该工作将导航从时序决策简化为静态规划问题，显著提升了计算效率（80x）并避免误差累积，对无人机长时任务极具吸引力；但过度依赖高精度预建顶层地图限制了其在未知或动态环境中的泛化能力，且缺乏 HaltNav 式的实时反应机制，在复杂城市 UAV 场景下可能存在‘计划好却飞不过去’的风险。",
-      "full_note": "NavOne: One-Step Global Planning for Vision-Language Navigation on Top-Down Maps 🔥 推荐指数： 必读 👤 作者： Dijia Zhan, Jinyi Li, Chenxi Zheng, Shaoyu Huang, Yong Li, Jie Tang, Xuemiao Xu 🕒 arXiv上传时间： 2026-05-07 14:16:58 UTC 🔗 触发的灵感来源： FloorPlan-VLN: A New Paradigm for Floor Plan Guided Vision-Language Navigation, HaltNav: Reactive Visual Halting over Lightweight Topological Priors for Robust Vision-Language Navigation, Volumetric Environment Representation for Vision-Language Navigation 🔄 深度差量对比： 相较于 FloorPlan-VLN 依赖结构化先验进行图文对齐及 VER 的在线体素化增量建图，NavOne 彻底重构范式为基于平面图的单步全局规划，实现了效率与精度的平衡；同时相比 HaltNav 的反应式局部规避，NavOne 更强调全局最优路径的一次性预测。 🧠 核心术语库 [[Top-Down VLN]] [[One-Step Global Planning]] [[Dense Path Probability]] [[Multi-modal Map Fusion]] 🔬 方法论简析 提出 Top-Down VLN 框架，通过新构建的 R2R-TopDown 数据集支持，利用 NavOne 统一框架在单次前向传播中直接预测多模态地图上的稠密路径概率，包含 Top-Down Map Fuser 融合模块及改进的空间感知深度混合注意力残差机制。 💬 锐评 该工作将导航从时序决策简化为静态规划问题，显著提升了计算效率（80x）并避免误差累积，对无人机长时任务极具吸引力；但过度依赖高精度预建顶层地图限制了其在未知或动态环境中的泛化能力，且缺乏 HaltNav 式的实时反应机制，在复杂城市 UAV 场景下可能存在‘计划好却飞不过去’的风险。"
     },
     {
       "title": "Openfly: A comprehensive platform for aerial vision-language navigation",
@@ -826,11 +816,6 @@
       "title": "HaltNav: Reactive Visual Halting over Lightweight Topological Priors for Robust Vision-Language Navigation",
       "short_review": "该工作通过拓扑优先策略有效解决了 VER 类方法计算负载过重的问题，但在无人机全自主（GPS 拒止/无地图）场景下的泛化能力存疑；此外 MLLM 推理延迟可能成为边缘端部署瓶颈，需进一步对比 OnFly 中的半在线优化策略以验证其实时性可行性。",
       "full_note": "HaltNav: Reactive Visual Halting over Lightweight Topological Priors for Robust Vision-Language Navigation 🔥 推荐指数： 必读 👤 作者： Pingcong Li, Zihui Yu, Bichi Zhang, Sören Schwertfeger 🕒 arXiv上传时间： 2026-03-13 06:22:35 UTC 🔗 触发的灵感来源： Volumetric Environment Representation for Vision-Language Navigation, Active Test-time Vision-Language Navigation, OnFly: Onboard Zero-Shot Aerial Vision-Language Navigation toward Safety and Efficiency 🔄 深度差量对比： 相比 VER 的重型体素表示和 OnFly 的机载安全架构，HaltNav 摒弃了高算力 3D 度量地图，改用轻量拓扑先验并结合反应式视觉暂停机制处理动态障碍，侧重于环境结构变化的鲁棒性而非单纯的几何精度。 🧠 核心术语库 [[轻量级拓扑先验]] [[反应式视觉暂停]] [[分层导航框架]] [[生成式数据合成]] 🔬 方法论简析 提出分层导航框架，利用轻量化 osmAG 拓扑图提供全局路径约束，结合 MLLM 大脑将全局路线转化为局部指令片段，并引入反应式视觉暂停（RVH）机制检测局部异常、更新拓扑并触发重新规划以生成绕行路径。 💬 锐评 该工作通过拓扑优先策略有效解决了 VER 类方法计算负载过重的问题，但在无人机全自主（GPS 拒止/无地图）场景下的泛化能力存疑；此外 MLLM 推理延迟可能成为边缘端部署瓶颈，需进一步对比 OnFly 中的半在线优化策略以验证其实时性可行性。"
-    },
-    {
-      "title": "Vision-Language Navigation with Random Environmental Mixup",
-      "short_review": "创新性地将数据增强扩展至环境拓扑层面，直接针对未见场景泛化问题；但跨场景拼接的物理合理性和指令生成的逻辑一致性需进一步实证，避免产生违背物理规律的虚拟环境",
-      "full_note": "Vision-Language Navigation with Random Environmental Mixup 🆕 入库阶段： 首次运行（冷启动） 🔥 推荐指数： 必读 📂 分类： UAV_VLN 👤 作者： Chong Liu, Fengda Zhu, Xiaojun Chang, Xiaodan Liang, Zongyuan Ge, Yi-Dong Shen 🕒 arXiv上传时间： 2021-06-15 04:34:26 UTC 🔗 原文： https://arxiv.org/abs/2106.07876v3 🧾 一句话总结： 通过构建跨场景混合环境及对应指令路径，有效缓解 VLN 任务中的场景数据偏差并提升未见环境下的导航鲁棒性 📄 摘要： Vision-language Navigation (VLN) tasks require an agent to navigate step-by-step while perceiving the visual observations and comprehending a natural language instruction. Large data bias, which is caused by the disparity ratio between the small data scale and large navigation space, makes the VLN task challenging. Previous works have proposed various data augmentation methods to reduce data bias. However, these works do not explicitly reduce the data bias across different house scenes. Therefore, the agent would overfit to the seen scenes and achieve poor navigation performance in the unseen scenes. To tackle this problem, we propose the Random Environmental Mixup (REM) method, which generates cross-connected house scenes as augmented data via mixuping environment. Specifically, we first select key viewpoints according to the room connection graph for each scene. Then, we cross-connect the key views of different scenes to construct augmented scenes. Finally, we generate augmented instruction-path pairs in the cross-connected scenes. The experimental results on benchmark datasets demonstrate that our augmentation data via REM help the agent reduce its performance gap between the seen and unseen environment and improve the overall performance, making our model the best existing approach on the standard VLN benchmark. The code have released: https://github.com/LCFractal/VLNREM. 🧠 核心术语库 [[Vision-Language Navigation]] [[数据偏差]] [[随机环境混合]] [[房间连接图]] [[跨场景视图拼接]] 🔬 核心方法简述 提出随机环境混合（REM）方法，首先依据房间连接图选取各场景关键视点，随后将不同场景的关键视图进行跨连接构建增强环境，最后生成对应的增强指令 - 路径对，旨在降低跨场景数据偏差 💬 锐评 创新性地将数据增强扩展至环境拓扑层面，直接针对未见场景泛化问题；但跨场景拼接的物理合理性和指令生成的逻辑一致性需进一步实证，避免产生违背物理规律的虚拟环境 📝 说明： 该条目在冷启动阶段按关键词检索后完成单篇深读分析，后续增量任务将继续进行相关性对比与深度比较。"
     }
   ]
 }
