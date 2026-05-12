@@ -462,9 +462,12 @@ class NotificationManager:
         
         return sections
 
-    def send_no_papers_notification(self, is_first_run: bool) -> Dict[str, bool]:
+    def send_no_papers_notification(self, is_first_run: bool, categories: Dict[str, Any] = None) -> Dict[str, bool]:
         """发送无新论文通知"""
         mode = "首次运行（冷启动）" if is_first_run else "增量更新"
+        category_lines = "\n".join(
+            f"- {name}: {info.get('desc', '')}" for name, info in (categories or {}).items()
+        )
         content = f"""
 📊 Zotero AI Daily Papers 运行报告
 
@@ -473,10 +476,7 @@ class NotificationManager:
 结果: ✅ 暂无新论文
 
 本次扫描了以下分类:
-- UAV_VLN: 无人机视觉语言导航
-- MultiAgent_Game_Theory: 多智能体决策博弈
-- MARL: 多智能体强化学习
-- Humanoid_Manipulation: 人形机器人操作
+{category_lines}
 
 系统运行正常，等待下一篇新论文...
 """

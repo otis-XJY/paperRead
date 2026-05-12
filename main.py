@@ -983,7 +983,7 @@ async def _main_impl():
                 notifier.send_papers_detail(stats, state["is_first_run"])
             else:
                 print("📤 发送无新论文通知...")
-                notifier.send_no_papers_notification(state["is_first_run"])
+                notifier.send_no_papers_notification(state["is_first_run"], CONFIG["categories"])
 
 if __name__ == "__main__":
     asyncio.run(main())
