@@ -249,6 +249,16 @@
   ],
   "MARL": [
     {
+      "title": "Randomness is sometimes necessary for coordination",
+      "short_review": "该工作从理论底层证伪了全参数确定性协同的可行性，但强依赖全局同步随机种子的有效性存疑；相较于《Graph-SND》优化多样性度量计算，《Randomness》优化的是多样性产生的源头，然而掩码机制可能在高维空间切断关键协作信号，且未讨论部分观测下的排名一致性维护成本。",
+      "full_note": "Randomness is sometimes necessary for coordination 🔥 推荐指数： 必读 👤 作者： Rohan Patil, Jai Malegaonkar, Henrik I. Christensen 🕒 arXiv上传时间： 2026-05-07 18:27:15 UTC 🔗 触发的灵感来源： Bridging MARL to SARL: An Order-Independent Multi-Agent Transformer via Latent Consensus, Graph-SND: Sparse Aggregation for Behavioral Diversity in Multi-Agent Reinforcement Learning, Zero Shot Coordination for Sparse Reward Tasks with Diverse Reward Shapings 🔄 深度差量对比： 不同于《Bridging MARL》通过潜在共识向量隐性解决顺序敏感问题，本文直接指出全参数共享下确定性策略存在对称性死锁，需依赖显式结构化随机（而非隐式通信或中心模型）实现角色分化。 🧠 核心术语库 [[参数共享对称性死锁]] [[结构化随机协议]] [[瞬时排名掩码]] [[零样本规模泛化]] 🔬 方法论简析 提出 Diamond Attention 架构，每个智能体每步采样标量随机数以生成瞬时排名，对低排名同伴施加注意力掩码阻断感知干扰，仅保留任务注意力通路，以此在单轮广播中实现协议级结构随机性。 💬 锐评 该工作从理论底层证伪了全参数确定性协同的可行性，但强依赖全局同步随机种子的有效性存疑；相较于《Graph-SND》优化多样性度量计算，《Randomness》优化的是多样性产生的源头，然而掩码机制可能在高维空间切断关键协作信号，且未讨论部分观测下的排名一致性维护成本。"
+    },
+    {
+      "title": "Decentralized Diffusion Policy Learning for Enhanced Exploration in Cooperative Multi-agent Reinforcement Learning",
+      "short_review": "该方法显著提升了连续动作空间下的探索能力，但忽略了扩散模型在线采样带来的计算延迟代价，且在集中式评估基准（如 StarCraft）上的去中心化执行效率尚未量化；相较于笔记中离线论文处理的“数据静止”痛点，本文处理的是“动态交互”，两者互补但需警惕扩散开销在分布式硬件上的适配问题。",
+      "full_note": "Decentralized Diffusion Policy Learning for Enhanced Exploration in Cooperative Multi-agent Reinforcement Learning 🔥 推荐指数： 值得看 👤 作者： Yuyang Zhang, Haldun Balim, Na Li 🕒 arXiv上传时间： 2026-05-08 01:29:42 UTC 🔗 触发的灵感来源： CODA: Coordination via On-Policy Diffusion for Multi-Agent Offline Reinforcement Learning, Value-Guidance MeanFlow for Offline Multi-Agent Reinforcement Learning 🔄 深度差量对比： 区别于笔记中《CODA》与《Value-Guidance MeanFlow》聚焦离线数据中的协同失效与分布偏移，该工作转向在线强化学习场景，利用扩散模型的表达力替代传统高斯策略以解决探索不足，而非基于固定轨迹的数据增强。 🧠 核心术语库 [[Decentralized Diffusion Policy Learning (DDPL)]] [[Importance Sampling Score Matching (ISSM)]] [[Multi-modal Action Distribution]] [[Online Exploration Enhancement]] 🔬 方法论简析 提出去中心化扩散策略学习（DDPL），通过每个智能体的去噪扩散概率模型模拟多模态动作分布，并采用重要性采样分数匹配（ISSM）算法保障在线训练的稳定性与理论收敛性。 💬 锐评 该方法显著提升了连续动作空间下的探索能力，但忽略了扩散模型在线采样带来的计算延迟代价，且在集中式评估基准（如 StarCraft）上的去中心化执行效率尚未量化；相较于笔记中离线论文处理的“数据静止”痛点，本文处理的是“动态交互”，两者互补但需警惕扩散开销在分布式硬件上的适配问题。"
+    },
+    {
       "title": "Coordination Matters: Evaluation of Cooperative Multi-Agent Reinforcement Learning",
       "short_review": "尽管建立了过程诊断范式以弥补单一回报指标的盲区，但未补充训练干预策略的缺陷与往期笔记一致，解决动态对抗仍需结合 Graph-SND 等专用算法。",
       "full_note": "Coordination Matters: Evaluation of Cooperative Multi-Agent Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Maria Ana Cardei, Matthew Landers, Afsaneh Doryab 🕒 arXiv上传时间： 2026-05-07 16:50:53 UTC 🔗 触发的灵感来源： Coordination Matters: Evaluation of Cooperative Multi-Agent Reinforcement Learning, Coopetition-Gym v1: A Formally Grounded Platform for Mixed-Motive Multi-Agent Reinforcement Learning under Strategic Coopetition 🔄 深度差量对比： 此篇为既往笔记中《Coordination Matters》的原始文献来源，实证数据与结论高度同源且互补，但并未增加笔记中提到的训练策略改进方案。 🧠 核心术语库 [[Coordination-aware Evaluation]] [[Process-level Diagnostics]] [[Assignment Pressure]] 🔬 方法论简析 构建 STAT 空间任务分配测试床，在固定观测与规则约束下，量化冗余分配与任务效率等过程级指标，通过六种值基算法的性能差异反证协调性评估必要性。 💬 锐评 尽管建立了过程诊断范式以弥补单一回报指标的盲区，但未补充训练干预策略的缺陷与往期笔记一致，解决动态对抗仍需结合 Graph-SND 等专用算法。"
@@ -437,19 +447,14 @@
       "title": "Breakthrough the Suboptimal Stable Point in Value-Factorization-Based Multi-Agent Reinforcement Learning",
       "short_review": "理论解释力强于现有方法，但 MRVF 的迭代机制可能显著增加训练延迟；未涵盖 LLM 智能体的 Token 经济性约束，需验证是否适配 Agent Q-Mix 所述的高并发协同场景。",
       "full_note": "Breakthrough the Suboptimal Stable Point in Value-Factorization-Based Multi-Agent Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Lesong Tao, Yifei Wang, Haodong Jing, Jingwen Fu, Miao Kang, Shitao Chen, Nanning Zheng 🕒 arXiv上传时间： 2026-04-07 01:05:13 UTC 🔗 触发的灵感来源： Agent Q-Mix: Selecting the Right Action for LLM Multi-Agent Systems through Reinforcement Learning, A Recipe for Stable Offline Multi-agent Reinforcement Learning 🔄 深度差量对比： 该论文修正了 Agent Q-Mix 中 QMIX 架构固有的局部最优问题，相较于《A Recipe...》关注离线数值稳定性，其更侧重在线价值分解的全局收敛理论突破。 🧠 核心术语库 [[价值分解瓶颈]] [[稳定点理论]] [[多轮因子化]] [[收益增量过滤]] 🔬 方法论简析 提出多轮价值分解（MRVF）框架，定义‘稳定点’概念，通过迭代测量正向收益增量使次优动作失稳，引导系统收敛至更优解。 💬 锐评 理论解释力强于现有方法，但 MRVF 的迭代机制可能显著增加训练延迟；未涵盖 LLM 智能体的 Token 经济性约束，需验证是否适配 Agent Q-Mix 所述的高并发协同场景。"
-    },
-    {
-      "title": "Can We Trust a Black-box LLM? LLM Untrustworthy Boundary Detection via Bias-Diffusion and Multi-Agent Reinforcement Learning",
-      "short_review": "创新点在于将 MARL 用于 LLM 安全评估而非训练优化，但相比前作对 Token 成本或事实一致性的明确量化，本文‘偏置’定义的灰度过大导致奖励信号稀疏；且仅定位问题未如《MARCH》提供修正机制，且受限于 KG 拓扑粒度，难以应对动态社会语境下的隐性偏见",
-      "full_note": "Can We Trust a Black-box LLM? LLM Untrustworthy Boundary Detection via Bias-Diffusion and Multi-Agent Reinforcement Learning 🔥 推荐指数： 值得看 👤 作者： Xiaotian Zhou, Di Tang, Xiaofeng Wang, Xiaozhong Liu 🕒 arXiv上传时间： 2026-04-07 06:24:01 UTC 🔗 触发的灵感来源： MARCH: Multi-Agent Reinforced Self-Check for LLM Hallucination, Agent Q-Mix: Selecting the Right Action for LLM Multi-Agent Systems through Reinforcement Learning 🔄 深度差量对比： 《MARCH》与《Agent Q-Mix》侧重 MARL 辅助 LLM 完成具体任务（自校或通信），本文则利用 MARL 进行黑盒探测以绘制模型能力的‘不可信边界’，属于评估范式而非优化范式 🧠 核心术语库 [[[[知识图谱探索]]]] [[[[信任边界定位]]]] [[[[黑盒评估策略]]]] [[[[偏置扩散机制]]]] 🔬 方法论简析 基于维基百科构建知识图谱状态空间，部署多智能体代理通过强化学习搜索特定节点以最大化检测到偏见问题的概率，并引入偏置扩散机制优化查询轨迹 💬 锐评 创新点在于将 MARL 用于 LLM 安全评估而非训练优化，但相比前作对 Token 成本或事实一致性的明确量化，本文‘偏置’定义的灰度过大导致奖励信号稀疏；且仅定位问题未如《MARCH》提供修正机制，且受限于 KG 拓扑粒度，难以应对动态社会语境下的隐性偏见"
-    },
-    {
-      "title": "MARL-GPT: Foundation Model for Multi-Agent Reinforcement Learning",
-      "short_review": "虽以数据规模突破通用性瓶颈，但未回应‘稳定配方’中关于非线性价值分解的底层不稳定性风险；且相较于‘STAIRS-Former'的针对性结构创新，其巨大的算力开销可能牺牲小样本场景下的效率与可控性。",
-      "full_note": "MARL-GPT: Foundation Model for Multi-Agent Reinforcement Learning 🔥 推荐指数： 必读 👤 作者： Maria Nesterova, Mikhail Kolosov, Anton Andreychuk, Egor Cherepanov, Oleg Bulichev, Alexey Kovalev, Konstantin Yakovlev, Aleksandr Panov, Alexey Skrynnik 🕒 arXiv上传时间： 2026-04-07 14:40:01 UTC 🔗 触发的灵感来源： STAIRS-Former: Spatio-Temporal Attention with Interleaved Recursive Structure Transformer for Offline Multi-task Multi-agent Reinforcement Learning, A Recipe for Stable Offline Multi-agent Reinforcement Learning 🔄 深度差量对比： 与‘稳定配方’聚焦算法稳定性修正及‘STAIRS-Former’专注时空架构优化不同，本文主张通过海量离线数据进行基础模型预训练，以统一架构替代多任务的专项算法适配。 🧠 核心术语库 [[[[MARL Foundation Model]]]] [[[[Offline Pre-training]]]] [[[[Unified Transformer Encoder]]]] [[[[Cross-Domain Generalization]]]] 🔬 方法论简析 提出 MARL-GPT 基础模型，采用统一的 Transformer 观测编码器，在 SMACv2、GRF 等环境数亿步专家轨迹上进行大规模离线强化学习预训练，实现跨域零微调泛化。 💬 锐评 虽以数据规模突破通用性瓶颈，但未回应‘稳定配方’中关于非线性价值分解的底层不稳定性风险；且相较于‘STAIRS-Former'的针对性结构创新，其巨大的算力开销可能牺牲小样本场景下的效率与可控性。"
     }
   ],
   "MultiAgent_Game_Theory": [
+    {
+      "title": "Rethinking Priority Scheduling for Sequential Multi-Agent Decision Making in Stackelberg Games",
+      "short_review": "创新性地指出决策顺序对均衡点的结构性影响，突破了传统静态序假设的局限；然而，实证主要集中在物理控制仿真，未充分验证在高维离散决策空间或强通信延迟环境下的序搜索效率，且上层策略的动态计算开销可能抵消序优化带来的收敛增益。",
+      "full_note": "Rethinking Priority Scheduling for Sequential Multi-Agent Decision Making in Stackelberg Games 🔥 推荐指数： 值得看 👤 作者： Xiangyu Liu, Liang Zhang, Bo Jin, Ziqi Wei 🕒 arXiv上传时间： 2026-05-08 04:53:25 UTC 🔗 触发的灵感来源： Cooperative Game Theory within Multi-Agent Systems for Systems Scheduling, Game Theory and Multi-Agent Reinforcement Learning for Zonal Ancillary Markets 🔄 深度差量对比： 相较于注记中 Morri 等论文对比 MADRL 与精确解法在固定市场博弈结构下的成本权衡，本文深入至博弈交互拓扑内部，利用强化学习动态优化 Stackelberg 层级中的决策顺序而非仅求解给定序下的均衡，较注记 Messie 等的旧式协同调度更具理论前沿性与时序控制深度。 🧠 核心术语库 [[N 层级 Stackelberg 博弈]] [[决策顺序优化]] [[时空序列马尔可夫游戏 (STMG)]] [[分层优先级调整 (HPA)]] 🔬 方法论简析 提出层级优先级调整（HPA）框架：上层策略基于当前游戏状态动态选择最优决策序，下层智能体按选定顺序在时空序列马尔可夫游戏（STMG）中执行策略，采用慢快更新机制结合优势函数派生的共享内在奖励实现跨时间尺度协同学习。 💬 锐评 创新性地指出决策顺序对均衡点的结构性影响，突破了传统静态序假设的局限；然而，实证主要集中在物理控制仿真，未充分验证在高维离散决策空间或强通信延迟环境下的序搜索效率，且上层策略的动态计算开销可能抵消序优化带来的收敛增益。"
+    },
     {
       "title": "rAIson: Developing Reliable Decision-Making Agents",
       "short_review": "该研究偏向软件工程实现而非博弈论机制创新，'可靠性'一词缺乏如纳什均衡达成率或激励敏感度等量化定义；相比GT-HarmBench的安全基准评估，该平台若无法暴露内部策略推理过程，可能掩盖多智能体协作中的潜在博弈失效风险，更适合作为应用层工具而非理论研究补充。",
