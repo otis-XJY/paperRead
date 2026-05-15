@@ -19,10 +19,11 @@
 
 ---
 
-## 🆕 Recent Updates (v1.2.0 - 2026/05/15)
+## 🆕 Recent Updates (v1.3.0 - 2026/05/15)
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.3.0** | 2026-05-15 | Multi-model LLM failover, arXiv failure tracking, 30s request intervals |
 | **v1.2.0** | 2026-05-15 | OAI-PMH fallback for arXiv rate limiting, error collector, exponential backoff retry |
 | **v1.1.1** | 2026-05-12 | Optimized no-paper notification with dynamic category display |
 | **v1.1.0** | 2026-05-08 | 🎉 **Feishu Wiki Sync** — Mirror Zotero notes to Feishu knowledge base |
@@ -249,11 +250,20 @@ CONFIG = {
 ```python
 CONFIG = {
     "llm_model": "Qwen/Qwen3.5-35B-A3B",
-    "base_url": "https://api-inference.modelscope.cn/v1/"
+    "base_url": "https://api-inference.modelscope.cn/v1/",
+    # Multi-model fallback: auto-switch on 429 rate limit
+    "fallback_models": [
+        "Qwen/Qwen3.5-35B-A3B",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "Qwen/Qwen2.5-32B-Instruct",
+        "deepseek-ai/DeepSeek-V3",
+    ],
 }
 ```
 
-Environment variable: `MODELSCOPE_API_KEY`
+Environment variable: `MODELSCOPE_API_KEY` (ModelScope Token, starts with `ms-`)
+
+> Multi-model strategy: on 429 rate limit, round 1 cycles through all models immediately. If all fail, waits 60s then retries round 2.
 
 #### Using OpenAI
 
@@ -270,10 +280,10 @@ Environment variable: `OPENAI_API_KEY`
 
 To avoid arXiv API rate limits, the program includes intelligent delay mechanisms:
 
-- **First run**: 8-10 seconds between requests
-- **Incremental updates**: 6 seconds between requests
-- **429 errors**: Dynamic waiting 7-19 seconds
+- **Request interval**: 30 seconds (incremental) / 30-45 seconds (first run)
+- **429 errors**: Fixed 60s wait, max 3 retries
 - **Network errors**: Exponential backoff retry
+- **Fetch failures**: Distinguished from empty results; error notification sent on failure
 
 ---
 

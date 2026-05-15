@@ -55,8 +55,16 @@ CONFIG = {
           "arxiv_categories": ["cs:cs:MA", "cs:cs:AI"],
           "desc": "多智能体强化学习算法、协作机制及通信协议。"}
     },
-    "llm_model": "Qwen/Qwen3.5-35B-A3B",
-    "base_url": "https://api-inference.modelscope.cn/v1/"
+    "llm_model": "ZhipuAI/GLM-5.1",
+    "base_url": "https://api-inference.modelscope.cn/v1/",
+    # 多模型备选：遇到 429 限速时自动切换到下一个模型
+    # 所有模型共用同一个 base_url 和 API key
+    "fallback_models": [
+        "ZhipuAI/GLM-5.1",
+        "deepseek-ai/DeepSeek-V4-Pro",
+        "MiniMax/MiniMax-M2.5",
+        "moonshotai/Kimi-K2.5",
+    ],
 }
 
 LLM_API_KEY = os.getenv("MODELSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
@@ -82,6 +90,80 @@ client = OpenAI(
     timeout=90.0,
     max_retries=2,
 )
+
+
+def is_rate_limit_error(exc):
+    msg = str(exc).lower()
+    return "429" in msg or "rate limit" in msg or "too many requests" in msg
+
+
+class MultiModelLLM:
+    """
+    多模型自动切换的 LLM 调用器。
+    遇到 429 限速或 401 鉴权错误时，自动切换到下一个备选模型。
+    """
+
+    def __init__(self, client, models):
+        self.client = client
+        self.models = list(models)
+        self.current_idx = 0
+        self._model_failures = {i: 0 for i in range(len(models))}
+
+    @property
+    def current_model(self):
+        return self.models[self.current_idx]
+
+    def switch_to_next(self, reason=""):
+        old_model = self.current_model
+        self.current_idx = (self.current_idx + 1) % len(self.models)
+        new_model = self.current_model
+        if reason:
+            print(f"🔄 LLM 模型切换: {old_model} → {new_model}（原因: {reason}）")
+        else:
+            print(f"🔄 LLM 模型切换: {old_model} → {new_model}")
+        return new_model
+
+    def call(self, messages, response_format=None, max_rounds=2):
+        """
+        调用 LLM，自动处理限速切换。
+        策略：第一轮逐个模型尝试（429 立即切换下一个），全部失败后等 60s 进入第二轮。
+        返回 OpenAI 响应对象。
+        """
+        total_models = len(self.models)
+        last_exc = None
+
+        for round_idx in range(max_rounds):
+            if round_idx > 0:
+                print(f"⏳ 所有模型均被限速，等待 60s 后进入第 {round_idx + 1} 轮...")
+                time.sleep(60)
+
+            for i in range(total_models):
+                model = self.models[(self.current_idx + i) % total_models]
+                try:
+                    kwargs = {"model": model, "messages": messages}
+                    if response_format:
+                        kwargs["response_format"] = response_format
+                    resp = self.client.chat.completions.create(**kwargs)
+                    self.current_idx = (self.current_idx + i) % total_models
+                    return resp
+                except Exception as e:
+                    last_exc = e
+                    if is_rate_limit_error(e):
+                        print(f"⚠️ 模型 {model} 限速(429)，切换下一个...")
+                        continue
+                    elif is_auth_error(e):
+                        print(f"⚠️ 模型 {model} 鉴权失败(401)，切换下一个...")
+                        continue
+                    else:
+                        raise
+
+        raise RuntimeError(
+            f"所有 LLM 模型经 {max_rounds} 轮尝试均不可用。最后一个错误: {last_exc}"
+        )
+
+
+llm = MultiModelLLM(client, CONFIG["fallback_models"])
+print(f"🤖 LLM 模型池: {CONFIG['fallback_models']}，当前使用: {llm.current_model}")
 zot = zotero.Zotero(os.getenv("ZOTERO_USER_ID"), 'user', os.getenv("ZOTERO_API_KEY"))
 
 STATE_FILE = "state.json"
@@ -336,13 +418,9 @@ def check_relevance_phase_one(paper, kb_entries):
     返回严格JSON: {{"is_relevant": true/false, "score": 8, "matched_titles": ["论文A", "论文B"], "reason": "一句话理由"}}
     """
     try:
-        res = retry_sync(
-            lambda: client.chat.completions.create(
-                model=CONFIG["llm_model"],
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
-            ),
-            "阶段一初筛"
+        res = llm.call(
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
         )
         parsed = safe_json_parse(res.choices[0].message.content)
         if "is_relevant" not in parsed:
@@ -373,13 +451,9 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
     {{"recommendation": "必读/值得看/可跳过", "comparison": "一句话说明与你过去笔记中论文的具体异同", "methodology": "核心方法简述", "core_concepts": ["术语1"], "sharp_review": "批判性分析"}}
     """
     try:
-        res = retry_sync(
-            lambda: client.chat.completions.create(
-                model=CONFIG["llm_model"],
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
-            ),
-            "阶段二深读"
+        res = llm.call(
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
         )
         return safe_json_parse(res.choices[0].message.content)
     except Exception as e:
@@ -402,13 +476,9 @@ def analyze_first_run_paper(paper, category_name):
     {{"recommendation": "必读/值得看/可跳过", "methodology": "核心方法简述", "core_concepts": ["术语1"], "sharp_review": "批判性锐评", "summary": "一句话价值总结"}}
     """
     try:
-        res = retry_sync(
-            lambda: client.chat.completions.create(
-                model=CONFIG["llm_model"],
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
-            ),
-            "首次运行深读"
+        res = llm.call(
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
         )
         parsed = safe_json_parse(res.choices[0].message.content)
         if "recommendation" not in parsed:
@@ -642,8 +712,8 @@ async def fetch_arxiv_single(session, url, max_retries=3, base_delay=6.0):
 
             async with session.get(url, timeout=timeout) as resp:
                 if resp.status == 429:
-                    # 速率限制，指数退避：60s, 120s, 180s
-                    wait_time = 60 * (attempt + 1)
+                    # 速率限制，固定等待 60s
+                    wait_time = 60
                     print(f"⚠️ 遇到速率限制，等待 {wait_time}s...")
                     await asyncio.sleep(wait_time)
                     last_error = "429 速率限制"

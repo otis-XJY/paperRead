@@ -45,6 +45,8 @@ No test suite or linter is configured in the repo. Code style follows PEP 8.
 1. **Phase One (lightweight filtering):** `check_relevance_phase_one()` — sends title + abstract + short reviews from knowledge base. Returns a relevance score (0-10). Papers scoring >= 7 proceed.
 2. **Phase Two (deep analysis):** `deep_analyze_phase_two()` — sends paper with full notes from matched knowledge base entries. Returns structured JSON: recommendation ("must-read"/"worth-reading"/"skipable"), methodology, core concepts, sharp review, comparison with existing papers.
 
+All LLM calls go through `MultiModelLLM.call()` which provides automatic failover: on 429 rate limit, it switches to the next model in `CONFIG["fallback_models"]`. Two rounds of attempts with a 60s pause between rounds.
+
 ### Cold Start vs Incremental
 
 - `state.json` tracks `is_first_run` and `last_date`.
@@ -53,7 +55,7 @@ No test suite or linter is configured in the repo. Code style follows PEP 8.
 
 ### Async & Rate Limiting
 
-Uses `aiohttp` for async HTTP. Built-in delays: 6-10s between arXiv API requests, 7-19s on 429 errors, exponential backoff retries.
+Uses `aiohttp` for async HTTP. arXiv API: 30s request interval, 60s fixed wait on 429, max 3 retries. `fetch_arxiv_single` returns `None` on failure (distinguished from empty results). Failed keywords are tracked and reported; if any fail, the pipeline sends an error notification instead of "no new papers".
 
 ### Auto-Generated State Files (gitignored)
 

@@ -15,6 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Community-contributed research categories
 - Multi-language support
 
+## [1.3.0] - 2026-05-15
+
+### Added
+- 多模型自动切换（MultiModelLLM）：LLM 遇到 429 限速时自动切换到下一个备选模型
+- arXiv 抓取失败追踪：区分"真无结果"和"限速/超时导致的失败"，失败时发送告警通知
+- 支持配置多个 LLM 备选模型（fallback_models），两轮循环尝试策略
+
+### Changed
+- arXiv 请求间隔从 6s 增加到 30s，首次运行从 8-10s 增加到 30-45s
+- arXiv 429 限速等待固定为 60s（不再递增）
+- LLM 限速策略：第一轮逐个模型尝试（429 立即切换），全部失败后等待 60s 进入第二轮
+- fetch_arxiv_single 失败时返回 None（而非空字符串），上层可区分失败和空结果
+- workflow 中 MODELSCOPE_API_KEY 独立配置（不再复用 OPENAI_API_KEY）
+
+### Fixed
+- 修复 arXiv API 限速时静默跳过导致误判为"无新论文"的问题
+- 修复 pipeline 结束时无法区分"真的无新论文"和"抓取失败"的问题
+
 ## [1.2.0] - 2026-05-15
 
 ### Added
