@@ -177,15 +177,15 @@ DEBUG_PHASE_ONE=1  # 调试阶段一（1:显示详细输出, 0:简洁模式）
    - ✅ 写入权限 (Write access)
    - ✅ 允许访问笔记 (Allow notes access)
 
-### 4️⃣ 构建知识库索引
+### 4️⃣ 首次构建知识库
 
-首次运行前需要从 Zotero 导出现有论文作为知识库：
+如果你的 Zotero 中已经有历史论文，先构建知识库索引：
 
 ```bash
 python zotero_indexer.py
 ```
 
-这将生成 `knowledge_base.json` 文件，包含你 Zotero 中已有论文的索引信息。
+这一步会生成 `knowledge_base.json`，并在 Zotero 里补齐 `DailyPapers` 根集合及其分类子集合。之后 `main.py` 才能基于已有笔记做阶段一/阶段二对比。
 
 ### 5️⃣ 运行主程序
 
@@ -198,6 +198,11 @@ python main.py
 - 使用 LLM 进行深度分析
 - 自动创建 Zotero 集合和条目
 - 生成结构化的分析笔记
+
+**如果新增了分类，会发生什么：**
+- 先更新 `categories.json`
+- 再运行 `python zotero_indexer.py`，让 Zotero 的分类树和 `knowledge_base.json` 同步新增分类
+- 之后运行 `python main.py`，新分类会被视为该分类的首次运行，走冷启动逻辑并写入 `state.json` 的 `initialized_categories`
 
 **后续运行会：**
 - 只抓取比上次更新的新论文
@@ -335,7 +340,9 @@ DEBUG_PHASE_ONE=1 python main.py
    - `FEISHU_WIKI_ROOT_NODE_TOKEN` (可选，飞书知识库)
 3. **启用 Actions 工作流**
 
-详见 [`.github/workflows/daily.yml`](./.github/workflows/daily.yml)
+详见 [`.github/workflows/daily_paper.yml`](./.github/workflows/daily_paper.yml)
+
+> 工作流的增量逻辑依赖 `state.json` 的 `last_date` 和 `initialized_categories`，以及 `history.json` 的已处理 arXiv ID。只要这些文件成功提交回仓库，下一次 Actions 就会按增量方式继续跑。
 
 ### 4. 消息推送
 
@@ -436,6 +443,8 @@ python zotero_indexer.py
 python zotero_indexer.py
 ```
 
+`main.py` 也会在缺少知识库时尝试自动重建，但对公开仓库和 GitHub Actions 来说，仍然建议显式先跑一次 `zotero_indexer.py`，这样更可控。
+
 ### 问题 5：相关性判断不准确
 
 **原因**：知识库中的论文太少
@@ -491,8 +500,7 @@ paperRead/
 ├── .env.example                 # 环境变量模板
 ├── .github/
 │   └── workflows/
-│       ├── daily.yml            # GitHub Actions 日常抓取
-│       └── daily_paper.yml      # GitHub Actions 论文分析
+│       └── daily_paper.yml      # GitHub Actions 日常抓取与分析
 ├── state.json                   # 运行状态（自动生成）
 ├── history.json                 # 论文历史（自动生成）
 └── knowledge_base.json          # 知识库索引（首次运行生成）

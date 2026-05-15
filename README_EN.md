@@ -335,7 +335,9 @@ Configure GitHub Actions for daily automatic runs:
    - `FEISHU_WIKI_ROOT_NODE_TOKEN` (optional, for Feishu Wiki)
 3. **Enable Actions workflow**
 
-See [`.github/workflows/daily.yml`](./.github/workflows/daily.yml) for details
+See [`.github/workflows/daily_paper.yml`](./.github/workflows/daily_paper.yml) for details
+
+> Incremental updates depend on `state.json` (`last_date`, `initialized_categories`) and `history.json` (processed arXiv IDs). The workflow commits these files back to the repository after a successful run.
 
 ### 4. Message Notifications
 
@@ -348,6 +350,14 @@ See [`.github/workflows/daily.yml`](./.github/workflows/daily.yml) for details
 #### WeChat Work Notifications
 
 Configure `WXWORK_WEBHOOK_URL` to enable.
+
+### 5. Adding New Categories
+
+1. Update `categories.json`
+2. Run `python zotero_indexer.py` to refresh the Zotero collection tree and `knowledge_base.json`
+3. Run `python main.py` or wait for GitHub Actions
+
+New categories are treated as first-run categories until they are written to `state.json` under `initialized_categories`.
 
 ---
 
@@ -491,8 +501,7 @@ paperRead/
 ├── .env.example                 # Environment variable template
 ├── .github/
 │   └── workflows/
-│       ├── daily.yml            # GitHub Actions daily fetch
-│       └── daily_paper.yml      # GitHub Actions paper analysis
+│       └── daily_paper.yml      # GitHub Actions daily fetch and analysis
 ├── state.json                   # Run state (auto-generated)
 ├── history.json                 # Paper history (auto-generated)
 └── knowledge_base.json          # Knowledge base index (generated on first run)

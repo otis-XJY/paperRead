@@ -11,6 +11,9 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: write
+    concurrency:
+      group: paperread-daily
+      cancel-in-progress: false
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -38,8 +41,8 @@ jobs:
       - name: Run AI Analysis & Push
         timeout-minutes: 60
         env:
+          MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          MODELSCOPE_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
           ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
           WXWORK_WEBHOOK_URL: ${{ secrets.WXWORK_WEBHOOK_URL }}

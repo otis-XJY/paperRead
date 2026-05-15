@@ -137,7 +137,7 @@ docker-compose up -d
 
 ### Automatic Daily Runs
 
-The `.github/workflows/daily.yml` file is already configured for daily runs.
+The `.github/workflows/daily_paper.yml` file is configured for daily runs.
 
 ### Setup
 

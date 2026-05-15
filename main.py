@@ -394,6 +394,29 @@ def save_state(last_date, initialized_categories=None):
         json.dump(data, f, ensure_ascii=False)
 
 
+def ensure_knowledge_base():
+    kb_path = "knowledge_base.json"
+    if os.path.exists(kb_path):
+        kb = load_json_file(kb_path, {})
+        if isinstance(kb, dict):
+            return kb
+        print("⚠️ knowledge_base.json 格式异常，尝试重新构建")
+
+    print("🔄 正在构建 Zotero 知识库...")
+    try:
+        build_knowledge_base()
+    except Exception as e:
+        log_error(f"[KB] 知识库构建失败: {e}", error_type="knowledge_base_build")
+        return {}
+
+    kb = load_json_file(kb_path, {})
+    if not isinstance(kb, dict):
+        log_error("[KB] 重新构建后 knowledge_base.json 仍然无效", error_type="knowledge_base_build")
+        return {}
+
+    return kb
+
+
 def simple_first_run_filter(paper):
     title = (paper.get("title") or "").strip()
     summary = (paper.get("summary") or "").strip()
@@ -941,9 +964,6 @@ async def main():
     print("🚀 开始执行 main.py")
     if DRY_RUN:
         print("🧪 DRY_RUN=1，本次仅本地演练：不会写入 Zotero，也不会更新 history/state 文件")
-    if not os.path.exists("knowledge_base.json"):
-        print("❌ 找不到 knowledge_base.json，请先运行 zotero_indexer.py")
-        return
     
     # 错误处理
     try:
@@ -955,7 +975,13 @@ async def main():
         
         # 发送错误通知
         if ENABLE_NOTIFICATION and not DRY_RUN:
-            notifier.send_workflow_error(str(e))
+            error_payload = list(_errors)
+            error_payload.append({
+                "category": "运行流程",
+                "type": "runtime",
+                "message": str(e),
+            })
+            notifier.send_structured_error_report(error_payload)
         raise
 
 
@@ -963,18 +989,13 @@ async def _main_impl():
     print("🚀 开始执行 main.py")
     if DRY_RUN:
         print("🧪 DRY_RUN=1，本次仅本地演练：不会写入 Zotero，也不会更新 history/state 文件")
-    if not os.path.exists("knowledge_base.json"):
-        print("❌ 找不到 knowledge_base.json，请先运行 zotero_indexer.py")
-        return
-        
-    kb = load_json_file("knowledge_base.json", {})
-    if not isinstance(kb, dict):
-        print("⚠️ knowledge_base.json 格式异常，使用空知识库")
-        kb = {}
+    kb = ensure_knowledge_base()
+    if not kb:
+        print("⚠️ 未能获得可用知识库，将以空知识库继续运行")
 
     # 检查所有配置的类目是否都在知识库中有数据
     missing_categories = [cat_name for cat_name in CONFIG["categories"] if cat_name not in kb]
-    if missing_categories:
+    if missing_categories and kb:
         print(f"⚠️ 发现 {len(missing_categories)} 个类目缺少知识库数据: {', '.join(missing_categories)}")
         print("🔄 正在重新构建知识库...")
         try:
@@ -989,6 +1010,7 @@ async def _main_impl():
             print(f"❌ 知识库重新构建失败: {e}")
             import traceback
             traceback.print_exc()
+            log_error(f"[KB] 分类知识库重建失败: {e}", error_type="knowledge_base_build")
 
     history = load_json_file(HISTORY_FILE, [])
     if not isinstance(history, list):

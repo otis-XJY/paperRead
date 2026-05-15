@@ -504,6 +504,7 @@ class NotificationManager:
             "llm_phase_one": "LLM 阶段一分析失败",
             "llm_phase_two": "LLM 阶段二分析失败",
             "zotero_write": "Zotero 写入失败",
+            "knowledge_base_build": "知识库构建失败",
             "feishu_sync": "飞书同步失败",
             "runtime": "其他运行时错误",
         }
@@ -535,7 +536,7 @@ class NotificationManager:
             lines.append("")
 
         # 其他错误类型
-        for err_type in ["zotero_write", "feishu_sync", "runtime"]:
+        for err_type in ["zotero_write", "knowledge_base_build", "feishu_sync", "runtime"]:
             errs = by_type.get(err_type, [])
             if errs:
                 label = type_labels.get(err_type, err_type)

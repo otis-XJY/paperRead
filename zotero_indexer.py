@@ -9,9 +9,6 @@ from bs4 import BeautifulSoup
 ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
 ZOTERO_API_KEY = os.getenv("ZOTERO_API_KEY")
 
-if not ZOTERO_USER_ID or not ZOTERO_API_KEY:
-    raise ValueError("缺少 Zotero 凭据，请检查 ZOTERO_USER_ID / ZOTERO_API_KEY")
-
 
 def load_categories_config():
     """从 categories.json 加载类目配置"""
@@ -21,7 +18,18 @@ def load_categories_config():
     with open(config_file, "r", encoding="utf-8") as f:
         return json.load(f)
 
-zot = zotero.Zotero(ZOTERO_USER_ID, 'user', ZOTERO_API_KEY)
+
+zot = None
+
+
+def get_zotero_client():
+    global zot
+    if zot is not None:
+        return zot
+    if not ZOTERO_USER_ID or not ZOTERO_API_KEY:
+        raise ValueError("缺少 Zotero 凭据，请检查 ZOTERO_USER_ID / ZOTERO_API_KEY")
+    zot = zotero.Zotero(ZOTERO_USER_ID, 'user', ZOTERO_API_KEY)
+    return zot
 
 
 def extract_collection_link(collection_obj):
@@ -57,7 +65,8 @@ def retry_sync(operation, operation_name, retries=3, base_delay=1.0):
 
 def get_or_create_collection(name, parent_key=None):
     """创建或获取 Zotero 集合"""
-    colls = retry_sync(lambda: zot.everything(zot.collections()), f"读取集合列表({name})")
+    zot_client = get_zotero_client()
+    colls = retry_sync(lambda: zot_client.everything(zot_client.collections()), f"读取集合列表({name})")
     target_parent = normalize_parent_collection(parent_key)
     matched = []
     for c in colls:
@@ -75,7 +84,7 @@ def get_or_create_collection(name, parent_key=None):
         payload['parentCollection'] = parent_key
 
     resp = retry_sync(
-        lambda: zot.create_collections([payload]),
+        lambda: zot_client.create_collections([payload]),
         f"创建集合({name})"
     )
     
@@ -97,11 +106,12 @@ def ensure_collection_structure(root_key, categories):
 
 
 def get_item_children(item_key, title=""):
+    zot_client = get_zotero_client()
     # 兼容不同 pyzotero 版本：优先 item_children，其次 children
-    if hasattr(zot, "item_children"):
-        return retry_sync(lambda: zot.item_children(item_key), f"读取条目子项({title[:20]})")
-    if hasattr(zot, "children"):
-        return retry_sync(lambda: zot.children(item_key), f"读取条目子项({title[:20]})")
+    if hasattr(zot_client, "item_children"):
+        return retry_sync(lambda: zot_client.item_children(item_key), f"读取条目子项({title[:20]})")
+    if hasattr(zot_client, "children"):
+        return retry_sync(lambda: zot_client.children(item_key), f"读取条目子项({title[:20]})")
     raise AttributeError("当前 pyzotero 版本不支持读取条目子项（缺少 item_children/children 方法）")
 
 
@@ -124,7 +134,8 @@ def get_or_create_daily_root_collection(collections):
         daily_roots.sort(key=lambda x: x['data'].get('dateAdded', ''))
         return daily_roots[0]['key']
 
-    resp = retry_sync(lambda: zot.create_collections([{'name': 'DailyPapers'}]), "创建 DailyPapers 根集合")
+    zot_client = get_zotero_client()
+    resp = retry_sync(lambda: zot_client.create_collections([{'name': 'DailyPapers'}]), "创建 DailyPapers 根集合")
     if '0' not in resp.get('successful', {}):
         raise RuntimeError(f"创建 DailyPapers 失败，API返回: {resp.get('failed')}")
     return resp['successful']['0']['key']
@@ -152,15 +163,16 @@ def extract_note_parts(html_content):
 
 def build_knowledge_base():
     print("🔄 开始构建 Zotero 知识库...")
+    zot_client = get_zotero_client()
     kb = {}
     
-    collections = retry_sync(lambda: zot.everything(zot.collections()), "读取 Zotero 集合列表")
+    collections = retry_sync(lambda: zot_client.everything(zot_client.collections()), "读取 Zotero 集合列表")
 
     # 首次运行若不存在 DailyPapers，则自动创建一个根集合
     root_key = get_or_create_daily_root_collection(collections)
     if root_key:
         # 立即刷新集合列表，确保新创建的 DailyPapers 被识别
-        collections = retry_sync(lambda: zot.everything(zot.collections()), "刷新 Zotero 集合列表")
+        collections = retry_sync(lambda: zot_client.everything(zot_client.collections()), "刷新 Zotero 集合列表")
         
         # 找到根集合对象以提取真实链接
         root_obj = None
@@ -179,7 +191,7 @@ def build_knowledge_base():
         ensure_collection_structure(root_key, categories)
         
         # 重新拉取，确保后续分组逻辑看到最新集合列表
-        collections = retry_sync(lambda: zot.everything(zot.collections()), "刷新 Zotero 集合列表")
+        collections = retry_sync(lambda: zot_client.everything(zot_client.collections()), "刷新 Zotero 集合列表")
 
     daily_root_keys = set()
     for coll in collections:
@@ -215,7 +227,7 @@ def build_knowledge_base():
         for coll_obj in coll_objs:
             coll_key = coll_obj['key']
             # Zotero API 默认不会返回回收站项目；itemType 不支持 "-trashed" 这种写法
-            items = retry_sync(lambda key=coll_key: zot.collection_items(key), f"读取分类条目({cat_name})")
+            items = retry_sync(lambda key=coll_key: zot_client.collection_items(key), f"读取分类条目({cat_name})")
 
             for item in items:
                 if item['data']['itemType'] not in ['preprint', 'journalArticle']:
