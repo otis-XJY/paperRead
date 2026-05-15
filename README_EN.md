@@ -2,6 +2,7 @@
 
 <div align="center">
 
+![Version](https://img.shields.io/badge/Version-1.2.0-blue.svg)
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![arXiv](https://img.shields.io/badge/arXiv-API-red.svg)
@@ -15,6 +16,18 @@
 [Features](#-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [Usage Guide](#-usage-guide) • [Contributing](#-contributing)
 
 </div>
+
+---
+
+## 🆕 Recent Updates (v1.2.0 - 2026/05/15)
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| **v1.2.0** | 2026-05-15 | OAI-PMH fallback for arXiv rate limiting, error collector, exponential backoff retry |
+| **v1.1.1** | 2026-05-12 | Optimized no-paper notification with dynamic category display |
+| **v1.1.0** | 2026-05-08 | 🎉 **Feishu Wiki Sync** — Mirror Zotero notes to Feishu knowledge base |
+
+> 📋 Full changelog: [CHANGELOG.md](./CHANGELOG.md)
 
 ---
 

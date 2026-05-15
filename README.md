@@ -2,6 +2,7 @@
 
 <div align="center">
 
+![Version](https://img.shields.io/badge/Version-1.2.0-blue.svg)
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![arXiv](https://img.shields.io/badge/arXiv-API-red.svg)
@@ -15,6 +16,18 @@
 [功能特性](#-功能特性) • [快速开始](#-快速开始) • [配置说明](#-配置说明) • [使用指南](#-使用指南) • [贡献指南](#-贡献指南)
 
 </div>
+
+---
+
+## 🆕 最近更新 (v1.2.0 - 2026/05/15)
+
+| 版本 | 日期 | 主要更新 |
+|------|------|----------|
+| **v1.2.0** | 2026-05-15 | 新增OAI-PMH备选方案解决arXiv限速、错误收集器、指数退避重试机制 |
+| **v1.1.1** | 2026-05-12 | 优化无新论文通知显示，动态展示扫描分类 |
+| **v1.1.0** | 2026-05-08 | 🎉 **飞书Wiki同步功能** — 自动镜像Zotero笔记到飞书知识库 |
+
+> 📋 完整更新日志请查看 [CHANGELOG.md](./CHANGELOG.md)
 
 ---
 
