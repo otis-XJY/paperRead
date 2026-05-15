@@ -166,7 +166,6 @@ class FeishuWikiClient:
     def ensure_category_node(self, category):
         daily_key = f"_root_/{self._daily_folder_name}"
         if daily_key in self._cache:
-            # 验证缓存的 daily 节点是否仍然有效
             if not self._node_is_valid(self._cache[daily_key]):
                 self._invalidate_cache_prefix(daily_key)
 
@@ -183,12 +182,37 @@ class FeishuWikiClient:
 
         cat_key = f"{daily_key}/{category}"
         if cat_key in self._cache:
-            # 验证缓存的分类节点是否仍然有效
-            if not self._node_is_valid(self._cache[cat_key]):
+            # 通过父节点实际子列表验证缓存 token，避免使用已删除节点的旧 token
+            try:
+                real_children = self.list_child_nodes(daily_node)
+                real_token = real_children.get(category)
+                if real_token and real_token != self._cache[cat_key]:
+                    self._cache[cat_key] = real_token
+                    self._save_node_cache(self._cache)
+                elif not real_token:
+                    self._invalidate_cache_prefix(cat_key)
+            except (RuntimeError, requests.RequestException):
+                self._invalidate_cache_prefix(daily_key)
                 self._invalidate_cache_prefix(cat_key)
 
         if cat_key not in self._cache:
-            self._cache[cat_key] = self.get_or_create_child_node(daily_node, category)
+            # 重新获取 daily_node（可能已被清除）
+            if daily_key not in self._cache:
+                children = self.list_child_nodes(self.root_node_token)
+                if self._daily_folder_name in children:
+                    self._cache[daily_key] = children[self._daily_folder_name]
+                    self._save_node_cache(self._cache)
+                else:
+                    self._cache[daily_key] = self.get_or_create_child_node(
+                        self.root_node_token, self._daily_folder_name
+                    )
+            daily_node = self._cache[daily_key]
+            # 先查父节点已有子节点，避免重复创建
+            real_children = self.list_child_nodes(daily_node)
+            if category in real_children:
+                self._cache[cat_key] = real_children[category]
+            else:
+                self._cache[cat_key] = self.get_or_create_child_node(daily_node, category)
             self._save_node_cache(self._cache)
         return self._cache[cat_key]
 
@@ -355,6 +379,11 @@ class FeishuWikiClient:
 
     def mirror_paper_to_wiki(self, category, paper_info):
         category_node = self.ensure_category_node(category)
+        # 写入前校验节点是否仍然存在，失效则清除缓存并重建
+        if not self._node_is_valid(category_node):
+            cat_key = f"_root_/{self._daily_folder_name}/{category}"
+            self._invalidate_cache_prefix(cat_key)
+            category_node = self.ensure_category_node(category)
         title = paper_info.get("title", "Untitled")[:100]
         document_id, block_id = self.create_document_in_node(category_node, title)
         blocks = self._paper_info_to_blocks(paper_info)

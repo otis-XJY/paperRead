@@ -16,6 +16,7 @@ import os
 import re
 import time
 import urllib.parse
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from openai import OpenAI
 from pyzotero import zotero
@@ -27,27 +28,31 @@ __version__ = "1.0.0"
 # ================= 1. 配置区 =================
 CONFIG = {
     "categories": {
-        "UAV_VLN": 
+        "UAV_VLN":
         {"keywords":
-         ['ti:"Vision-Language Navigation"', 
-          '(abs:UAV AND abs:Navigation)'], 
+         ['ti:"Vision-Language Navigation"',
+          '(abs:UAV AND abs:Navigation)'],
+          "arxiv_categories": ["cs:cs:RO", "cs:cs:CV", "cs:cs:AI"],
           "desc": "无人机视觉语言导航、空间感知及指令执行。"},
-        "multi_VLN": 
+        "multi_VLN":
         {"keywords":
-         ['ti:"Vision-Language Navigation"', 
+         ['ti:"Vision-Language Navigation"',
           '(abs:multi AND abs:Navigation)',
-          '(all:collaborative AND all:VLN)'], 
+          '(all:collaborative AND all:VLN)'],
+          "arxiv_categories": ["cs:cs:RO", "cs:cs:CV", "cs:cs:AI"],
           "desc": "多智能体VLN，协作VLN。"},
-        "MultiAgent_Game_Theory": 
+        "MultiAgent_Game_Theory":
         {"keywords":
-         ['ti:"Game Theory" AND abs:Multi-agent', 
-          'ti:"Decision Making" AND cat:cs.MA'], 
+         ['ti:"Game Theory" AND abs:Multi-agent',
+          'ti:"Decision Making" AND cat:cs.MA'],
+          "arxiv_categories": ["cs:cs:MA", "cs:cs:AI", "cs:cs:GT"],
           "desc": "多智能体决策规划、博弈论及动态博弈。"},
-        "MARL": 
+        "MARL":
         {"keywords":
-         ['ti:"Multi-Agent Reinforcement Learning"', 
-          'all:MARL', 
-          'all:CTDE'], 
+         ['ti:"Multi-Agent Reinforcement Learning"',
+          'all:MARL',
+          'all:CTDE'],
+          "arxiv_categories": ["cs:cs:MA", "cs:cs:AI"],
           "desc": "多智能体强化学习算法、协作机制及通信协议。"}
     },
     "llm_model": "Qwen/Qwen3.5-35B-A3B",
@@ -84,6 +89,15 @@ HISTORY_FILE = "history.json"
 HTTP_TIMEOUT_SECONDS = 25
 RETRY_TIMES = 3
 RETRY_BASE_DELAY_SECONDS = 1.0
+
+# 运行时错误收集器，所有错误汇总后发送到飞书
+_errors: list[str] = []
+
+
+def log_error(msg: str):
+    """记录一条错误，最终汇总发送到飞书"""
+    print(msg)
+    _errors.append(msg)
 DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 DEBUG_PHASE_ONE = os.getenv("DEBUG_PHASE_ONE", "1") == "1"
 ENABLE_NOTIFICATION = os.getenv("ENABLE_NOTIFICATION", "1") == "1"
@@ -345,7 +359,7 @@ def check_relevance_phase_one(paper, kb_entries):
             raise RuntimeError(
                 "LLM 鉴权失败（401）。请确认使用的是 ModelScope Token，并设置 MODELSCOPE_API_KEY。"
             ) from e
-        print(f"阶段一初筛报错: {e}")
+        log_error(f"[LLM] 阶段一初筛报错: {e}")
         return {"is_relevant": False, "matched_titles":[]}
 
 def deep_analyze_phase_two(paper, category_name, matched_full_notes):
@@ -373,7 +387,7 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
             raise RuntimeError(
                 "LLM 鉴权失败（401）。请确认使用的是 ModelScope Token，并设置 MODELSCOPE_API_KEY。"
             ) from e
-        print(f"阶段二深读报错: {e}")
+        log_error(f"[LLM] 阶段二深读报错: {e}")
         return None
 
 
@@ -413,15 +427,211 @@ def analyze_first_run_paper(paper, category_name):
             raise RuntimeError(
                 "LLM 鉴权失败（401）。请确认使用的是 ModelScope Token，并设置 MODELSCOPE_API_KEY。"
             ) from e
-        print(f"首次运行深读报错: {e}")
+        log_error(f"[LLM] 首次运行深读报错: {e}")
         return None
 
 # ================= 4. 动态抓取模块 =================
+
+OAI_PMH_ENDPOINT = "http://export.arxiv.org/oai2"
+OAI_PMH_NS = {
+    "oai": "http://www.openarchives.org/OAI/2.0/",
+    "arxiv": "http://arxiv.org/OAI/arXivRaw/",
+    "dc": "http://purl.org/dc/elements/1.1/",
+}
+
+
+def parse_oai_pmh_response(xml_text):
+    """解析 OAI-PMH XML 响应，返回论文列表（标准 paper dict 格式）"""
+    papers = []
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return papers
+
+    for record in root.findall(".//oai:record", OAI_PMH_NS):
+        header = record.find("oai:header", OAI_PMH_NS)
+        if header is not None and header.get("status") == "deleted":
+            continue
+
+        meta = record.find(".//arxiv:arXivRaw", OAI_PMH_NS)
+        if meta is None:
+            # 降级到 oai_dc 格式
+            meta = record.find(".//oai:metadata", OAI_PMH_NS)
+            if meta is None:
+                continue
+            dc = meta.find(".//dc:", OAI_PMH_NS)  # fallback
+            # oai_dc 格式
+            identifier_el = record.find(".//oai:identifier", OAI_PMH_NS)
+            title_el = meta.find(".//dc:title", OAI_PMH_NS)
+            desc_el = meta.find(".//dc:description", OAI_PMH_NS)
+            date_el = meta.find(".//dc:date", OAI_PMH_NS)
+            creators = meta.findall(".//dc:creator", OAI_PMH_NS)
+
+            pid = identifier_el.text.replace("oai:arXiv.org:", "") if identifier_el is not None else ""
+            title = (title_el.text or "").replace("\n", " ").strip() if title_el is not None else ""
+            summary = (desc_el.text or "").replace("\n", " ").strip() if desc_el is not None else ""
+            published = (date_el.text or "").strip() if date_el is not None else ""
+            authors = [c.text.strip() for c in creators if c.text]
+        else:
+            # arXivRaw 格式（更丰富）
+            pid_el = meta.find("arxiv:id", OAI_PMH_NS)
+            title_el = meta.find("arxiv:title", OAI_PMH_NS)
+            abstract_el = meta.find("arxiv:abstract", OAI_PMH_NS)
+            authors_el = meta.find("arxiv:authors", OAI_PMH_NS)
+            date_el = meta.find("arxiv:submitter", OAI_PMH_NS)  # 没有直接的 date 字段
+
+            # 从 identifier 获取日期
+            identifier_el = header.find("oai:identifier", OAI_PMH_NS) if header is not None else None
+            # 从 datestamp 获取日期
+            datestamp_el = header.find("oai:datestamp", OAI_PMH_NS) if header is not None else None
+
+            pid = pid_el.text.strip() if pid_el is not None and pid_el.text else ""
+            title = (title_el.text or "").replace("\n", " ").strip() if title_el is not None and title_el.text else ""
+            summary = (abstract_el.text or "").replace("\n", " ").strip() if abstract_el is not None and abstract_el.text else ""
+            published = (datestamp_el.text or "").strip() if datestamp_el is not None and datestamp_el.text else ""
+
+            # 解析作者
+            authors = []
+            if authors_el is not None and authors_el.text:
+                # arXivRaw 的 authors 是逗号分隔的字符串
+                authors = [a.strip() for a in authors_el.text.split(",") if a.strip()]
+
+        if pid and title:
+            papers.append({
+                "id": pid,
+                "title": title,
+                "summary": summary,
+                "published": published,
+                "authors": authors,
+            })
+
+    return papers
+
+
+async def fetch_oai_pmh(session, arxiv_categories, last_date, max_results_per_cat=200):
+    """
+    通过 OAI-PMH 协议批量拉取指定 arXiv 分类的最新论文。
+    返回值: list[dict] — 标准 paper dict 格式
+    """
+    all_papers = {}
+    # OAI-PMH 的 from 参数接受 YYYY-MM-DD 格式
+    from_date = last_date[:10] if last_date else "2000-01-01"
+
+    for cat in arxiv_categories:
+        url = (
+            f"{OAI_PMH_ENDPOINT}?verb=ListRecords"
+            f"&set={cat}&metadataPrefix=arXivRaw&from={from_date}"
+        )
+        page = 0
+        resumption_token = None
+
+        while True:
+            if resumption_token:
+                req_url = f"{OAI_PMH_ENDPOINT}?verb=ListRecords&resumptionToken={urllib.parse.quote(resumption_token)}"
+            else:
+                req_url = url
+
+            try:
+                async with session.get(req_url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+                    if resp.status == 503:
+                        # OAI-PMH 503 = retry after Retry-After seconds
+                        retry_after = int(resp.headers.get("Retry-After", "60"))
+                        print(f"⚠️ OAI-PMH 503，等待 {retry_after}s 后重试 ({cat})")
+                        await asyncio.sleep(retry_after)
+                        continue
+                    elif resp.status != 200:
+                        log_error(f"[OAI-PMH] HTTP {resp.status} for {cat}")
+                        break
+                    xml_text = await resp.text()
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                log_error(f"[OAI-PMH] 请求失败 {cat}: {e}")
+                break
+
+            papers = parse_oai_pmh_response(xml_text)
+            for p in papers:
+                if p["id"] not in all_papers:
+                    all_papers[p["id"]] = p
+
+            # 检查 resumptionToken
+            try:
+                root = ET.fromstring(xml_text)
+                token_el = root.find(".//oai:resumptionToken", OAI_PMH_NS)
+                if token_el is not None and token_el.text and token_el.text.strip():
+                    resumption_token = token_el.text.strip()
+                    page += 1
+                    if page > 10:  # 安全上限，避免无限翻页
+                        break
+                    await asyncio.sleep(3)  # OAI-PMH 建议 3s 间隔
+                    continue
+                else:
+                    break  # 无更多分页
+            except ET.ParseError:
+                break
+
+        print(f"📥 OAI-PMH {cat}: 获取 {len(all_papers)} 篇论文")
+        await asyncio.sleep(3)  # 分类之间间隔 3s
+
+    return list(all_papers.values())
+
+
+def local_keyword_filter(papers, keywords):
+    """
+    本地关键词过滤：将 arXiv API 查询语法解析为关键词，在 title/abstract 中匹配。
+    任一关键词命中即保留该论文。
+    """
+    # 从查询语法中提取搜索词
+    search_terms = []  # list of (field, terms_list)
+    for kw in keywords:
+        # 提取 ti:"xxx" 中的关键词
+        ti_match = re.findall(r'ti:"([^"]+)"', kw)
+        for phrase in ti_match:
+            search_terms.append(("title", phrase.lower().split()))
+
+        # 提取 abs:xxx 中的关键词
+        abs_matches = re.findall(r'abs:(\w+)', kw)
+        if abs_matches:
+            search_terms.append(("abstract", [m.lower() for m in abs_matches]))
+
+        # 提取 all:xxx 中的关键词
+        all_matches = re.findall(r'all:(\w+)', kw)
+        if all_matches:
+            search_terms.append(("both", [m.lower() for m in all_matches]))
+
+    if not search_terms:
+        return papers
+
+    matched = []
+    for p in papers:
+        title_lower = p.get("title", "").lower()
+        abstract_lower = p.get("summary", "").lower()
+
+        for field, terms in search_terms:
+            if field == "title":
+                if all(t in title_lower for t in terms):
+                    matched.append(p)
+                    break
+            elif field == "abstract":
+                if all(t in abstract_lower for t in terms):
+                    matched.append(p)
+                    break
+            elif field == "both":
+                combined = title_lower + " " + abstract_lower
+                if all(t in combined for t in terms):
+                    matched.append(p)
+                    break
+
+    return matched
+
+
 async def fetch_arxiv_single(session, url, max_retries=3, base_delay=6.0):
     """
-    单次抓取 arXiv 的函数，使用更长的延迟和重试策略
+    单次抓取 arXiv 的函数，使用更长的延迟和重试策略。
+    返回值：
+      - 非空字符串：成功获取的响应内容（可能包含 0 条或更多条目）
+      - None：所有重试均失败（429/超时/网络错误），表示抓取失败
     """
     timeout = aiohttp.ClientTimeout(total=45, connect=10)
+    last_error = None
     for attempt in range(max_retries):
         try:
             # 每次请求前都添加延迟，避免触发速率限制
@@ -432,18 +642,20 @@ async def fetch_arxiv_single(session, url, max_retries=3, base_delay=6.0):
 
             async with session.get(url, timeout=timeout) as resp:
                 if resp.status == 429:
-                    # 速率限制，动态增加等待时间：首次7秒，之后每次增加3秒
-                    wait_time = 7 + (attempt * 3)
+                    # 速率限制，指数退避：60s, 120s, 180s
+                    wait_time = 60 * (attempt + 1)
                     print(f"⚠️ 遇到速率限制，等待 {wait_time}s...")
                     await asyncio.sleep(wait_time)
+                    last_error = "429 速率限制"
                     continue
                 elif resp.status != 200:
                     raise RuntimeError(f"HTTP {resp.status}")
                 return await resp.text()
         except RuntimeError as e:
+            last_error = str(e)
             if attempt == max_retries - 1:
                 print(f"❌ 抓取失败，已放弃: {url}，原因: {e}")
-                return ""
+                return None
             print(f"⚠️ 抓取失败（第 {attempt + 1}/{max_retries} 次）: {e}")
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             # 捕获更具体的网络错误类型
@@ -455,11 +667,12 @@ async def fetch_arxiv_single(session, url, max_retries=3, base_delay=6.0):
             else:
                 error_msg = f"网络错误({error_type}): {e}"
 
+            last_error = error_msg
             print(f"❌ {error_msg}")
 
             if attempt == max_retries - 1:
                 print(f"❌ 抓取失败，已放弃: {url}")
-                return ""
+                return None
 
             # 其他网络错误也等待一段时间
             delay = 5.0 * (attempt + 1)
@@ -467,18 +680,21 @@ async def fetch_arxiv_single(session, url, max_retries=3, base_delay=6.0):
             await asyncio.sleep(delay)
         except Exception as e:
             error_type = type(e).__name__
+            last_error = f"{error_type}: {e}"
             print(f"❌ 未知错误({error_type}): {e}")
             if attempt == max_retries - 1:
                 print(f"❌ 抓取失败，已放弃: {url}")
-                return ""
+                return None
             delay = 5.0 * (attempt + 1)
             print(f"⏳ 未知错误延迟 {delay:.1f}s 后重试...")
             await asyncio.sleep(delay)
 
-    return ""
+    # 所有重试均为 429，循环正常结束
+    print(f"❌ 所有 {max_retries} 次重试均被限速，放弃: {url}")
+    return None
 
 
-async def fetch_arxiv(session, keywords, state):
+async def fetch_arxiv(session, keywords, state, arxiv_categories=None):
     all_papers = {}
     max_published_date = state["last_date"]
 
@@ -486,6 +702,7 @@ async def fetch_arxiv(session, keywords, state):
         latest_candidates = {}
         hot_candidates = {}
         hot_order = []
+        failed_keywords = []
 
         for kw in keywords:
             encoded_kw = urllib.parse.quote(kw)
@@ -502,7 +719,10 @@ async def fetch_arxiv(session, keywords, state):
 
             # 拉取最新 10 篇
             latest_text = await fetch_arxiv_single(session, latest_url)
-            if latest_text:
+            if latest_text is None:
+                log_error(f"[arXiv] 首次运行关键词抓取失败: {kw}")
+                failed_keywords.append(kw)
+            elif latest_text:
                 latest_feed = feedparser.parse(latest_text)
                 for e in latest_feed.entries:
                     pub_date = e.get('published', '')
@@ -520,13 +740,17 @@ async def fetch_arxiv(session, keywords, state):
                         if pub_date > max_published_date:
                             max_published_date = pub_date
 
-            # 请求之间添加更长的延迟（8秒）
-            print("⏳ 请求间隔 8s...")
-            await asyncio.sleep(8.0)
+            # 请求之间添加更长的延迟（30秒，避免触发 arXiv 速率限制）
+            print("⏳ 请求间隔 30s...")
+            await asyncio.sleep(30.0)
 
             # 拉取 Relevance 10 篇
             hot_text = await fetch_arxiv_single(session, hot_url)
-            if hot_text:
+            if hot_text is None:
+                if kw not in failed_keywords:
+                    log_error(f"[arXiv] 首次运行关键词抓取失败: {kw}")
+                    failed_keywords.append(kw)
+            elif hot_text:
                 hot_feed = feedparser.parse(hot_text)
                 for e in hot_feed.entries:
                     pub_date = e.get('published', '')
@@ -546,9 +770,9 @@ async def fetch_arxiv(session, keywords, state):
                         if pub_date > max_published_date:
                             max_published_date = pub_date
 
-            # 关键词之间添加更长的延迟（10秒）
-            print("⏳ 关键词间隔 10s...")
-            await asyncio.sleep(10.0)
+            # 关键词之间添加更长的延迟（45秒，避免触发 arXiv 速率限制）
+            print("⏳ 关键词间隔 45s...")
+            await asyncio.sleep(45.0)
 
         latest_ranked = sorted(latest_candidates.values(), key=lambda x: x.get("published", ""), reverse=True)
         latest_top10 = latest_ranked[:10]
@@ -574,7 +798,9 @@ async def fetch_arxiv(session, keywords, state):
             f"📦 首次运行分类配额控制：latest={len(latest_top10)}，"
             f"hot={len(hot_top10)}，去重后返回={len(merged)}（上限20）"
         )
-        return merged, max_published_date
+        return merged, max_published_date, failed_keywords
+
+    failed_keywords = []
 
     for kw in keywords:
         encoded_kw = urllib.parse.quote(kw)
@@ -582,7 +808,10 @@ async def fetch_arxiv(session, keywords, state):
         url = f"http://export.arxiv.org/api/query?search_query={encoded_kw}&sortBy=submittedDate&sortOrder=descending&max_results=30"
 
         text = await fetch_arxiv_single(session, url)
-        if not text:
+        if text is None:
+            # fetch_arxiv_single 返回 None 表示所有重试均失败（429/超时/网络错误）
+            log_error(f"[arXiv] 增量抓取关键词失败: {kw}")
+            failed_keywords.append(kw)
             continue
 
         feed = feedparser.parse(text)
@@ -606,11 +835,33 @@ async def fetch_arxiv(session, keywords, state):
         if new_papers_count == 0:
             print(f"✅ 该关键词暂无新论文: {kw}")
 
-        # 请求之间添加延迟
-        print("⏳ 请求间隔 6s...")
-        await asyncio.sleep(6.0)
+        # 请求之间添加延迟（避免触发 arXiv 速率限制）
+        print("⏳ 请求间隔 30s...")
+        await asyncio.sleep(30.0)
 
-    return list(all_papers.values()), max_published_date
+    # OAI-PMH 备选方案：当有关键词因限速/超时失败时，通过 OAI-PMH 按分类批量拉取
+    if failed_keywords and arxiv_categories:
+        print(f"🔄 {len(failed_keywords)} 个关键词失败，尝试 OAI-PMH 备选方案...")
+        try:
+            oai_papers = await fetch_oai_pmh(session, arxiv_categories, state["last_date"])
+            if oai_papers:
+                matched = local_keyword_filter(oai_papers, failed_keywords)
+                new_count = 0
+                for p in matched:
+                    if p["id"] not in all_papers:
+                        all_papers[p["id"]] = p
+                        new_count += 1
+                        if p.get("published", "") > max_published_date:
+                            max_published_date = p["published"]
+                print(f"✅ OAI-PMH 备选方案: 拉取 {len(oai_papers)} 篇，关键词匹配 {len(matched)} 篇，新增 {new_count} 篇")
+                # OAI-PMH 成功则清除失败标记
+                failed_keywords = []
+            else:
+                log_error("[OAI-PMH] 备选方案未返回任何论文")
+        except Exception as e:
+            log_error(f"[OAI-PMH] 备选方案执行失败: {e}")
+
+    return list(all_papers.values()), max_published_date, failed_keywords
 
 # ================= 5. 主流程 =================
 async def main():
@@ -680,14 +931,21 @@ async def _main_impl():
         "papers": {}  # 存储新论文的详细信息
     }
 
+    all_failed_keywords = []  # 追踪所有抓取失败的关键词
+
     async with aiohttp.ClientSession() as session:
         for cat_name, cat_info in CONFIG["categories"].items():
             print(f"\n--- 正在处理分类: {cat_name} ---")
             stats["categories"][cat_name] = 0
-            
+
             # 动态抓取（支持首次与增量）
-            papers, cat_max_date = await fetch_arxiv(session, cat_info["keywords"], state)
+            papers, cat_max_date, failed_kws = await fetch_arxiv(
+                session, cat_info["keywords"], state,
+                cat_info.get("arxiv_categories", [])
+            )
             if cat_max_date > global_max_date: global_max_date = cat_max_date
+            if failed_kws:
+                all_failed_keywords.extend([(cat_name, kw) for kw in failed_kws])
             
             kb_entries = kb.get(cat_name, [])
             
@@ -738,7 +996,7 @@ async def _main_impl():
                     try:
                         resp = retry_sync(lambda: zot.create_items([item]), "首次运行创建 Zotero 论文条目")
                     except Exception as _zotero_err:
-                        print(f"⚠️ Zotero 条目写入失败，跳过此论文: {p['title'][:40]}... 原因: {_zotero_err}")
+                        log_error(f"[Zotero] 首次运行条目写入失败: {p['title'][:40]}... 原因: {_zotero_err}")
                         continue
                     if resp['successful']:
                         item_key, web_item_link = extract_created_item_meta(resp)
@@ -775,7 +1033,7 @@ async def _main_impl():
                         try:
                             retry_sync(lambda: zot.create_items([note_template]), "首次运行创建 Zotero 说明笔记")
                         except Exception as _note_err:
-                            print(f"⚠️ 笔记创建失败，但条目已入库: {p['title'][:40]}... 原因: {_note_err}")
+                            log_error(f"[Zotero] 首次运行笔记创建失败: {p['title'][:40]}... 原因: {_note_err}")
                         print("✅ 首次运行已直存至 Zotero")
                         # 飞书知识库同步
                         doc_url = None
@@ -795,7 +1053,7 @@ async def _main_impl():
                                 if doc_url:
                                     print(f"📝 已同步至飞书知识库: {doc_url}")
                             except Exception as _wiki_err:
-                                print(f"⚠️ 飞书知识库同步失败: {p['title'][:40]}... 原因: {_wiki_err}")
+                                log_error(f"[飞书] 知识库同步失败: {p['title'][:40]}... 原因: {_wiki_err}")
                         # 更新统计
                         stats["categories"][cat_name] += 1
                         stats["total_papers"] += 1
@@ -875,7 +1133,7 @@ async def _main_impl():
                 try:
                     resp = retry_sync(lambda: zot.create_items([item]), "创建 Zotero 论文条目")
                 except Exception as _zotero_err:
-                    print(f"⚠️ Zotero 条目写入失败，跳过此论文: {p['title'][:40]}... 原因: {_zotero_err}")
+                    log_error(f"[Zotero] 增量条目写入失败: {p['title'][:40]}... 原因: {_zotero_err}")
                     continue
                 if resp['successful']:
                     item_key, web_item_link = extract_created_item_meta(resp)
@@ -908,7 +1166,7 @@ async def _main_impl():
                     try:
                         retry_sync(lambda: zot.create_items([note_template]), "创建 Zotero 笔记")
                     except Exception as _note_err:
-                        print(f"⚠️ 笔记创建失败，但条目已入库: {p['title'][:40]}... 原因: {_note_err}")
+                        log_error(f"[Zotero] 增量笔记创建失败: {p['title'][:40]}... 原因: {_note_err}")
                     print(f"✅ 成功同步至 Zotero")
                     # 飞书知识库同步
                     doc_url = None
@@ -928,7 +1186,7 @@ async def _main_impl():
                             if doc_url:
                                 print(f"📝 已同步至飞书知识库: {doc_url}")
                         except Exception as _wiki_err:
-                            print(f"⚠️ 飞书知识库同步失败: {p['title'][:40]}... 原因: {_wiki_err}")
+                            log_error(f"[飞书] 知识库同步失败: {p['title'][:40]}... 原因: {_wiki_err}")
                     # 更新统计
                     stats["categories"][cat_name] += 1
                     stats["total_papers"] += 1
@@ -959,6 +1217,17 @@ async def _main_impl():
                         f"failed={resp.get('failed')} | collection={cat_keys.get(cat_name)}"
                     )
 
+    # 抓取失败汇总
+    has_failures = bool(all_failed_keywords) or bool(_errors)
+    if all_failed_keywords:
+        total_kw = sum(len(cat_info["keywords"]) for cat_info in CONFIG["categories"].values())
+        failed_count = len(all_failed_keywords)
+        print(f"\n🚨 抓取失败汇总: {failed_count}/{total_kw} 个关键词因限速/超时未能获取数据")
+        for cat_name, kw in all_failed_keywords:
+            print(f"   ❌ [{cat_name}] {kw}")
+        if failed_count >= total_kw * 0.5:
+            print("⚠️ 超过半数关键词抓取失败，本次结果可能不完整！")
+
     # 持久化状态
     if DRY_RUN:
         print(f"\n🎉 DRY_RUN 完成！本次演练捕获到最新论文时间戳：{global_max_date}（未持久化）")
@@ -971,17 +1240,43 @@ async def _main_impl():
                 if count > 0:
                     print(f"   - {cat_name}: {count} 篇")
     else:
+        # history.json 始终更新（记录已处理的论文，避免下次重复处理）
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(history, f, ensure_ascii=False)
-        save_state(global_max_date)
-        print(f"\n🎉 任务完成！记录的最新论文时间戳为：{global_max_date}")
 
-        # 发送完成通知（包含详细论文信息或无新论文提示）
+        # state.json 仅在无抓取失败时更新，确保失败的关键词下次能重新抓取
+        if not all_failed_keywords:
+            save_state(global_max_date)
+            print(f"\n🎉 任务完成！记录的最新论文时间戳为：{global_max_date}")
+        else:
+            print(f"\n⚠️ 任务完成但存在抓取失败，不更新 last_date（当前: {state['last_date']}），下次将重试失败的关键词")
+
+        # 发送通知
         if ENABLE_NOTIFICATION:
+            # 构建错误汇总文本（收集所有运行时错误）
+            error_report = ""
+            if all_failed_keywords:
+                error_report += "arXiv 抓取失败：\n"
+                for cat, kw in all_failed_keywords:
+                    error_report += f"  [{cat}] {kw}\n"
+            if _errors:
+                error_report += "\n运行时错误：\n"
+                for err in _errors:
+                    error_report += f"  {err}\n"
+
             if stats["total_papers"] > 0:
                 print("📤 发送新论文通知...")
                 notifier.send_papers_detail(stats, state["is_first_run"])
+                # 有新论文但也有错误，追发错误通知
+                if error_report:
+                    print("📤 追发错误通知...")
+                    notifier.send_workflow_error(error_report)
+            elif error_report:
+                # 无新论文且有错误，发送错误通知
+                print("📤 发送错误告警...")
+                notifier.send_workflow_error(error_report)
             else:
+                # 无新论文且无错误，正常通知
                 print("📤 发送无新论文通知...")
                 notifier.send_no_papers_notification(state["is_first_run"], CONFIG["categories"])
 

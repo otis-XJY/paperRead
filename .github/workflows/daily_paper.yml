@@ -8,9 +8,11 @@ on:
 jobs:
   run-auto-paper:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # 增加到2小时，或根据需要调整
+    timeout-minutes: 120
     permissions:
       contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
       - name: Checkout Repository
