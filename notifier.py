@@ -4,6 +4,7 @@
 """
 import os
 import json
+import time
 import requests
 from typing import Optional, Dict, List, Any
 
@@ -327,8 +328,7 @@ class NotificationManager:
                 print(f"📤 已发送论文通知: {paper['title'][:30]}... (状态: {'成功' if result else '失败'})")
                 
                 # 避免发送过快
-                from asyncio import sleep
-                sleep(0.5)
+                time.sleep(0.5)
         
         return {"feishu": True}
     
@@ -491,6 +491,63 @@ class NotificationManager:
 发生时间: {self._get_current_time()}
 """
         return self.send_text(content)
+
+    def send_structured_error_report(self, errors: List[Dict], failed_keywords: List[tuple] = None, stats: Dict = None) -> Dict[str, bool]:
+        """发送结构化错误报告，按类型分类展示"""
+        by_type: Dict[str, List[Dict]] = {}
+        for err in errors:
+            t = err.get("type", "runtime")
+            by_type.setdefault(t, []).append(err)
+
+        type_labels = {
+            "arxiv_fetch": "arXiv 抓取失败",
+            "llm_phase_one": "LLM 阶段一分析失败",
+            "llm_phase_two": "LLM 阶段二分析失败",
+            "zotero_write": "Zotero 写入失败",
+            "feishu_sync": "飞书同步失败",
+            "runtime": "其他运行时错误",
+        }
+
+        lines = ["❌ Zotero AI Daily Papers 错误报告\n"]
+
+        # arXiv 抓取失败（来自 failed_keywords）
+        if failed_keywords:
+            lines.append(f"📡 arXiv 抓取失败 ({len(failed_keywords)} 个关键词):")
+            for cat, kw in failed_keywords:
+                lines.append(f"  [{cat}] {kw}")
+            lines.append("")
+
+        # LLM 失败 — 区分全部失败 vs 部分失败
+        llm_errors = by_type.get("llm_phase_one", []) + by_type.get("llm_phase_two", [])
+        if llm_errors:
+            total_attempted = stats.get("total_attempted_analysis", 0) if stats else 0
+            if total_attempted > 0 and len(llm_errors) >= total_attempted:
+                lines.append(f"🤖 LLM 分析全部失败，共 {len(llm_errors)} 篇论文未能分析")
+            else:
+                lines.append(f"🤖 LLM 分析失败: {len(llm_errors)} 篇")
+            # 按分类统计
+            by_cat: Dict[str, int] = {}
+            for err in llm_errors:
+                cat = err.get("category", "未知")
+                by_cat[cat] = by_cat.get(cat, 0) + 1
+            for cat, count in by_cat.items():
+                lines.append(f"  [{cat}] {count} 篇")
+            lines.append("")
+
+        # 其他错误类型
+        for err_type in ["zotero_write", "feishu_sync", "runtime"]:
+            errs = by_type.get(err_type, [])
+            if errs:
+                label = type_labels.get(err_type, err_type)
+                lines.append(f"⚠️ {label} ({len(errs)} 次):")
+                for err in errs[:5]:
+                    lines.append(f"  {err['message'][:100]}")
+                if len(errs) > 5:
+                    lines.append(f"  ... 还有 {len(errs) - 5} 条")
+                lines.append("")
+
+        lines.append(f"发生时间: {self._get_current_time()}")
+        return self.send_text("\n".join(lines))
 
     def _get_current_time(self) -> str:
         """获取当前时间字符串"""

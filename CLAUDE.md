@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Zotero AI Daily Papers — an automated pipeline that fetches arXiv papers, analyzes them with an LLM (ModelScope Qwen or OpenAI GPT), archives into Zotero with structured notes, and sends notifications via Feishu/WeChat Work webhooks.
+Zotero AI Daily Papers — an automated pipeline that fetches arXiv papers, analyzes them with an LLM (default: DeepSeek-V4-Pro via ModelScope, with multi-model fallback), archives into Zotero with structured notes, and sends notifications via Feishu/WeChat Work webhooks.
 
 ## Commands
 
@@ -40,6 +40,11 @@ No test suite or linter is configured in the repo. Code style follows PEP 8.
 - **notifier.py** (~500 lines) — `WxWorkNotifier` and `FeishuNotifier` classes for webhook-based push notifications, composed via `NotificationManager`.
 - **feishu_wiki.py** (~350 lines) — `FeishuWikiClient` mirrors Zotero paper notes to a Feishu Wiki, replicating the Zotero collection hierarchy. Optional; activated when `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, and `FEISHU_WIKI_ROOT_NODE_TOKEN` are all set.
 
+### Utility Scripts
+
+- **test_feishu_wiki.py** — Standalone integration test for Feishu Wiki write functionality. Run with `python test_feishu_wiki.py` (requires Feishu env vars).
+- **bootstrap_feishu_wiki_layout.py** — One-time script to bootstrap the Feishu Wiki folder/category structure without running the full pipeline.
+
 ### Configuration Files
 
 - **categories.json** — Research category definitions (keywords, arXiv categories, descriptions). Can be edited directly on GitHub. Both `main.py` and `zotero_indexer.py` read from this file.
@@ -49,7 +54,7 @@ No test suite or linter is configured in the repo. Code style follows PEP 8.
 1. **Phase One (lightweight filtering):** `check_relevance_phase_one()` — sends title + abstract + short reviews from knowledge base. Returns a relevance score (0-10). Papers scoring >= 7 proceed.
 2. **Phase Two (deep analysis):** `deep_analyze_phase_two()` — sends paper with full notes from matched knowledge base entries. Returns structured JSON: recommendation ("must-read"/"worth-reading"/"skipable"), methodology, core concepts, sharp review, comparison with existing papers.
 
-All LLM calls go through `MultiModelLLM.call()` which provides automatic failover: on 429 rate limit, it switches to the next model in `CONFIG["fallback_models"]`. Two rounds of attempts with a 60s pause between rounds.
+All LLM calls go through `MultiModelLLM.call()` which provides automatic failover: on 429 rate limit, it switches to the next model in `CONFIG["fallback_models"]`. Default fallback chain: DeepSeek-V4-Pro → GLM-5.1 → MiniMax-M2.5 → Kimi-K2.5 (all via ModelScope API). Two rounds of attempts with a 60s pause between rounds.
 
 ### Cold Start vs Incremental
 
@@ -88,13 +93,15 @@ See `.env.example` for the full list. Key ones:
 | `ENABLE_NOTIFICATION` | Set to `0` to disable notifications |
 | `FEISHU_APP_ID` / `FEISHU_APP_SECRET` | Feishu self-built app credentials (for wiki mirroring) |
 | `FEISHU_WIKI_ROOT_NODE_TOKEN` | Target Feishu Wiki root node token |
+| `FEISHU_WIKI_DAILY_FOLDER_NAME` | Feishu Wiki folder name (default: "DailyPapers") |
+| `FEISHU_WEB_BASE` | Feishu web base URL (default: `https://my.feishu.cn`) |
+| `LLM_MODEL` / `BASE_URL` | Override default LLM model and API endpoint |
 
 ## CI/CD
 
-Two GitHub Actions workflows in `.github/workflows/`:
+One GitHub Actions workflow in `.github/workflows/`:
 
-- **daily.yml** — runs at 00:00 UTC, builds knowledge base, runs main.py, commits state files back to repo.
-- **daily_paper.yml** — runs at 09:00 UTC, uploads state files as artifacts.
+- **daily_paper.yml** — runs at 00:00 UTC daily (+ manual dispatch), builds knowledge base, runs main.py, commits state files back to repo. 120-minute timeout. Uses Python 3.10.
 
 ## Conventions
 

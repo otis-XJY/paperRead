@@ -38,13 +38,13 @@ def load_categories_config():
 
 CONFIG = {
     "categories": load_categories_config(),
-    "llm_model": "ZhipuAI/GLM-5.1",
+    "llm_model": "deepseek-ai/DeepSeek-V4-Pro",
     "base_url": "https://api-inference.modelscope.cn/v1/",
     # 多模型备选：遇到 429 限速时自动切换到下一个模型
     # 所有模型共用同一个 base_url 和 API key
     "fallback_models": [
-        "ZhipuAI/GLM-5.1",
         "deepseek-ai/DeepSeek-V4-Pro",
+        "ZhipuAI/GLM-5.1",
         "MiniMax/MiniMax-M2.5",
         "moonshotai/Kimi-K2.5",
     ],
@@ -127,6 +127,11 @@ class MultiModelLLM:
                     if response_format:
                         kwargs["response_format"] = response_format
                     resp = self.client.chat.completions.create(**kwargs)
+                    # 验证响应有效性：choices 为空或 content 为 None 视为失败
+                    if not resp.choices or resp.choices[0].message.content is None:
+                        last_exc = ValueError(f"模型 {model} 返回空响应 (choices={resp.choices})")
+                        print(f"⚠️ 模型 {model} 返回空响应，切换下一个...")
+                        continue
                     self.current_idx = (self.current_idx + i) % total_models
                     return resp
                 except Exception as e:
@@ -156,13 +161,13 @@ RETRY_TIMES = 3
 RETRY_BASE_DELAY_SECONDS = 1.0
 
 # 运行时错误收集器，所有错误汇总后发送到飞书
-_errors: list[str] = []
+_errors: list[dict] = []
 
 
-def log_error(msg: str):
+def log_error(msg: str, category: str = "", error_type: str = "runtime"):
     """记录一条错误，最终汇总发送到飞书"""
     print(msg)
-    _errors.append(msg)
+    _errors.append({"category": category, "type": error_type, "message": msg})
 DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 DEBUG_PHASE_ONE = os.getenv("DEBUG_PHASE_ONE", "1") == "1"
 ENABLE_NOTIFICATION = os.getenv("ENABLE_NOTIFICATION", "1") == "1"
@@ -281,7 +286,13 @@ async def fetch_text_with_retry(session, url, retries=RETRY_TIMES, base_delay=RE
             await asyncio.sleep(delay)
 
 def safe_json_parse(text):
-    try: return json.loads(text)
+    if not text or not isinstance(text, str):
+        return {}
+    try:
+        result = json.loads(text)
+        if isinstance(result, dict):
+            return result
+        return {}
     except:
         match = re.search(r'\{.*\}', text, re.DOTALL)
         return json.loads(match.group(0)) if match else {}
@@ -364,17 +375,23 @@ def get_or_create_collection(name, parent_key=None):
     return resp['successful']['0']['key']
 # ================= 2. 状态管理 =================
 def load_state():
-    default_state = {"is_first_run": True, "last_date": "2000-01-01T00:00:00Z"}
+    default_state = {"is_first_run": True, "last_date": "2000-01-01T00:00:00Z", "initialized_categories": []}
     state = load_json_file(STATE_FILE, default_state)
     if not isinstance(state, dict):
         return default_state
     if "is_first_run" not in state or "last_date" not in state:
         return default_state
+    # 向后兼容：旧格式没有 initialized_categories，视为全局首次运行已完成
+    if "initialized_categories" not in state:
+        state["initialized_categories"] = list(CONFIG["categories"].keys()) if not state["is_first_run"] else []
     return state
 
-def save_state(last_date):
+def save_state(last_date, initialized_categories=None):
+    data = {"is_first_run": False, "last_date": last_date}
+    if initialized_categories is not None:
+        data["initialized_categories"] = initialized_categories
     with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"is_first_run": False, "last_date": last_date}, f)
+        json.dump(data, f, ensure_ascii=False)
 
 
 def simple_first_run_filter(paper):
@@ -384,7 +401,7 @@ def simple_first_run_filter(paper):
     return bool(title) and bool(summary)
 
 # ================= 3. 两阶段 AI 分析 =================
-def check_relevance_phase_one(paper, kb_entries):
+def check_relevance_phase_one(paper, kb_entries, category_name=""):
     # 提取短评作为上下文，极致省 Token
     short_context = [{"title": kb["title"], "review": kb["short_review"]} for kb in kb_entries]
     
@@ -420,8 +437,8 @@ def check_relevance_phase_one(paper, kb_entries):
             raise RuntimeError(
                 "LLM 鉴权失败（401）。请确认使用的是 ModelScope Token，并设置 MODELSCOPE_API_KEY。"
             ) from e
-        log_error(f"[LLM] 阶段一初筛报错: {e}")
-        return {"is_relevant": False, "matched_titles":[]}
+        log_error(f"[LLM] 阶段一初筛报错: {e}", category=category_name, error_type="llm_phase_one")
+        return {"is_relevant": False, "matched_titles":[], "error": True}
 
 def deep_analyze_phase_two(paper, category_name, matched_full_notes):
     prompt = f"""
@@ -444,7 +461,7 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
             raise RuntimeError(
                 "LLM 鉴权失败（401）。请确认使用的是 ModelScope Token，并设置 MODELSCOPE_API_KEY。"
             ) from e
-        log_error(f"[LLM] 阶段二深读报错: {e}")
+        log_error(f"[LLM] 阶段二深读报错: {e}", category=category_name, error_type="llm_phase_two")
         return None
 
 
@@ -480,7 +497,7 @@ def analyze_first_run_paper(paper, category_name):
             raise RuntimeError(
                 "LLM 鉴权失败（401）。请确认使用的是 ModelScope Token，并设置 MODELSCOPE_API_KEY。"
             ) from e
-        log_error(f"[LLM] 首次运行深读报错: {e}")
+        log_error(f"[LLM] 首次运行深读报错: {e}", category=category_name, error_type="llm_phase_two")
         return None
 
 # ================= 4. 动态抓取模块 =================
@@ -561,7 +578,7 @@ def parse_oai_pmh_response(xml_text):
     return papers
 
 
-async def fetch_oai_pmh(session, arxiv_categories, last_date, max_results_per_cat=200):
+async def fetch_oai_pmh(session, arxiv_categories, last_date, max_results_per_cat=200, cat_name=""):
     """
     通过 OAI-PMH 协议批量拉取指定 arXiv 分类的最新论文。
     返回值: list[dict] — 标准 paper dict 格式
@@ -593,11 +610,11 @@ async def fetch_oai_pmh(session, arxiv_categories, last_date, max_results_per_ca
                         await asyncio.sleep(retry_after)
                         continue
                     elif resp.status != 200:
-                        log_error(f"[OAI-PMH] HTTP {resp.status} for {cat}")
+                        log_error(f"[OAI-PMH] HTTP {resp.status} for {cat}", category=cat_name, error_type="arxiv_fetch")
                         break
                     xml_text = await resp.text()
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                log_error(f"[OAI-PMH] 请求失败 {cat}: {e}")
+                log_error(f"[OAI-PMH] 请求失败 {cat}: {e}", category=cat_name, error_type="arxiv_fetch")
                 break
 
             papers = parse_oai_pmh_response(xml_text)
@@ -747,11 +764,14 @@ async def fetch_arxiv_single(session, url, max_retries=3, base_delay=6.0):
     return None
 
 
-async def fetch_arxiv(session, keywords, state, arxiv_categories=None):
+async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_first_run=None, cat_name=""):
     all_papers = {}
     max_published_date = state["last_date"]
 
-    if state["is_first_run"]:
+    # 分类级别的首次运行标志优先于全局标志
+    is_first = cat_is_first_run if cat_is_first_run is not None else state["is_first_run"]
+
+    if is_first:
         latest_candidates = {}
         hot_candidates = {}
         hot_order = []
@@ -773,7 +793,7 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None):
             # 拉取最新 10 篇
             latest_text = await fetch_arxiv_single(session, latest_url)
             if latest_text is None:
-                log_error(f"[arXiv] 首次运行关键词抓取失败: {kw}")
+                log_error(f"[arXiv] 首次运行关键词抓取失败: {kw}", category=cat_name, error_type="arxiv_fetch")
                 failed_keywords.append(kw)
             elif latest_text:
                 latest_feed = feedparser.parse(latest_text)
@@ -801,7 +821,7 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None):
             hot_text = await fetch_arxiv_single(session, hot_url)
             if hot_text is None:
                 if kw not in failed_keywords:
-                    log_error(f"[arXiv] 首次运行关键词抓取失败: {kw}")
+                    log_error(f"[arXiv] 首次运行关键词抓取失败: {kw}", category=cat_name, error_type="arxiv_fetch")
                     failed_keywords.append(kw)
             elif hot_text:
                 hot_feed = feedparser.parse(hot_text)
@@ -863,7 +883,7 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None):
         text = await fetch_arxiv_single(session, url)
         if text is None:
             # fetch_arxiv_single 返回 None 表示所有重试均失败（429/超时/网络错误）
-            log_error(f"[arXiv] 增量抓取关键词失败: {kw}")
+            log_error(f"[arXiv] 增量抓取关键词失败: {kw}", category=cat_name, error_type="arxiv_fetch")
             failed_keywords.append(kw)
             continue
 
@@ -896,7 +916,7 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None):
     if failed_keywords and arxiv_categories:
         print(f"🔄 {len(failed_keywords)} 个关键词失败，尝试 OAI-PMH 备选方案...")
         try:
-            oai_papers = await fetch_oai_pmh(session, arxiv_categories, state["last_date"])
+            oai_papers = await fetch_oai_pmh(session, arxiv_categories, state["last_date"], cat_name=cat_name)
             if oai_papers:
                 matched = local_keyword_filter(oai_papers, failed_keywords)
                 new_count = 0
@@ -910,9 +930,9 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None):
                 # OAI-PMH 成功则清除失败标记
                 failed_keywords = []
             else:
-                log_error("[OAI-PMH] 备选方案未返回任何论文")
+                log_error("[OAI-PMH] 备选方案未返回任何论文", category=cat_name, error_type="arxiv_fetch")
         except Exception as e:
-            log_error(f"[OAI-PMH] 备选方案执行失败: {e}")
+            log_error(f"[OAI-PMH] 备选方案执行失败: {e}", category=cat_name, error_type="arxiv_fetch")
 
     return list(all_papers.values()), max_published_date, failed_keywords
 
@@ -953,7 +973,7 @@ async def _main_impl():
         kb = {}
 
     # 检查所有配置的类目是否都在知识库中有数据
-    missing_categories = [cat_name for cat_name in CONFIG["categories"] if cat_name not in kb or not kb[cat_name]]
+    missing_categories = [cat_name for cat_name in CONFIG["categories"] if cat_name not in kb]
     if missing_categories:
         print(f"⚠️ 发现 {len(missing_categories)} 个类目缺少知识库数据: {', '.join(missing_categories)}")
         print("🔄 正在重新构建知识库...")
@@ -977,8 +997,10 @@ async def _main_impl():
     history_set = set(history)
     
     state = load_state()
+    initialized_categories = set(state.get("initialized_categories", []))
     global_max_date = state["last_date"]
     print(f"🧭 当前状态: is_first_run={state['is_first_run']}, last_date={state['last_date']}")
+    print(f"🧭 已初始化分类: {', '.join(initialized_categories) if initialized_categories else '无'}")
     
     # 发送工作流开始通知
     if ENABLE_NOTIFICATION and not DRY_RUN:
@@ -999,7 +1021,9 @@ async def _main_impl():
     stats = {
         "categories": {},
         "total_papers": 0,
-        "papers": {}  # 存储新论文的详细信息
+        "papers": {},  # 存储新论文的详细信息
+        "total_attempted_analysis": 0,  # 进入分析流程的论文数
+        "llm_failures": 0,  # LLM 分析失败的论文数
     }
 
     all_failed_keywords = []  # 追踪所有抓取失败的关键词
@@ -1009,10 +1033,17 @@ async def _main_impl():
             print(f"\n--- 正在处理分类: {cat_name} ---")
             stats["categories"][cat_name] = 0
 
+            # 分类级别的首次运行判断：未在 initialized_categories 中的分类走首次运行流程
+            cat_is_first_run = cat_name not in initialized_categories
+            if cat_is_first_run:
+                print(f"🆕 分类 {cat_name} 尚未初始化，执行首次运行流程")
+
             # 动态抓取（支持首次与增量）
             papers, cat_max_date, failed_kws = await fetch_arxiv(
                 session, cat_info["keywords"], state,
-                cat_info.get("arxiv_categories", [])
+                cat_info.get("arxiv_categories", []),
+                cat_is_first_run=cat_is_first_run,
+                cat_name=cat_name
             )
             if cat_max_date > global_max_date: global_max_date = cat_max_date
             if failed_kws:
@@ -1024,7 +1055,9 @@ async def _main_impl():
                 if p['id'] in history_set:
                     continue
 
-                if state["is_first_run"]:
+                stats["total_attempted_analysis"] += 1
+
+                if cat_is_first_run:
                     if not simple_first_run_filter(p):
                         print(f"⏭️ 首次运行简单过滤未通过，跳过: {p['title'][:30]}...")
                         continue
@@ -1039,9 +1072,6 @@ async def _main_impl():
                             "sharp_review": "首次运行分析失败，暂无法生成锐评",
                             "summary": "首次运行分析失败，建议后续补充。",
                         }
-
-                    history.append(p['id'])
-                    history_set.add(p['id'])
 
                     if DRY_RUN:
                         print(
@@ -1067,7 +1097,7 @@ async def _main_impl():
                     try:
                         resp = retry_sync(lambda: zot.create_items([item]), "首次运行创建 Zotero 论文条目")
                     except Exception as _zotero_err:
-                        log_error(f"[Zotero] 首次运行条目写入失败: {p['title'][:40]}... 原因: {_zotero_err}")
+                        log_error(f"[Zotero] 首次运行条目写入失败: {p['title'][:40]}... 原因: {_zotero_err}", category=cat_name, error_type="zotero_write")
                         continue
                     if resp['successful']:
                         item_key, web_item_link = extract_created_item_meta(resp)
@@ -1104,8 +1134,10 @@ async def _main_impl():
                         try:
                             retry_sync(lambda: zot.create_items([note_template]), "首次运行创建 Zotero 说明笔记")
                         except Exception as _note_err:
-                            log_error(f"[Zotero] 首次运行笔记创建失败: {p['title'][:40]}... 原因: {_note_err}")
+                            log_error(f"[Zotero] 首次运行笔记创建失败: {p['title'][:40]}... 原因: {_note_err}", category=cat_name, error_type="zotero_write")
                         print("✅ 首次运行已直存至 Zotero")
+                        history.append(p['id'])
+                        history_set.add(p['id'])
                         # 飞书知识库同步
                         doc_url = None
                         if feishu_wiki_client:
@@ -1124,7 +1156,7 @@ async def _main_impl():
                                 if doc_url:
                                     print(f"📝 已同步至飞书知识库: {doc_url}")
                             except Exception as _wiki_err:
-                                log_error(f"[飞书] 知识库同步失败: {p['title'][:40]}... 原因: {_wiki_err}")
+                                log_error(f"[飞书] 知识库同步失败: {p['title'][:40]}... 原因: {_wiki_err}", category=cat_name, error_type="feishu_sync")
                         # 更新统计
                         stats["categories"][cat_name] += 1
                         stats["total_papers"] += 1
@@ -1158,7 +1190,7 @@ async def _main_impl():
                 
                 # 阶段一：轻量化相关性初筛
                 print(f"🧪 阶段一相关性判断: {p['title'][:50]}...")
-                phase_one_res = check_relevance_phase_one(p, kb_entries)
+                phase_one_res = check_relevance_phase_one(p, kb_entries, category_name=cat_name)
                 if DEBUG_PHASE_ONE:
                     print(
                         "📊 阶段一输出: "
@@ -1168,20 +1200,18 @@ async def _main_impl():
                         f"reason={phase_one_res.get('reason', '')}"
                     )
                 if not phase_one_res.get("is_relevant"):
+                    if phase_one_res.get("error"):
+                        stats["llm_failures"] += 1
                     print(f"⏭️ 评分不够或无相关性，跳过: {p['title'][:30]}...")
                     continue
 
-                # 只在确认“相关”后记录历史，避免误伤其它分类
-                history.append(p['id'])
-                history_set.add(p['id'])
-                
                 # 阶段二：组装深读上下文并深度对比
                 matched_titles = phase_one_res.get("matched_titles",[])
                 print(f"🧠 强相关！命中历史笔记 {len(matched_titles)} 篇，开始深读对比: {p['title'][:30]}...")
-                
-                matched_full_notes = [{"title": entry["title"], "note": entry["full_note"]} 
+
+                matched_full_notes = [{"title": entry["title"], "note": entry["full_note"]}
                                       for entry in kb_entries if entry["title"] in matched_titles]
-                
+
                 print(f"📖 阶段二深读分析: {p['title'][:50]}...")
                 analysis = deep_analyze_phase_two(p, cat_name, matched_full_notes)
                 if not analysis or analysis.get("recommendation") == "可跳过": continue
@@ -1204,7 +1234,7 @@ async def _main_impl():
                 try:
                     resp = retry_sync(lambda: zot.create_items([item]), "创建 Zotero 论文条目")
                 except Exception as _zotero_err:
-                    log_error(f"[Zotero] 增量条目写入失败: {p['title'][:40]}... 原因: {_zotero_err}")
+                    log_error(f"[Zotero] 增量条目写入失败: {p['title'][:40]}... 原因: {_zotero_err}", category=cat_name, error_type="zotero_write")
                     continue
                 if resp['successful']:
                     item_key, web_item_link = extract_created_item_meta(resp)
@@ -1237,8 +1267,10 @@ async def _main_impl():
                     try:
                         retry_sync(lambda: zot.create_items([note_template]), "创建 Zotero 笔记")
                     except Exception as _note_err:
-                        log_error(f"[Zotero] 增量笔记创建失败: {p['title'][:40]}... 原因: {_note_err}")
+                        log_error(f"[Zotero] 增量笔记创建失败: {p['title'][:40]}... 原因: {_note_err}", category=cat_name, error_type="zotero_write")
                     print(f"✅ 成功同步至 Zotero")
+                    history.append(p['id'])
+                    history_set.add(p['id'])
                     # 飞书知识库同步
                     doc_url = None
                     if feishu_wiki_client:
@@ -1257,7 +1289,7 @@ async def _main_impl():
                             if doc_url:
                                 print(f"📝 已同步至飞书知识库: {doc_url}")
                         except Exception as _wiki_err:
-                            log_error(f"[飞书] 知识库同步失败: {p['title'][:40]}... 原因: {_wiki_err}")
+                            log_error(f"[飞书] 知识库同步失败: {p['title'][:40]}... 原因: {_wiki_err}", category=cat_name, error_type="feishu_sync")
                     # 更新统计
                     stats["categories"][cat_name] += 1
                     stats["total_papers"] += 1
@@ -1288,6 +1320,11 @@ async def _main_impl():
                         f"failed={resp.get('failed')} | collection={cat_keys.get(cat_name)}"
                     )
 
+            # 分类处理完成，标记为已初始化
+            if cat_is_first_run and cat_name not in initialized_categories:
+                initialized_categories.add(cat_name)
+                print(f"✅ 分类 {cat_name} 首次运行完成，已标记为已初始化")
+
     # 抓取失败汇总
     has_failures = bool(all_failed_keywords) or bool(_errors)
     if all_failed_keywords:
@@ -1315,39 +1352,33 @@ async def _main_impl():
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(history, f, ensure_ascii=False)
 
-        # state.json 仅在无抓取失败时更新，确保失败的关键词下次能重新抓取
+        # state.json 仅在无抓取失败时更新 last_date，确保失败的关键词下次能重新抓取
+        # 但 initialized_categories 始终保存（分类初始化不受关键词失败影响）
         if not all_failed_keywords:
-            save_state(global_max_date)
+            save_state(global_max_date, list(initialized_categories))
             print(f"\n🎉 任务完成！记录的最新论文时间戳为：{global_max_date}")
         else:
+            # 有失败时只更新 initialized_categories，不更新 last_date
+            _state = load_state()
+            _state["initialized_categories"] = list(initialized_categories)
+            with open(STATE_FILE, "w", encoding="utf-8") as f:
+                json.dump(_state, f, ensure_ascii=False)
             print(f"\n⚠️ 任务完成但存在抓取失败，不更新 last_date（当前: {state['last_date']}），下次将重试失败的关键词")
 
         # 发送通知
         if ENABLE_NOTIFICATION:
-            # 构建错误汇总文本（收集所有运行时错误）
-            error_report = ""
-            if all_failed_keywords:
-                error_report += "arXiv 抓取失败：\n"
-                for cat, kw in all_failed_keywords:
-                    error_report += f"  [{cat}] {kw}\n"
-            if _errors:
-                error_report += "\n运行时错误：\n"
-                for err in _errors:
-                    error_report += f"  {err}\n"
+            has_errors = bool(_errors) or bool(all_failed_keywords)
 
             if stats["total_papers"] > 0:
                 print("📤 发送新论文通知...")
                 notifier.send_papers_detail(stats, state["is_first_run"])
-                # 有新论文但也有错误，追发错误通知
-                if error_report:
-                    print("📤 追发错误通知...")
-                    notifier.send_workflow_error(error_report)
-            elif error_report:
-                # 无新论文且有错误，发送错误通知
-                print("📤 发送错误告警...")
-                notifier.send_workflow_error(error_report)
+                if has_errors:
+                    print("📤 追发结构化错误通知...")
+                    notifier.send_structured_error_report(_errors, all_failed_keywords, stats)
+            elif has_errors:
+                print("📤 发送结构化错误告警...")
+                notifier.send_structured_error_report(_errors, all_failed_keywords, stats)
             else:
-                # 无新论文且无错误，正常通知
                 print("📤 发送无新论文通知...")
                 notifier.send_no_papers_notification(state["is_first_run"], CONFIG["categories"])
 

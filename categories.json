@@ -11,7 +11,8 @@
     "keywords": [
       "ti:\"Vision-Language Navigation\"",
       "(abs:multi AND abs:Navigation)",
-      "(all:collaborative AND all:VLN)"
+      "(all:collaborative AND all:VLN)",
+      "(all:multi AND all:VLN)"
     ],
     "arxiv_categories": ["cs:cs:RO", "cs:cs:CV", "cs:cs:AI"],
     "desc": "多智能体VLN，协作VLN。"
