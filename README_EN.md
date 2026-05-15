@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-1.2.0-blue.svg)
+![Version](https://img.shields.io/badge/Version-1.4.0-blue.svg)
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![arXiv](https://img.shields.io/badge/arXiv-API-red.svg)
@@ -19,10 +19,11 @@
 
 ---
 
-## 🆕 Recent Updates (v1.3.0 - 2026/05/15)
+## 🆕 Recent Updates (v1.4.0 - 2026/05/15)
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.4.0** | 2026-05-15 | 🎉 **Externalized Category Configuration** — New categories.json config file for easy category and keyword management via GitHub |
 | **v1.3.0** | 2026-05-15 | Multi-model LLM failover, arXiv failure tracking, 30s request intervals |
 | **v1.2.0** | 2026-05-15 | OAI-PMH fallback for arXiv rate limiting, error collector, exponential backoff retry |
 | **v1.1.1** | 2026-05-12 | Optimized no-paper notification with dynamic category display |
@@ -209,32 +210,41 @@ python main.py
 
 ### Research Area Configuration
 
-Configure your research areas in the `CONFIG` section of `main.py`:
+Research area configuration is externalized to the `categories.json` file. You can edit this file directly on GitHub without modifying Python code.
 
-```python
-CONFIG = {
-    "categories": {
-        "CategoryName": {
-            "keywords": ["keyword1", "keyword2"],
-            "desc": "Category description"
-        }
-    },
-    "llm_model": "Qwen/Qwen3.5-35B-A3B",
-    "base_url": "https://api-inference.modelscope.cn/v1/"
+**Configuration File Structure:**
+
+```json
+{
+  "CategoryName": {
+    "keywords": ["keyword1", "keyword2"],
+    "arxiv_categories": ["cs:cs:RO", "cs:cs:AI"],
+    "desc": "Category description"
+  }
 }
 ```
 
 **Example Configuration:**
 
-```python
+```json
 "UAV_VLN": {
     "keywords": [
-        'ti:"Vision-Language Navigation"',
-        '(abs:UAV AND abs:Navigation)'
+        "ti:\"Vision-Language Navigation\"",
+        "(abs:UAV AND abs:Navigation)"
     ],
+    "arxiv_categories": ["cs:cs:RO", "cs:cs:CV", "cs:cs:AI"],
     "desc": "UAV vision-language navigation, spatial perception, and instruction execution."
 }
 ```
+
+**Adding New Categories on GitHub:**
+
+1. Open the `categories.json` file
+2. Click the edit button (pencil icon)
+3. Add new category configuration
+4. Commit changes
+
+> 📝 The system automatically detects newly added categories and supplements knowledge base data on the next run.
 
 **arXiv Search Syntax:**
 - `ti:"keyword"` - Search in title

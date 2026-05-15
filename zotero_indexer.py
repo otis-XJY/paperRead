@@ -12,6 +12,15 @@ ZOTERO_API_KEY = os.getenv("ZOTERO_API_KEY")
 if not ZOTERO_USER_ID or not ZOTERO_API_KEY:
     raise ValueError("缺少 Zotero 凭据，请检查 ZOTERO_USER_ID / ZOTERO_API_KEY")
 
+
+def load_categories_config():
+    """从 categories.json 加载类目配置"""
+    config_file = "categories.json"
+    if not os.path.exists(config_file):
+        raise FileNotFoundError(f"找不到类目配置文件: {config_file}")
+    with open(config_file, "r", encoding="utf-8") as f:
+        return json.load(f)
+
 zot = zotero.Zotero(ZOTERO_USER_ID, 'user', ZOTERO_API_KEY)
 
 
@@ -165,7 +174,8 @@ def build_knowledge_base():
             print(f"🔗 DailyPapers 链接: {root_link}")
         
         # 【新增】确保子分类框架 (首次运行时创建所有必要的分类在 DailyPapers 下)
-        categories = ["UAV_VLN", "MultiAgent_Game_Theory", "MARL", "Humanoid_Manipulation"]
+        categories_config = load_categories_config()
+        categories = list(categories_config.keys())
         ensure_collection_structure(root_key, categories)
         
         # 重新拉取，确保后续分组逻辑看到最新集合列表

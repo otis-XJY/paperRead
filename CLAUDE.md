@@ -35,10 +35,14 @@ No test suite or linter is configured in the repo. Code style follows PEP 8.
 
 ### Core Pipeline (4 files)
 
-- **main.py** (~1200 lines) — Main orchestrator: fetches from arXiv, runs two-stage LLM analysis, writes to Zotero, sends notifications, optionally syncs to Feishu Wiki. The `CONFIG` dict at the top controls research categories, LLM model settings, and thresholds.
-- **zotero_indexer.py** (~237 lines) — Reads all papers from Zotero's "DailyPapers" collection and builds `knowledge_base.json` (title, short review, full notes per paper).
+- **main.py** (~1200 lines) — Main orchestrator: fetches from arXiv, runs two-stage LLM analysis, writes to Zotero, sends notifications, optionally syncs to Feishu Wiki. The `CONFIG` dict at the top controls LLM model settings and thresholds; research categories are loaded from `categories.json`.
+- **zotero_indexer.py** (~237 lines) — Reads all papers from Zotero's "DailyPapers" collection and builds `knowledge_base.json` (title, short review, full notes per paper). Reads category list from `categories.json`.
 - **notifier.py** (~500 lines) — `WxWorkNotifier` and `FeishuNotifier` classes for webhook-based push notifications, composed via `NotificationManager`.
 - **feishu_wiki.py** (~350 lines) — `FeishuWikiClient` mirrors Zotero paper notes to a Feishu Wiki, replicating the Zotero collection hierarchy. Optional; activated when `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, and `FEISHU_WIKI_ROOT_NODE_TOKEN` are all set.
+
+### Configuration Files
+
+- **categories.json** — Research category definitions (keywords, arXiv categories, descriptions). Can be edited directly on GitHub. Both `main.py` and `zotero_indexer.py` read from this file.
 
 ### Two-Stage LLM Analysis
 
@@ -94,6 +98,6 @@ Two GitHub Actions workflows in `.github/workflows/`:
 
 ## Conventions
 
-- Configuration (research categories, LLM model, thresholds) lives in the `CONFIG` dict at the top of `main.py` — not in external config files.
+- Research category configuration lives in `categories.json` (external config file, editable on GitHub). LLM model settings and thresholds are in the `CONFIG` dict at the top of `main.py`.
 - `mainold.py` is a legacy file and not used in production.
 - Chinese is the primary documentation language; `README_EN.md` provides an English translation.

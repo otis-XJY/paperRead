@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-1.2.0-blue.svg)
+![Version](https://img.shields.io/badge/Version-1.4.0-blue.svg)
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![arXiv](https://img.shields.io/badge/arXiv-API-red.svg)
@@ -19,10 +19,11 @@
 
 ---
 
-## 🆕 最近更新 (v1.3.0 - 2026/05/15)
+## 🆕 最近更新 (v1.4.0 - 2026/05/15)
 
 | 版本 | 日期 | 主要更新 |
 |------|------|----------|
+| **v1.4.0** | 2026-05-15 | 🎉 **类目配置外部化** — 新增 categories.json 配置文件，支持在 GitHub 页面上快速配置查询类目和关键词 |
 | **v1.3.0** | 2026-05-15 | 多模型LLM自动切换、arXiv抓取失败追踪、请求间隔增至30s |
 | **v1.2.0** | 2026-05-15 | 新增OAI-PMH备选方案解决arXiv限速、错误收集器、指数退避重试机制 |
 | **v1.1.1** | 2026-05-12 | 优化无新论文通知显示，动态展示扫描分类 |
@@ -209,32 +210,41 @@ python main.py
 
 ### 研究领域配置
 
-在 `main.py` 的 `CONFIG` 中配置你关注的研究领域：
+研究领域配置已外部化到 `categories.json` 文件中，您可以直接在 GitHub 页面上编辑该文件，无需修改 Python 代码。
 
-```python
-CONFIG = {
-    "categories": {
-        "分类名称": {
-            "keywords": ["关键词1", "关键词2"],
-            "desc": "分类描述"
-        }
-    },
-    "llm_model": "Qwen/Qwen3.5-35B-A3B",
-    "base_url": "https://api-inference.modelscope.cn/v1/"
+**配置文件结构：**
+
+```json
+{
+  "分类名称": {
+    "keywords": ["关键词1", "关键词2"],
+    "arxiv_categories": ["cs:cs:RO", "cs:cs:AI"],
+    "desc": "分类描述"
+  }
 }
 ```
 
 **示例配置：**
 
-```python
+```json
 "UAV_VLN": {
     "keywords": [
-        'ti:"Vision-Language Navigation"',
-        '(abs:UAV AND abs:Navigation)'
+        "ti:\"Vision-Language Navigation\"",
+        "(abs:UAV AND abs:Navigation)"
     ],
+    "arxiv_categories": ["cs:cs:RO", "cs:cs:CV", "cs:cs:AI"],
     "desc": "无人机视觉语言导航、空间感知及指令执行。"
 }
 ```
+
+**在 GitHub 页面上添加新类目：**
+
+1. 打开 `categories.json` 文件
+2. 点击编辑按钮（铅笔图标）
+3. 添加新的类目配置
+4. 提交更改
+
+> 📝 系统会自动检测新添加的类目，并在下次运行时自动补充知识库数据。
 
 **arXiv 搜索语法：**
 - `ti:"关键词"` - 搜索标题

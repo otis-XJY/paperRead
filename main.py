@@ -22,39 +22,22 @@ from openai import OpenAI
 from pyzotero import zotero
 from notifier import notifier
 from feishu_wiki import FeishuWikiClient
+from zotero_indexer import build_knowledge_base
 
 __version__ = "1.0.0"
 
 # ================= 1. 配置区 =================
+
+def load_categories_config():
+    """从 categories.json 加载类目配置"""
+    config_file = "categories.json"
+    if not os.path.exists(config_file):
+        raise FileNotFoundError(f"找不到类目配置文件: {config_file}")
+    with open(config_file, "r", encoding="utf-8") as f:
+        return json.load(f)
+
 CONFIG = {
-    "categories": {
-        "UAV_VLN":
-        {"keywords":
-         ['ti:"Vision-Language Navigation"',
-          '(abs:UAV AND abs:Navigation)'],
-          "arxiv_categories": ["cs:cs:RO", "cs:cs:CV", "cs:cs:AI"],
-          "desc": "无人机视觉语言导航、空间感知及指令执行。"},
-        "multi_VLN":
-        {"keywords":
-         ['ti:"Vision-Language Navigation"',
-          '(abs:multi AND abs:Navigation)',
-          '(all:collaborative AND all:VLN)'],
-          "arxiv_categories": ["cs:cs:RO", "cs:cs:CV", "cs:cs:AI"],
-          "desc": "多智能体VLN，协作VLN。"},
-        "MultiAgent_Game_Theory":
-        {"keywords":
-         ['ti:"Game Theory" AND abs:Multi-agent',
-          'ti:"Decision Making" AND cat:cs.MA'],
-          "arxiv_categories": ["cs:cs:MA", "cs:cs:AI", "cs:cs:GT"],
-          "desc": "多智能体决策规划、博弈论及动态博弈。"},
-        "MARL":
-        {"keywords":
-         ['ti:"Multi-Agent Reinforcement Learning"',
-          'all:MARL',
-          'all:CTDE'],
-          "arxiv_categories": ["cs:cs:MA", "cs:cs:AI"],
-          "desc": "多智能体强化学习算法、协作机制及通信协议。"}
-    },
+    "categories": load_categories_config(),
     "llm_model": "ZhipuAI/GLM-5.1",
     "base_url": "https://api-inference.modelscope.cn/v1/",
     # 多模型备选：遇到 429 限速时自动切换到下一个模型
@@ -968,6 +951,24 @@ async def _main_impl():
     if not isinstance(kb, dict):
         print("⚠️ knowledge_base.json 格式异常，使用空知识库")
         kb = {}
+
+    # 检查所有配置的类目是否都在知识库中有数据
+    missing_categories = [cat_name for cat_name in CONFIG["categories"] if cat_name not in kb or not kb[cat_name]]
+    if missing_categories:
+        print(f"⚠️ 发现 {len(missing_categories)} 个类目缺少知识库数据: {', '.join(missing_categories)}")
+        print("🔄 正在重新构建知识库...")
+        try:
+            build_knowledge_base()
+            kb = load_json_file("knowledge_base.json", {})
+            if not isinstance(kb, dict):
+                print("⚠️ 重新构建后 knowledge_base.json 格式异常，使用空知识库")
+                kb = {}
+            else:
+                print("✅ 知识库重新构建完成")
+        except Exception as e:
+            print(f"❌ 知识库重新构建失败: {e}")
+            import traceback
+            traceback.print_exc()
 
     history = load_json_file(HISTORY_FILE, [])
     if not isinstance(history, list):

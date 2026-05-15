@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Community-contributed research categories
 - Multi-language support
 
+## [1.4.0] - 2026-05-15
+
+### Added
+- 类目配置外部化：新增 categories.json 配置文件，支持在 GitHub 页面上快速配置查询类目和关键词
+- 自动知识库补充：检测到新类目缺少知识库数据时，自动调用 build_knowledge_base() 重新构建
+
+### Changed
+- main.py 中的类目配置从硬编码改为从 categories.json 加载
+- zotero_indexer.py 中的类目列表从硬编码改为从 categories.json 读取
+- 统一了 main.py 和 zotero_indexer.py 的配置来源，消除了配置重复定义问题
+
 ## [1.3.0] - 2026-05-15
 
 ### Added

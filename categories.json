@@ -1,0 +1,36 @@
+{
+  "UAV_VLN": {
+    "keywords": [
+      "ti:\"Vision-Language Navigation\"",
+      "(abs:UAV AND abs:Navigation)"
+    ],
+    "arxiv_categories": ["cs:cs:RO", "cs:cs:CV", "cs:cs:AI"],
+    "desc": "无人机视觉语言导航、空间感知及指令执行。"
+  },
+  "multi_VLN": {
+    "keywords": [
+      "ti:\"Vision-Language Navigation\"",
+      "(abs:multi AND abs:Navigation)",
+      "(all:collaborative AND all:VLN)"
+    ],
+    "arxiv_categories": ["cs:cs:RO", "cs:cs:CV", "cs:cs:AI"],
+    "desc": "多智能体VLN，协作VLN。"
+  },
+  "MultiAgent_Game_Theory": {
+    "keywords": [
+      "ti:\"Game Theory\" AND abs:Multi-agent",
+      "ti:\"Decision Making\" AND cat:cs.MA"
+    ],
+    "arxiv_categories": ["cs:cs:MA", "cs:cs:AI", "cs:cs:GT"],
+    "desc": "多智能体决策规划、博弈论及动态博弈。"
+  },
+  "MARL": {
+    "keywords": [
+      "ti:\"Multi-Agent Reinforcement Learning\"",
+      "all:MARL",
+      "all:CTDE"
+    ],
+    "arxiv_categories": ["cs:cs:MA", "cs:cs:AI"],
+    "desc": "多智能体强化学习算法、协作机制及通信协议。"
+  }
+}
