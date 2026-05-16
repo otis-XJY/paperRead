@@ -359,6 +359,8 @@ Configure `WXWORK_WEBHOOK_URL` to enable.
 
 New categories are treated as first-run categories until they are written to `state.json` under `initialized_categories`.
 
+If Feishu Wiki sync is enabled (`FEISHU_APP_ID`, `FEISHU_APP_SECRET`, and `FEISHU_WIKI_ROOT_NODE_TOKEN` are set), `main.py` will bootstrap the Feishu Wiki layout (DailyPapers → categories) at startup and will mirror first-run articles into their respective Feishu subfolders.
+
 ---
 
 ## 📊 Usage Guide

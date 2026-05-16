@@ -1038,6 +1038,15 @@ async def _main_impl():
         print("📁 分类集合映射:")
         for _cat_name, _cat_key in cat_keys.items():
             print(f"   - {_cat_name}: {_cat_key}")
+        
+        # 飞书知识库：为所有类目预建 DailyPapers 及子目录（保证首次运行时能写入）
+        if feishu_wiki_client:
+            try:
+                print("📚 正在确保飞书知识库目录就绪（DailyPapers → 分类）...")
+                feishu_wiki_client.bootstrap_layout(list(CONFIG["categories"].keys()))
+                print("✅ 飞书知识库目录准备完成")
+            except Exception as e:
+                log_error(f"[Feishu] 初始化知识库目录失败: {e}", error_type="feishu_sync")
 
     # 统计变量
     stats = {

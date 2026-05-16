@@ -203,6 +203,8 @@ python main.py
 - 先更新 `categories.json`
 - 再运行 `python zotero_indexer.py`，让 Zotero 的分类树和 `knowledge_base.json` 同步新增分类
 - 之后运行 `python main.py`，新分类会被视为该分类的首次运行，走冷启动逻辑并写入 `state.json` 的 `initialized_categories`
+ - 如果启用了飞书知识库同步（已配置 `FEISHU_APP_ID/FEISHU_APP_SECRET/FEISHU_WIKI_ROOT_NODE_TOKEN`），
+   `main.py` 会在运行开始时为所有 `categories` 预创建飞书知识库目录（DailyPapers → 分类），并在首次运行时把该分类的所有首批文章同步到对应子目录。
 
 **后续运行会：**
 - 只抓取比上次更新的新论文
