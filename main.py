@@ -800,6 +800,9 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
         hot_order = []
         failed_keywords = []
 
+        # 首次运行：冷启动填充，不过滤日期，全量接收 arXiv 返回的论文
+        first_run_cutoff = "2000-01-01T00:00:00Z"
+
         for kw in keywords:
             encoded_kw = urllib.parse.quote(kw)
             print(f"🚀 首次运行：拉取最新10篇 + 认可度最高(Relevance)10篇 -> {kw}")
@@ -822,7 +825,7 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
                 latest_feed = feedparser.parse(latest_text)
                 for e in latest_feed.entries:
                     pub_date = e.get('published', '')
-                    if pub_date > state["last_date"]:
+                    if pub_date > first_run_cutoff:
                         pid = e.id.split('/')[-1]
                         authors = extract_authors_from_entry(e)
                         paper = {
@@ -850,7 +853,7 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
                 hot_feed = feedparser.parse(hot_text)
                 for e in hot_feed.entries:
                     pub_date = e.get('published', '')
-                    if pub_date > state["last_date"]:
+                    if pub_date > first_run_cutoff:
                         pid = e.id.split('/')[-1]
                         authors = extract_authors_from_entry(e)
                         paper = {
