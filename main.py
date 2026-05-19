@@ -670,48 +670,73 @@ async def fetch_oai_pmh(session, arxiv_categories, last_date, max_results_per_ca
 def local_keyword_filter(papers, keywords):
     """
     本地关键词过滤：将 arXiv API 查询语法解析为关键词，在 title/abstract 中匹配。
-    任一关键词命中即保留该论文。
+    正确处理 AND 逻辑：同一关键词内的所有条件必须同时满足。
+    不同关键词之间是 OR 关系（任一关键词组全部命中即保留）。
     """
-    # 从查询语法中提取搜索词
-    search_terms = []  # list of (field, terms_list)
+    # 从查询语法中提取搜索词组（每个关键词是一个 AND 条件组）
+    keyword_groups = []  # list of list of (field, terms_list)
+
     for kw in keywords:
-        # 提取 ti:"xxx" 中的关键词
-        ti_match = re.findall(r'ti:"([^"]+)"', kw)
-        for phrase in ti_match:
-            search_terms.append(("title", phrase.lower().split()))
+        # 按 AND 分割（忽略大小写）
+        and_parts = re.split(r'\s+AND\s+', kw, flags=re.IGNORECASE)
 
-        # 提取 abs:xxx 中的关键词
-        abs_matches = re.findall(r'abs:(\w+)', kw)
-        if abs_matches:
-            search_terms.append(("abstract", [m.lower() for m in abs_matches]))
+        conditions = []  # 当前关键词的 AND 条件列表
+        for part in and_parts:
+            part = part.strip()
 
-        # 提取 all:xxx 中的关键词
-        all_matches = re.findall(r'all:(\w+)', kw)
-        if all_matches:
-            search_terms.append(("both", [m.lower() for m in all_matches]))
+            # 提取 ti:"xxx" 中的关键词
+            ti_match = re.search(r'ti:"([^"]+)"', part)
+            if ti_match:
+                phrase = ti_match.group(1).lower()
+                conditions.append(("title", phrase.split()))
+                continue
 
-    if not search_terms:
+            # 提取 abs:xxx 中的关键词
+            abs_match = re.search(r'abs:(\w+)', part)
+            if abs_match:
+                conditions.append(("abstract", [abs_match.group(1).lower()]))
+                continue
+
+            # 提取 all:xxx 中的关键词
+            all_match = re.search(r'all:(\w+)', part)
+            if all_match:
+                conditions.append(("both", [all_match.group(1).lower()]))
+                continue
+
+            # 忽略 cat:xxx 条件（OAI-PMH 已按分类拉取）
+
+        if conditions:
+            keyword_groups.append(conditions)
+
+    if not keyword_groups:
         return papers
 
     matched = []
     for p in papers:
         title_lower = p.get("title", "").lower()
         abstract_lower = p.get("summary", "").lower()
+        combined = title_lower + " " + abstract_lower
 
-        for field, terms in search_terms:
-            if field == "title":
-                if all(t in title_lower for t in terms):
-                    matched.append(p)
-                    break
-            elif field == "abstract":
-                if all(t in abstract_lower for t in terms):
-                    matched.append(p)
-                    break
-            elif field == "both":
-                combined = title_lower + " " + abstract_lower
-                if all(t in combined for t in terms):
-                    matched.append(p)
-                    break
+        # 检查是否满足任一关键词组的所有条件
+        for group in keyword_groups:
+            all_conditions_met = True
+            for field, terms in group:
+                if field == "title":
+                    if not all(t in title_lower for t in terms):
+                        all_conditions_met = False
+                        break
+                elif field == "abstract":
+                    if not all(t in abstract_lower for t in terms):
+                        all_conditions_met = False
+                        break
+                elif field == "both":
+                    if not all(t in combined for t in terms):
+                        all_conditions_met = False
+                        break
+
+            if all_conditions_met:
+                matched.append(p)
+                break  # 任一关键词组全部命中即保留
 
     return matched
 
@@ -1081,7 +1106,7 @@ async def _main_impl():
                 all_failed_keywords.extend([(cat_name, kw) for kw in failed_kws])
             
             kb_entries = kb.get(cat_name, [])
-            
+
             for p in papers:
                 if p['id'] in history_set:
                     continue

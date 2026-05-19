@@ -9,7 +9,6 @@
   },
   "multi_VLN": {
     "keywords": [
-      "ti:\"Vision-Language Navigation\"",
       "(abs:multi AND abs:Navigation)",
       "(all:collaborative AND all:VLN)",
       "(all:multi AND all:VLN)"
@@ -20,18 +19,20 @@
   "MultiAgent_Game_Theory": {
     "keywords": [
       "ti:\"Game Theory\" AND abs:Multi-agent",
-      "ti:\"Decision Making\" AND cat:cs.MA"
+      "ti:\"Decision Making\" AND abs:Multi-agent"
     ],
     "arxiv_categories": ["cs:cs:MA", "cs:cs:AI", "cs:cs:GT"],
     "desc": "多智能体决策规划、博弈论及动态博弈。"
   },
   "MARL": {
     "keywords": [
-      "ti:\"Multi-Agent Reinforcement Learning\"",
-      "all:MARL",
-      "all:CTDE"
+      "ti:\"Multi-Agent Reinforcement Learning\" AND (abs:algorithm OR abs:policy OR abs:value OR abs:framework OR abs:method)",
+      "abs:\"value decomposition\" AND abs:\"multi-agent\"",
+      "abs:\"policy gradient\" AND abs:\"multi-agent\" AND abs:reinforcement",
+      "abs:\"centralized training\" AND abs:\"decentralized execution\" AND (abs:algorithm OR abs:method OR abs:framework)",
+      "abs:\"multi-agent\" AND abs:\"communication\" AND abs:\"reinforcement learning\" AND (abs:learn OR abs:protocol OR abs:framework)"
     ],
     "arxiv_categories": ["cs:cs:MA", "cs:cs:AI"],
-    "desc": "多智能体强化学习算法、协作机制及通信协议。"
+    "desc": "多智能体强化学习核心算法设计与理论改进（MAPPO、QMIX、值分解、策略梯度等），不含具体应用场景。"
   }
 }
