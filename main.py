@@ -972,7 +972,8 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
                 matched = local_keyword_filter(oai_papers, failed_keywords)
                 new_count = 0
                 for p in matched:
-                    if p["id"] not in all_papers:
+                    # 增量过滤：只接受比 last_date 新的论文
+                    if p["id"] not in all_papers and p.get("published", "") > state["last_date"]:
                         all_papers[p["id"]] = p
                         new_count += 1
                         if p.get("published", "") > max_published_date:
