@@ -1112,7 +1112,10 @@ async def _main_impl():
             kb_entries = kb.get(cat_name, [])
 
             for p in papers:
-                if p['id'] in history_set:
+                # 标准化 ID 格式：OAI-PMH 返回的 ID 可能不带版本号，history.json 中的带版本号
+                paper_id = p['id']
+                paper_id_base = re.sub(r'v\d+$', '', paper_id)  # 去掉版本号
+                if paper_id in history_set or paper_id_base in history_set:
                     continue
 
                 stats["total_attempted_analysis"] += 1
