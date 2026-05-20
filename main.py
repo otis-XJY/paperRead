@@ -47,6 +47,13 @@ CONFIG = {
         "ZhipuAI/GLM-5.1",
         "MiniMax/MiniMax-M2.5",
         "moonshotai/Kimi-K2.5",
+        "MiniMax/MiniMax-M1-80k",
+        "XiaomiMiMo/MiMo-V2-Flash:xiaomi",
+        "Qwen/QwQ-32B",
+        "deepseek-ai/DeepSeek-V3.2",
+        "ZhipuAI/GLM-5",
+        "deepseek-ai/DeepSeek-V4-Flash",
+
     ],
 }
 
@@ -571,17 +578,19 @@ def parse_oai_pmh_response(xml_text):
             title_el = meta.find("arxiv:title", OAI_PMH_NS)
             abstract_el = meta.find("arxiv:abstract", OAI_PMH_NS)
             authors_el = meta.find("arxiv:authors", OAI_PMH_NS)
-            date_el = meta.find("arxiv:submitter", OAI_PMH_NS)  # 没有直接的 date 字段
 
-            # 从 identifier 获取日期
-            identifier_el = header.find("oai:identifier", OAI_PMH_NS) if header is not None else None
-            # 从 datestamp 获取日期
+            # 优先使用 arxiv:created（论文创建时间），回退到 datestamp（元数据更新时间）
+            created_el = meta.find("arxiv:created", OAI_PMH_NS)
             datestamp_el = header.find("oai:datestamp", OAI_PMH_NS) if header is not None else None
 
             pid = pid_el.text.strip() if pid_el is not None and pid_el.text else ""
             title = (title_el.text or "").replace("\n", " ").strip() if title_el is not None and title_el.text else ""
             summary = (abstract_el.text or "").replace("\n", " ").strip() if abstract_el is not None and abstract_el.text else ""
-            published = (datestamp_el.text or "").strip() if datestamp_el is not None and datestamp_el.text else ""
+            # 优先使用论文创建时间，而非元数据更新时间
+            if created_el is not None and created_el.text:
+                published = created_el.text.strip()
+            else:
+                published = (datestamp_el.text or "").strip() if datestamp_el is not None and datestamp_el.text else ""
 
             # 解析作者
             authors = []
@@ -1046,7 +1055,9 @@ async def _main_impl():
         print("⚠️ history.json 格式异常，重置为空列表")
         history = []
     history_set = set(history)
-    
+    # 构建不带版本号的 ID 集合，用于 OAI-PMH 返回的 ID 去重
+    history_base_set = {re.sub(r'v\d+$', '', h) for h in history_set}
+
     state = load_state()
     initialized_categories = set(state.get("initialized_categories", []))
     global_max_date = state["last_date"]
@@ -1115,7 +1126,7 @@ async def _main_impl():
                 # 标准化 ID 格式：OAI-PMH 返回的 ID 可能不带版本号，history.json 中的带版本号
                 paper_id = p['id']
                 paper_id_base = re.sub(r'v\d+$', '', paper_id)  # 去掉版本号
-                if paper_id in history_set or paper_id_base in history_set:
+                if paper_id in history_set or paper_id_base in history_base_set:
                     continue
 
                 stats["total_attempted_analysis"] += 1
