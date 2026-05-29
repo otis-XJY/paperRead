@@ -11,10 +11,13 @@
     "keywords": [
       "(abs:multi AND abs:Navigation)",
       "(all:collaborative AND all:VLN)",
-      "(all:multi AND all:VLN)"
+      "(all:multi AND all:VLN)",
+      "(abs:multi AND abs:robot AND abs:navigation)",
+      "(abs:\"vision language model\" AND abs:navigation AND abs:multi)",
+      "(abs:VLM AND abs:navigation AND abs:multi)"
     ],
     "arxiv_categories": ["cs:cs:RO", "cs:cs:CV", "cs:cs:AI"],
-    "desc": "多智能体VLN，协作VLN。"
+    "desc": "多智能体VLN，协作VLN，VLM辅助的多智能体导航。"
   },
   "MultiAgent_Game_Theory": {
     "keywords": [

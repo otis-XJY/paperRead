@@ -1296,7 +1296,12 @@ async def _main_impl():
                 
                 # 写入 Zotero
                 print("📝 写入 Zotero 条目与笔记...")
-                item = zot.item_template('preprint')
+                try:
+                    item = zot.item_template('preprint')
+                except Exception as _tmpl_err:
+                    # pyzotero 1.6.2 偶发 item_template 参数丢失，用硬编码模板兜底
+                    log_error(f"[Zotero] item_template 失败，使用备用模板: {_tmpl_err}", category=cat_name, error_type="zotero_template")
+                    item = {"itemType": "preprint", "title": "", "creators": [], "abstractNote": "", "url": "", "date": "", "language": "", "citationKey": "", "collections": [], "tags": []}
                 item['title'] = p['title']
                 item['abstractNote'] = p['summary']
                 item['url'] = f"https://arxiv.org/abs/{p['id']}"
@@ -1304,7 +1309,7 @@ async def _main_impl():
                 item['creators'] = authors_to_zotero_creators(p.get('authors', []))
                 item['collections'] = [cat_keys[cat_name]]
                 item['tags'] =[{"tag": cat_name}, {"tag": analysis.get("recommendation", "值得看")}]
-                
+
                 try:
                     resp = retry_sync(lambda: zot.create_items([item]), "创建 Zotero 论文条目")
                 except Exception as _zotero_err:
