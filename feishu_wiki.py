@@ -216,11 +216,154 @@ class FeishuWikiClient:
             self._save_node_cache(self._cache)
         return self._cache[cat_key]
 
+    # ── 推荐级别子目录 ──────────────────────────────────────────────
+
+    RECOMMENDATION_LEVELS = ("必读", "值得看", "可跳过")
+
+    def _ensure_recommendation_node(self, category_node, category, rec_type):
+        """确保 category/rec_type 节点存在并缓存，返回 node_token。"""
+        rec_key = f"_root_/{self._daily_folder_name}/{category}/{rec_type}"
+        if rec_key in self._cache:
+            return self._cache[rec_key]
+        node = self.get_or_create_child_node(category_node, rec_type)
+        if node:
+            self._cache[rec_key] = node
+            self._save_node_cache(self._cache)
+        return node
+
+    def move_wiki_node(self, node_token, new_parent_token):
+        """将 wiki 节点移动到新的父节点下。返回 True/False。"""
+        space_id = self._discover_space_id()
+        try:
+            self._api_request(
+                "POST",
+                f"{FEISHU_BASE}/wiki/v2/spaces/{space_id}/nodes/{node_token}/move",
+                json_body={
+                    "target_parent_token": new_parent_token,
+                    "type": 2,  # 移动到目标节点下
+                },
+            )
+            return True
+        except RuntimeError as e:
+            print(f"⚠️ 节点移动失败: {e}")
+            return False
+
+    def _read_document_blocks(self, document_id):
+        """读取指定文档的所有 block，返回 block 列表（dict）。"""
+        blocks = []
+        page_token = None
+        while True:
+            params = {"page_size": 100}
+            if page_token:
+                params["page_token"] = page_token
+            data = self._api_request(
+                "GET",
+                f"{FEISHU_BASE}/docx/v1/documents/{document_id}/blocks",
+                params=params,
+            )
+            blocks.extend(data.get("items", []))
+            if not data.get("has_more"):
+                break
+            page_token = data.get("page_token")
+        return blocks
+
+    def _extract_recommendation_from_doc(self, document_id):
+        """从飞书文档内容中提取「推荐指数」值，返回推荐类型字符串或 None。"""
+        try:
+            blocks = self._read_document_blocks(document_id)
+        except Exception:
+            return None
+        for block in blocks:
+            # 推荐指数出现在文本块中，格式为「推荐指数：必读」
+            text_el = block.get("text", {}).get("elements", [])
+            full_text = "".join(
+                el.get("text_run", {}).get("content", "") for el in text_el
+            )
+            if "推荐指数" in full_text:
+                for level in self.RECOMMENDATION_LEVELS:
+                    if level in full_text:
+                        return level
+                # 格式异常，尝试冒号后提取
+                parts = full_text.split("：", 1)
+                if len(parts) > 1:
+                    candidate = parts[1].strip()
+                    if candidate in self.RECOMMENDATION_LEVELS:
+                        return candidate
+        return None
+
+    def reallocate_papers_to_recommendation(self, category, category_node):
+        """将已有论文从 category 节点移至对应推荐级别子节点。
+
+        读取每篇飞书文档的推荐指数内容，移入对应子目录；
+        无法读取或无推荐信息的论文保持原位不动。
+        """
+        children = self.list_child_nodes(category_node)
+
+        # 过滤掉推荐级别子节点本身
+        existing_rec_nodes = set(self.RECOMMENDATION_LEVELS)
+        papers_to_move = {t: tok for t, tok in children.items() if t not in existing_rec_nodes}
+        if not papers_to_move:
+            return 0
+
+        # 预加载各推荐子节点下的已有论文标题，防止重复
+        existing_in_rec = {}
+        for rec_type in self.RECOMMENDATION_LEVELS:
+            rec_node = self._ensure_recommendation_node(category_node, category, rec_type)
+            if rec_node:
+                existing_in_rec[rec_type] = set(self.list_child_nodes(rec_node).keys())
+            else:
+                existing_in_rec[rec_type] = set()
+
+        moved_count = 0
+        for paper_title, paper_token in papers_to_move.items():
+            # 尝试读取文档内容提取推荐类型
+            rec_type = self._extract_recommendation_from_doc(paper_token)
+
+            if not rec_type:
+                print(f"  ⏭️ [{category}] 无法读取推荐类型，保持原位: {paper_title[:40]}")
+                continue
+
+            if paper_title in existing_in_rec.get(rec_type, set()):
+                print(f"  ⏭️ [{category}] 论文已存在于 {rec_type} 子目录，跳过: {paper_title[:40]}")
+                continue
+
+            rec_node = self._ensure_recommendation_node(category_node, category, rec_type)
+            if not rec_node:
+                print(f"  ⚠️ [{category}] 无法获取推荐子节点 {rec_type}，跳过: {paper_title[:40]}")
+                continue
+
+            if self.move_wiki_node(paper_token, rec_node):
+                moved_count += 1
+                # 清理旧缓存键并写入新缓存
+                old_key_1 = f"{category_node}/{paper_title}"
+                old_key_2 = f"_root_/{self._daily_folder_name}/{category}/{paper_title}"
+                for old_key in (old_key_1, old_key_2):
+                    if old_key in self._cache:
+                        del self._cache[old_key]
+                new_key = f"{rec_node}/{paper_title}"
+                self._cache[new_key] = paper_token
+                print(f"  📦 [{category}] {paper_title[:40]} → {rec_type}")
+            else:
+                print(f"  ⚠️ [{category}] 迁移失败: {paper_title[:40]}")
+        if moved_count:
+            self._save_node_cache(self._cache)
+        return moved_count
+
     def bootstrap_layout(self, categories):
-        """预先创建「根 → 日更目录 → 各分类」节点，无需跑主流程即可在知识库中看到目录。"""
+        """预先创建「根 → 日更目录 → 各分类 → 推荐级别」节点，并迁移已有论文。"""
         for name in categories:
             node_token = self.ensure_category_node(name)
             print(f"  ✅ {self._daily_folder_name}/{name} → {node_token}")
+
+            # 创建推荐级别子节点
+            for rec_type in self.RECOMMENDATION_LEVELS:
+                rec_token = self._ensure_recommendation_node(node_token, name, rec_type)
+                print(f"    ✅ {self._daily_folder_name}/{name}/{rec_type} → {rec_token}")
+
+            # 迁移已有论文到推荐子节点
+            moved = self.reallocate_papers_to_recommendation(name, node_token)
+            if moved:
+                print(f"  📦 [{name}] 已迁移 {moved} 篇论文到「{self.RECOMMENDATION_LEVELS[0]}」子目录")
 
     # ── 文档操作 ─────────────────────────────────────────────────
 
@@ -384,8 +527,23 @@ class FeishuWikiClient:
             cat_key = f"_root_/{self._daily_folder_name}/{category}"
             self._invalidate_cache_prefix(cat_key)
             category_node = self.ensure_category_node(category)
+
+        # 根据推荐级别路由到子节点
+        raw_rec = (paper_info.get("recommendation") or "值得看").strip()
+        rec_type = raw_rec if raw_rec in self.RECOMMENDATION_LEVELS else "值得看"
+        rec_node = self._ensure_recommendation_node(category_node, category, rec_type)
+        if not rec_node or not self._node_is_valid(rec_node):
+            rec_key = f"_root_/{self._daily_folder_name}/{category}/{rec_type}"
+            self._invalidate_cache_prefix(rec_key)
+            rec_node = self._ensure_recommendation_node(category_node, category, rec_type)
+
         title = paper_info.get("title", "Untitled")[:100]
-        document_id, block_id = self.create_document_in_node(category_node, title)
+        # 优先写入推荐级别子节点，失败时回退到分类节点
+        try:
+            document_id, block_id = self.create_document_in_node(rec_node, title)
+        except Exception:
+            print(f"⚠️ [{category}] 推荐子节点写入失败，回退到分类节点")
+            document_id, block_id = self.create_document_in_node(category_node, title)
         blocks = self._paper_info_to_blocks(paper_info)
         self.write_document_blocks(document_id, block_id, blocks)
         base = os.getenv("FEISHU_WEB_BASE", FEISHU_WEB_BASE_DEFAULT).rstrip("/")

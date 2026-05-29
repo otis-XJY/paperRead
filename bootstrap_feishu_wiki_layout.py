@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-仅初始化飞书知识库目录（根 → 日更文件夹 → main.py 中的各研究分类），不写论文内容。
+初始化飞书知识库目录结构：
+  根 → 日更文件夹 → 各研究分类 → 推荐级别（必读/值得看/可跳过）
+
+同时将已有论文根据文档中的推荐类型迁移至对应子目录。
 
 用法：
   1. .env 中配置 FEISHU_APP_ID、FEISHU_APP_SECRET、FEISHU_WIKI_ROOT_NODE_TOKEN
@@ -68,7 +71,7 @@ def main():
     print(f"[3/3] 创建/确认分类节点...")
     client.bootstrap_layout(cats)
 
-    # 验证最终结构
+    # 验证最终结构（含推荐级别子节点）
     print()
     print("=== 最终目录结构 ===")
     root_children = client.list_child_nodes(root)
@@ -78,6 +81,9 @@ def main():
         cat_children = client.list_child_nodes(daily_token)
         for title, token in cat_children.items():
             print(f"  📁 {title} ({token})")
+            rec_children = client.list_child_nodes(token)
+            for rec_title, rec_token in rec_children.items():
+                print(f"    📁 {rec_title} ({rec_token})")
     else:
         print(f"⚠️ 未找到「{daily_name}」节点")
 
