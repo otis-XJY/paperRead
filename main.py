@@ -13,11 +13,26 @@ import aiohttp
 import feedparser
 import json
 import os
+import sys
 import re
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime
+
+
+def configure_utf8_stdio():
+    """Keep console and redirected logs in UTF-8, especially on Windows/Actions."""
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
+configure_utf8_stdio()
+
 from openai import OpenAI
 from pyzotero import zotero
 from notifier import notifier
@@ -38,12 +53,12 @@ def load_categories_config():
 
 CONFIG = {
     "categories": load_categories_config(),
-    "llm_model": "deepseek-ai/DeepSeek-V4-Pro",
+    "llm_model": "ZhipuAI/GLM-5.2",
     "base_url": "https://api-inference.modelscope.cn/v1/",
     # 多模型备选：遇到 429 限速时自动切换到下一个模型
     # 所有模型共用同一个 base_url 和 API key
     "fallback_models": [
-        "deepseek-ai/DeepSeek-V4-Pro",
+        "ZhipuAI/GLM-5.2",
         "ZhipuAI/GLM-5.1",
         "MiniMax/MiniMax-M2.5",
         "moonshotai/Kimi-K2.5",
@@ -88,77 +103,71 @@ def is_rate_limit_error(exc):
 
 
 class MultiModelLLM:
-    """
-    多模型自动切换的 LLM 调用器。
-    遇到 429 限速或 401 鉴权错误时，自动切换到下一个备选模型。
+    """Equal-priority multi-model LLM caller.
+
+    There is no primary model. Each call starts from the next model in a
+    round-robin order, tries every configured model, and only fails after all
+    models fail for all retry rounds.
     """
 
     def __init__(self, client, models):
         self.client = client
-        self.models = list(models)
+        self.models = list(dict.fromkeys(models))
+        if not self.models:
+            raise ValueError("LLM model pool is empty")
         self.current_idx = 0
-        self._model_failures = {i: 0 for i in range(len(models))}
+        self.next_start_idx = 0
+        self._model_failures = {model: 0 for model in self.models}
 
     @property
     def current_model(self):
         return self.models[self.current_idx]
 
-    def switch_to_next(self, reason=""):
-        old_model = self.current_model
-        self.current_idx = (self.current_idx + 1) % len(self.models)
-        new_model = self.current_model
-        if reason:
-            print(f"🔄 LLM 模型切换: {old_model} → {new_model}（原因: {reason}）")
-        else:
-            print(f"🔄 LLM 模型切换: {old_model} → {new_model}")
-        return new_model
-
     def call(self, messages, response_format=None, max_rounds=2):
-        """
-        调用 LLM，自动处理限速切换。
-        策略：第一轮逐个模型尝试（429 立即切换下一个），全部失败后等 60s 进入第二轮。
-        返回 OpenAI 响应对象。
-        """
         total_models = len(self.models)
         last_exc = None
+        start_idx = self.next_start_idx % total_models
 
         for round_idx in range(max_rounds):
             if round_idx > 0:
-                print(f"⏳ 所有模型均被限速，等待 60s 后进入第 {round_idx + 1} 轮...")
+                print(f"⏳ All LLM models failed in previous round; waiting 60s before round {round_idx + 1}...")
                 time.sleep(60)
 
-            for i in range(total_models):
-                model = self.models[(self.current_idx + i) % total_models]
+            for offset in range(total_models):
+                idx = (start_idx + offset) % total_models
+                model = self.models[idx]
                 try:
                     kwargs = {"model": model, "messages": messages}
                     if response_format:
                         kwargs["response_format"] = response_format
+
                     resp = self.client.chat.completions.create(**kwargs)
-                    # 验证响应有效性：choices 为空或 content 为 None 视为失败
-                    if not resp.choices or resp.choices[0].message.content is None:
-                        last_exc = ValueError(f"模型 {model} 返回空响应 (choices={resp.choices})")
-                        print(f"⚠️ 模型 {model} 返回空响应，切换下一个...")
-                        continue
-                    self.current_idx = (self.current_idx + i) % total_models
+                    content = resp.choices[0].message.content if resp.choices else None
+                    if content is None:
+                        raise ValueError(f"Model {model} returned empty response (choices={resp.choices})")
+
+                    self.current_idx = idx
+                    self.next_start_idx = (idx + 1) % total_models
                     return resp
-                except Exception as e:
-                    last_exc = e
-                    if is_rate_limit_error(e):
-                        print(f"⚠️ 模型 {model} 限速(429)，切换下一个...")
-                        continue
-                    elif is_auth_error(e):
-                        print(f"⚠️ 模型 {model} 鉴权失败(401)，切换下一个...")
-                        continue
+                except Exception as exc:
+                    last_exc = exc
+                    self._model_failures[model] = self._model_failures.get(model, 0) + 1
+                    if is_rate_limit_error(exc):
+                        reason = "rate limited"
+                    elif is_auth_error(exc):
+                        reason = "auth failed"
                     else:
-                        raise
+                        reason = "call failed"
+                    print(f"⚠️ LLM model failed, trying next: {model} ({reason}: {exc})")
+                    continue
 
         raise RuntimeError(
-            f"所有 LLM 模型经 {max_rounds} 轮尝试均不可用。最后一个错误: {last_exc}"
+            f"All LLM models failed after {max_rounds} rounds. Last error: {last_exc}"
         )
 
 
 llm = MultiModelLLM(client, CONFIG["fallback_models"])
-print(f"🤖 LLM 模型池: {CONFIG['fallback_models']}，当前使用: {llm.current_model}")
+print(f"🤖 LLM model pool (equal priority): {CONFIG['fallback_models']}")
 zot = zotero.Zotero(os.getenv("ZOTERO_USER_ID"), 'user', os.getenv("ZOTERO_API_KEY"))
 
 STATE_FILE = "state.json"
@@ -468,7 +477,7 @@ def check_relevance_phase_one(paper, kb_entries, category_name=""):
                 "LLM 鉴权失败（401）。请确认使用的是 ModelScope Token，并设置 MODELSCOPE_API_KEY。"
             ) from e
         log_error(f"[LLM] 阶段一初筛报错: {e}", category=category_name, error_type="llm_phase_one")
-        return {"is_relevant": False, "matched_titles":[], "error": True}
+        return {"is_relevant": False, "score": None, "matched_titles": [], "reason": "LLM analysis failed; skipped without relevance judgment", "error": True}
 
 def deep_analyze_phase_two(paper, category_name, matched_full_notes):
     prompt = f"""
@@ -1276,7 +1285,9 @@ async def _main_impl():
                 if not phase_one_res.get("is_relevant"):
                     if phase_one_res.get("error"):
                         stats["llm_failures"] += 1
-                    print(f"⏭️ 评分不够或无相关性，跳过: {p['title'][:30]}...")
+                        print(f"⏭️ LLM analysis failed; skipped without relevance judgment: {p['title'][:30]}...")
+                    else:
+                        print(f"⏭️ Score too low or irrelevant, skipped: {p['title'][:30]}...")
                     continue
 
                 # 阶段二：组装深读上下文并深度对比

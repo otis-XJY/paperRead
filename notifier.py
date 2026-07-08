@@ -3,10 +3,24 @@
 支持企业微信和飞书推送
 """
 import os
+import sys
 import json
 import time
 import requests
 from typing import Optional, Dict, List, Any
+
+
+def configure_utf8_stdio():
+    """Keep notification logs readable when stdout is redirected on Windows."""
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
+configure_utf8_stdio()
 
 
 class WxWorkNotifier:
@@ -14,8 +28,6 @@ class WxWorkNotifier:
     
     def __init__(self, webhook_url: Optional[str] = None):
         self.webhook_url = webhook_url or os.getenv("WXWORK_WEBHOOK_URL")
-        if not self.webhook_url:
-            print("⚠️ 未配置企业微信 Webhook URL")
     
     def send_text(self, content: str) -> bool:
         """发送文本消息"""
@@ -240,10 +252,18 @@ class NotificationManager:
     def __init__(self):
         self.wxwork = WxWorkNotifier()
         self.feishu = FeishuNotifier()
+
+    def _enabled_platforms(self) -> List[str]:
+        platforms = []
+        if self.wxwork.webhook_url:
+            platforms.append("wxwork")
+        if self.feishu.webhook_url:
+            platforms.append("feishu")
+        return platforms
     
     def send_text(self, content: str, platforms: Optional[List[str]] = None) -> Dict[str, bool]:
         """发送文本消息到指定平台"""
-        platforms = platforms or ["wxwork", "feishu"]
+        platforms = platforms if platforms is not None else self._enabled_platforms()
         results = {}
         
         if "wxwork" in platforms:
