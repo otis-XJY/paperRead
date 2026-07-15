@@ -11,6 +11,10 @@ DAILY_REPORT_PAPERREAD_SENDER_ID       # 推荐：PaperRead 机器人的 sender 
 DAILY_REPORT_PAPERREAD_APP_ID          # 如果 API 返回的是 app id，也可配置
 DAILY_REPORT_KNOWLEDGE_BASE_ENABLED=1  # 默认开启，设为 0 可关闭知识库读取
 DAILY_REPORT_MAX_KNOWLEDGE_DOCUMENTS=8
+DAILY_REPORT_DOCUMENT_ACTIVITY_ENABLED=1 # 默认开启文档版本活动读取
+DAILY_REPORT_MAX_DOCUMENT_ACTIVITY=30
+DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN  # 可选：扫描整个知识库子树
+DAILY_REPORT_MAX_WIKI_DOCUMENTS=200
 ```
 
 如果没有配置 PaperRead 的 sender id，程序会使用“app/bot 消息 + 分类计数格式 + arXiv 链接 + 推荐/方法论/锐评字段”进行兜底识别。
@@ -24,6 +28,8 @@ DAILY_REPORT_MAX_KNOWLEDGE_DOCUMENTS=8
 - 对 PaperRead 写入的知识库文档具有可见/阅读权限。
 
 若日报日志出现 HTTP 403，通常是应用权限或知识库文档授权不足。可以先将 `DAILY_REPORT_KNOWLEDGE_BASE_ENABLED` 设为 `0`，这样仍会分析 PaperRead 消息本身，但不会读取关联知识库。
+
+文档变更部分读取聊天中出现的 `docx/wiki` 链接对应的版本列表，并筛选当天 01:00 到运行时刻的版本活动。它可以识别新增版本、修改版本以及版本处于回收/删除状态的记录，但不能从版本元数据恢复具体被删除或修改的句子。飞书的实时编辑/删除事件需要另行配置事件订阅和回调服务；当前 GitHub Actions 日报不承担实时事件接收。
 
 ## 分析边界
 

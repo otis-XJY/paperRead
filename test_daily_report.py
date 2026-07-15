@@ -109,6 +109,35 @@ class DailyReportHelpersTest(unittest.TestCase):
         self.assertEqual(content, "论文知识库内容")
         read.assert_called_once_with("AbC123")
 
+    def test_document_versions_are_filtered_and_classified(self):
+        client = FeishuClient("app", "secret")
+        client._request = lambda method, path, params=None: {
+            "items": [
+                {
+                    "name": "ReflectVLN",
+                    "version": "v1",
+                    "create_time": "2026-07-15T02:00:00+00:00",
+                    "update_time": "2026-07-15T02:00:00+00:00",
+                    "creator_id": "user-1",
+                    "status": "0",
+                },
+                {
+                    "name": "ReflectVLN",
+                    "version": "v2",
+                    "create_time": "2026-07-15T12:00:00+00:00",
+                    "update_time": "2026-07-15T12:00:00+00:00",
+                    "creator_id": "user-2",
+                    "status": "0",
+                },
+            ],
+            "has_more": False,
+        }
+        start = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 7, 15, 23, tzinfo=timezone.utc)
+        versions = client.list_document_versions("AbC123", start, end)
+        self.assertEqual([item["operation"] for item in versions], ["added", "modified"])
+        self.assertEqual(versions[1]["creator_id"], "user-2")
+
 
 if __name__ == "__main__":
     unittest.main()

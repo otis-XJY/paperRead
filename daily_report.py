@@ -36,6 +36,8 @@ def parse_timestamp(value):
     if isinstance(value, (int, float)):
         return datetime.fromtimestamp(value, tz=timezone.utc)
     text = str(value).strip()
+    if re.fullmatch(r"\d+(?:\.\d+)?", text):
+        return datetime.fromtimestamp(float(text), tz=timezone.utc)
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
     parsed = datetime.fromisoformat(text)
@@ -303,6 +305,11 @@ class FeishuClient:
 
     def read_document_link(self, url):
         """Read a docx/wiki URL and return its document text."""
+        document_id = self.document_id_from_link(url)
+        return self.read_document_text(document_id) if document_id else ""
+
+    def document_id_from_link(self, url):
+        """Resolve a Feishu docx/wiki URL to the underlying document token."""
         match = re.search(r"https?://[^/\s]+/(docx|wiki)/([A-Za-z0-9_-]+)", url)
         if not match:
             return ""
@@ -316,7 +323,113 @@ class FeishuClient:
             )
             node = data.get("node", data)
             document_id = node.get("obj_token") or node.get("node_token", "")
-        return self.read_document_text(document_id) if document_id else ""
+        return document_id
+
+    def list_wiki_documents(self, root_node_token, max_documents=200):
+        """Traverse a Wiki subtree and return its docx nodes."""
+        root_data = self._request(
+            "GET",
+            "/wiki/v2/spaces/get_node",
+            params={"token": root_node_token},
+        )
+        root_node = root_data.get("node", root_data)
+        space_id = root_node.get("space_id", "")
+        if not space_id:
+            return []
+
+        documents = []
+        queue = [root_node_token]
+        visited = set()
+        while queue and len(documents) < max_documents:
+            parent_token = queue.pop(0)
+            if parent_token in visited:
+                continue
+            visited.add(parent_token)
+            page_token = None
+            while True:
+                params = {"parent_node_token": parent_token, "page_size": 50}
+                if page_token:
+                    params["page_token"] = page_token
+                data = self._request(
+                    "GET",
+                    f"/wiki/v2/spaces/{space_id}/nodes",
+                    params=params,
+                )
+                for node in data.get("items", []):
+                    node_token = node.get("node_token", "")
+                    obj_token = node.get("obj_token", "")
+                    obj_type = str(node.get("obj_type", "")).lower()
+                    if obj_type == "docx" and obj_token:
+                        documents.append(
+                            {
+                                "document_id": obj_token,
+                                "node_token": node_token,
+                                "title": node.get("title", ""),
+                                "url": f"https://my.feishu.cn/docx/{obj_token}",
+                            }
+                        )
+                        if len(documents) >= max_documents:
+                            return documents
+                    if node_token and node.get("has_child"):
+                        queue.append(node_token)
+                if not data.get("has_more") or not data.get("page_token"):
+                    break
+                page_token = data["page_token"]
+        return documents
+
+    def list_document_versions(self, document_id, start, end):
+        """Return document versions created or updated inside the report window."""
+        versions = []
+        page_token = None
+        all_versions = []
+        while True:
+            params = {"obj_type": "docx", "page_size": 100}
+            if page_token:
+                params["page_token"] = page_token
+            data = self._request(
+                "GET",
+                f"/drive/v1/files/{document_id}/versions",
+                params=params,
+            )
+            all_versions.extend(data.get("items", []))
+            if not data.get("has_more") or not data.get("page_token"):
+                break
+            page_token = data["page_token"]
+
+        all_versions.sort(
+            key=lambda item: (
+                parse_timestamp(item["create_time"]).timestamp()
+                if item.get("create_time")
+                else 0
+            )
+        )
+        for index, item in enumerate(all_versions):
+            created_at = parse_timestamp(item["create_time"]) if item.get("create_time") else None
+            updated_at = parse_timestamp(item["update_time"]) if item.get("update_time") else None
+            event_time = updated_at if updated_at and start <= updated_at <= end else created_at
+            if not event_time or not (start <= event_time <= end):
+                continue
+
+            raw_status = str(item.get("status", "")).lower()
+            is_deleted = raw_status in {"1", "2", "deleted", "trash", "statusdeleted", "statustrash"}
+            if is_deleted:
+                operation = "deleted"
+            elif index == 0 and created_at and start <= created_at <= end:
+                operation = "added"
+            else:
+                operation = "modified"
+            versions.append(
+                {
+                    "document_id": document_id,
+                    "title": item.get("name", ""),
+                    "version": item.get("version", ""),
+                    "operation": operation,
+                    "event_time": event_time.isoformat(),
+                    "creator_id": item.get("creator_id", ""),
+                    "status": item.get("status", ""),
+                }
+            )
+        return versions
 
     def send_text(self, chat_id, text):
         content = json.dumps({"text": text}, ensure_ascii=False)
@@ -460,6 +573,56 @@ def collect_knowledge_documents(client, paperread_messages):
     return documents
 
 
+def collect_document_activity(client, messages, start, end):
+    """Collect version activity for document links visible in today's chat."""
+    if os.getenv("DAILY_REPORT_DOCUMENT_ACTIVITY_ENABLED", "1") != "1":
+        return []
+
+    max_documents = int(os.getenv("DAILY_REPORT_MAX_DOCUMENT_ACTIVITY", "30"))
+    activity = []
+    seen_urls = set()
+    link_pattern = re.compile(r"https?://[^/\s]+/(?:docx|wiki)/[A-Za-z0-9_-]+")
+    for message in messages:
+        for url in link_pattern.findall(message.get("text", "")):
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            if len(seen_urls) > max_documents:
+                return activity
+            try:
+                document_id = client.document_id_from_link(url)
+                if not document_id:
+                    continue
+                for version in client.list_document_versions(document_id, start, end):
+                    version["url"] = url
+                    activity.append(version)
+            except Exception as exc:
+                print(f"⚠️ 无法读取飞书文档变更 {url}: {exc}")
+    root_token = os.getenv("DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN", "").strip()
+    if root_token:
+        try:
+            wiki_documents = client.list_wiki_documents(
+                root_token,
+                max_documents=int(os.getenv("DAILY_REPORT_MAX_WIKI_DOCUMENTS", "200")),
+            )
+            for item in wiki_documents:
+                if len(seen_urls) >= max_documents:
+                    break
+                document_id = item.get("document_id", "")
+                url = item.get("url", "")
+                if not document_id or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                for version in client.list_document_versions(document_id, start, end):
+                    version["url"] = url
+                    if item.get("title") and not version.get("title"):
+                        version["title"] = item["title"]
+                    activity.append(version)
+        except Exception as exc:
+            print(f"⚠️ 无法扫描飞书知识库文档树: {exc}")
+    return activity
+
+
 def _bounded_context(items, formatter, max_chars=60000, item_max_chars=8000):
     """Format context for the LLM without exceeding a safe character budget."""
     chunks = []
@@ -482,12 +645,14 @@ def generate_report(
     activity_summary,
     paperread_messages=None,
     knowledge_documents=None,
+    document_activity=None,
 ):
     """Call the repository's existing multi-model LLM and return plain text."""
     from llm_client import llm  # Reuse the shared client/model fallback pool.
 
     paperread_messages = paperread_messages or []
     knowledge_documents = knowledge_documents or []
+    document_activity = document_activity or []
     chat_text = "\n".join(
         f"[{item['time']}] ({item['sender_type']}) {item['text']}" for item in chat_messages
     ) or "（当天群聊中没有可读取的文本消息）"
@@ -499,6 +664,13 @@ def generate_report(
         knowledge_documents,
         lambda item: f"来源：{item['url']}\n{item['text']}",
     ) or "（没有读取到 PaperRead 关联的飞书知识库文档）"
+    document_activity_text = _bounded_context(
+        document_activity,
+        lambda item: (
+            f"[{item['event_time']}] {item['operation']} | {item['title']} | "
+            f"版本 {item['version']} | creator={item['creator_id']} | {item['url']}"
+        ),
+    ) or "（时间范围内没有读取到已知飞书文档的版本变更）"
     activity_text = json.dumps(activity_summary, ensure_ascii=False, indent=2)
     prompt = f"""你是我的工作日报助手。请根据飞书群聊记录和 ActivityWatch 数据生成一份简洁、客观的中文日报。
 
@@ -532,12 +704,16 @@ def generate_report(
    - 对当前 GeoCoT-VLN、VLN、CoT 或相关研究有什么启发；
    - 可以形成哪些具体的后续研究问题、实验或改进方向。
    必须区分论文原文事实、群聊中明确表达的计划和模型推断；知识库未读取成功时要明确说明依据不完整。
+5. 增加“飞书文档变更”部分，按新增、修改、删除/回收分类，结合变更时间、文档标题和版本信息说明当天实际处理过的文档。版本记录只能证明文档版本活动，不能证明具体删改了哪些句子；不要过度推断。
 
 【PaperRead 今日推送】
 {paperread_text}
 
 【PaperRead 关联的飞书知识库内容】
 {knowledge_text}
+
+【时间范围内的飞书文档变更】
+{document_activity_text}
 """
     response = llm.call([{"role": "user", "content": prompt + additional_prompt}])
     return response.choices[0].message.content.strip()
@@ -551,11 +727,13 @@ def run_report():
     messages = normalize_messages(client.list_messages(chat_id, start, end))
     ordinary_messages, paperread_messages = split_chat_messages(messages)
     knowledge_documents = collect_knowledge_documents(client, paperread_messages)
+    document_activity = collect_document_activity(client, messages, start, end)
     report = generate_report(
         ordinary_messages,
         activity,
         paperread_messages,
         knowledge_documents,
+        document_activity,
     )
     client.send_text(chat_id, report)
     print(f"日报已发送：{start.isoformat()} 至 {end.isoformat()}；群聊消息 {len(messages)} 条。")
@@ -577,11 +755,13 @@ def main():
     messages = normalize_messages(client.list_messages(chat_id, start, end))
     ordinary_messages, paperread_messages = split_chat_messages(messages)
     knowledge_documents = collect_knowledge_documents(client, paperread_messages)
+    document_activity = collect_document_activity(client, messages, start, end)
     report = generate_report(
         ordinary_messages,
         activity,
         paperread_messages,
         knowledge_documents,
+        document_activity,
     )
     if args.preview:
         print(report)
