@@ -288,7 +288,7 @@ def normalize_messages(messages):
 
 def generate_report(chat_messages, activity_summary):
     """Call the repository's existing multi-model LLM and return plain text."""
-    from main import llm  # Reuse the configured client/model fallback pool.
+    from llm_client import llm  # Reuse the shared client/model fallback pool.
 
     chat_text = "\n".join(
         f"[{item['time']}] ({item['sender_type']}) {item['text']}" for item in chat_messages

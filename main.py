@@ -38,6 +38,7 @@ from pyzotero import zotero
 from notifier import notifier
 from feishu_wiki import FeishuWikiClient
 from zotero_indexer import build_knowledge_base
+from llm_client import llm as shared_llm
 
 __version__ = "1.0.0"
 
@@ -170,7 +171,7 @@ class MultiModelLLM:
         )
 
 
-llm = MultiModelLLM(client, CONFIG["fallback_models"])
+llm = shared_llm
 print(f"🤖 LLM model pool (equal priority): {CONFIG['fallback_models']}")
 ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
 ZOTERO_API_KEY = os.getenv("ZOTERO_API_KEY")
