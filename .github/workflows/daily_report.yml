@@ -31,18 +31,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-          cache: pip
+      - name: Check runner Python
+        shell: cmd
+        run: |
+          python --version
+          python -m pip --version
 
       - name: Install dependencies
-        shell: pwsh
+        shell: cmd
         run: python -m pip install -r requirements.txt
 
       - name: Generate and send report
-        shell: pwsh
+        shell: cmd
         run: python -u daily_report.py

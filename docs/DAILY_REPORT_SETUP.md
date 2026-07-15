@@ -39,6 +39,19 @@ Invoke-WebRequest http://127.0.0.1:5600/api/0/buckets
 
 runner 只需要向 GitHub 发起出站 HTTPS 连接，不需要公网 IP 或入站端口。若使用公开仓库，建议把 runner 放在专用 Windows 用户或虚拟机中，并只给它必要的本地权限。
 
+当前日报 workflow 直接使用 runner 上已安装的 Python，不再通过 `actions/setup-python` 下载 Python，因此不会触发 PowerShell 安装脚本的执行策略限制。请在 runner 机器安装 Python 3.10 或更高版本，并在安装器中勾选 `Add Python to PATH`：
+
+```powershell
+python --version
+python -m pip --version
+```
+
+如果是在安装 Python 后才配置 Runner 服务，请重启服务，使新的 PATH 生效：
+
+```powershell
+Restart-Service "actions.runner*"
+```
+
 ## 3. 创建飞书应用机器人
 
 在[飞书开放平台](https://open.feishu.cn/app)新建“企业自建应用”，名称例如“每日日报”，然后：
