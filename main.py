@@ -172,7 +172,15 @@ class MultiModelLLM:
 
 llm = MultiModelLLM(client, CONFIG["fallback_models"])
 print(f"🤖 LLM model pool (equal priority): {CONFIG['fallback_models']}")
-zot = zotero.Zotero(os.getenv("ZOTERO_USER_ID"), 'user', os.getenv("ZOTERO_API_KEY"))
+ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
+ZOTERO_API_KEY = os.getenv("ZOTERO_API_KEY")
+if ZOTERO_USER_ID and ZOTERO_API_KEY:
+    zot = zotero.Zotero(ZOTERO_USER_ID, "user", ZOTERO_API_KEY)
+else:
+    # daily_report.py imports the LLM configuration from this module, but it
+    # does not need a Zotero library. Delay this optional client until it is
+    # actually needed by the paper workflow.
+    zot = None
 
 STATE_FILE = "state.json"
 HISTORY_FILE = "history.json"
@@ -191,7 +199,6 @@ def log_error(msg: str, category: str = "", error_type: str = "runtime"):
 DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 DEBUG_PHASE_ONE = os.getenv("DEBUG_PHASE_ONE", "1") == "1"
 ENABLE_NOTIFICATION = os.getenv("ENABLE_NOTIFICATION", "1") == "1"
-ZOTERO_USER_ID = os.getenv("ZOTERO_USER_ID")
 
 # 飞书知识库配置（可选）
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID")
@@ -1037,6 +1044,11 @@ async def main():
 
 
 async def _main_impl():
+    if not DRY_RUN and zot is None:
+        raise RuntimeError(
+            "Zotero credentials are required for the paper workflow: "
+            "set ZOTERO_USER_ID and ZOTERO_API_KEY"
+        )
     print("🚀 开始执行 main.py")
     if DRY_RUN:
         print("🧪 DRY_RUN=1，本次仅本地演练：不会写入 Zotero，也不会更新 history/state 文件")
