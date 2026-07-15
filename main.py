@@ -53,8 +53,8 @@ def load_categories_config():
 
 CONFIG = {
     "categories": load_categories_config(),
-    "llm_model": "ZhipuAI/GLM-5.2",
-    "base_url": "https://api-inference.modelscope.cn/v1/",
+    "llm_model": os.getenv("LLM_MODEL") or "ZhipuAI/GLM-5.2",
+    "base_url": os.getenv("BASE_URL") or "https://api-inference.modelscope.cn/v1/",
     # 多模型备选：遇到 429 限速时自动切换到下一个模型
     # 所有模型共用同一个 base_url 和 API key
     "fallback_models": [
@@ -71,6 +71,10 @@ CONFIG = {
 
     ],
 }
+if os.getenv("LLM_MODEL"):
+    CONFIG["fallback_models"] = list(dict.fromkeys(
+        [os.environ["LLM_MODEL"]] + CONFIG["fallback_models"]
+    ))
 
 LLM_API_KEY = os.getenv("MODELSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
 if not LLM_API_KEY:

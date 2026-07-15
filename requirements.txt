@@ -8,3 +8,5 @@ httpx>=0.26.0
 
 # Optional dependencies for notifications
 requests>=2.31.0
+backports.zoneinfo>=0.2.1; python_version < "3.9"
+python-dotenv>=1.0.0
