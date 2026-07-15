@@ -52,6 +52,8 @@ python -m pip --version
 Restart-Service "actions.runner*"
 ```
 
+如果 `python -m pip --version` 仍报 `WinError 2` 或找不到 `LocalAppData`，请把 Runner 服务改为使用你日常登录 Windows 的账号，而不是 `LocalSystem`：打开 `services.msc`，找到名称以 `GitHub Actions Runner` 开头的服务，在“属性 → 登录”中选择“此账户”，填写你的 Windows 用户名和密码，应用后重启服务。这样 Runner 才能使用和 ActivityWatch 相同的用户配置目录。workflow 还会为 pip 设置临时的 `LOCALAPPDATA`、`APPDATA`、`USERPROFILE` 和缓存目录作为兜底。
+
 ## 3. 创建飞书应用机器人
 
 在[飞书开放平台](https://open.feishu.cn/app)新建“企业自建应用”，名称例如“每日日报”，然后：

@@ -37,7 +37,20 @@ jobs:
         shell: cmd
         run: |
           python --version
-          python -m pip --version
+
+      - name: Prepare Python user directories
+        shell: cmd
+        run: |
+          if not exist "%RUNNER_TEMP%\localappdata" mkdir "%RUNNER_TEMP%\localappdata"
+          if not exist "%RUNNER_TEMP%\appdata" mkdir "%RUNNER_TEMP%\appdata"
+          if not exist "%RUNNER_TEMP%\userprofile" mkdir "%RUNNER_TEMP%\userprofile"
+          if not exist "%RUNNER_TEMP%\pip-cache" mkdir "%RUNNER_TEMP%\pip-cache"
+          echo LOCALAPPDATA=%RUNNER_TEMP%\localappdata>>"%GITHUB_ENV%"
+          echo APPDATA=%RUNNER_TEMP%\appdata>>"%GITHUB_ENV%"
+          echo USERPROFILE=%RUNNER_TEMP%\userprofile>>"%GITHUB_ENV%"
+          echo HOME=%RUNNER_TEMP%\userprofile>>"%GITHUB_ENV%"
+          echo PIP_CACHE_DIR=%RUNNER_TEMP%\pip-cache>>"%GITHUB_ENV%"
+          echo PIP_DISABLE_PIP_VERSION_CHECK=1>>"%GITHUB_ENV%"
 
       - name: Install dependencies
         shell: cmd
