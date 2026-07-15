@@ -2,8 +2,8 @@ name: Daily Work Report
 
 on:
   schedule:
-    - cron: "30 23 * * *"
-      timezone: "Asia/Shanghai"
+    # 15:30 UTC = 23:30 Asia/Shanghai (UTC+8, no DST)
+    - cron: "30 15 * * *"
   workflow_dispatch:
 
 jobs:

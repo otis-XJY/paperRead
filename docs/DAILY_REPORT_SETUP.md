@@ -82,7 +82,7 @@ MODELSCOPE_API_KEY       # 或 OPENAI_API_KEY
 OPENAI_API_KEY           # 可选备用
 ```
 
-可选 Repository variables：`LLM_MODEL`、`BASE_URL`、`REPORT_TIMEZONE`。ActivityWatch 默认使用 `http://127.0.0.1:5600`，workflow 已设置 `Asia/Shanghai` 和 23:30 定时。手动运行 workflow 前，确认 ActivityWatch、`aw-watcher-window`、`aw-watcher-afk` 和 `aw-watcher-input` 都在记录数据。
+可选 Repository variables：`LLM_MODEL`、`BASE_URL`、`REPORT_TIMEZONE`。ActivityWatch 默认使用 `http://127.0.0.1:5600`，workflow 使用 `15:30 UTC`（等价于北京时间 23:30）定时，脚本统计时区仍为 `Asia/Shanghai`。手动运行 workflow 前，确认 ActivityWatch、`aw-watcher-window`、`aw-watcher-afk` 和 `aw-watcher-input` 都在记录数据。
 
 ## 5. 本地验证
 
