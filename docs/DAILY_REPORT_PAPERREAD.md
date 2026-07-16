@@ -9,6 +9,8 @@
 ```text
 DAILY_REPORT_PAPERREAD_SENDER_ID       # 推荐：PaperRead 机器人的 sender id
 DAILY_REPORT_PAPERREAD_APP_ID          # 如果 API 返回的是 app id，也可配置
+DAILY_REPORT_QUESTION_SENDER_NAME       # 可选；不要写入源代码，建议优先使用 sender id
+DAILY_REPORT_QUESTION_SENDER_ID        # 可选：sender id；如果历史消息没有返回姓名则配置此项
 DAILY_REPORT_KNOWLEDGE_BASE_ENABLED=1  # 默认开启，设为 0 可关闭知识库读取
 DAILY_REPORT_MAX_KNOWLEDGE_DOCUMENTS=8
 DAILY_REPORT_DOCUMENT_ACTIVITY_ENABLED=1 # 默认开启文档版本活动读取
@@ -18,6 +20,8 @@ DAILY_REPORT_MAX_WIKI_DOCUMENTS=200
 ```
 
 如果没有配置 PaperRead 的 sender id，程序会使用“app/bot 消息 + 分类计数格式 + arXiv 链接 + 推荐/方法论/锐评字段”进行兜底识别。
+
+`DAILY_REPORT_QUESTION_SENDER_ID` 和 `DAILY_REPORT_QUESTION_SENDER_NAME` 用于指定唯一的群聊提问对象，应在 GitHub `Settings → Secrets and variables → Actions → Variables` 中设置。两者都为空时不会识别任何个人问题；代码不再内置个人姓名。目标群 `DAILY_REPORT_FEISHU_CHAT_ID` 仍应放在 GitHub Repository secret 中。
 
 ## 飞书权限
 

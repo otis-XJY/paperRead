@@ -1,3 +1,4 @@
+import os
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
@@ -5,6 +6,8 @@ from unittest.mock import patch
 from daily_report import (
     ActivityWatchClient,
     FeishuClient,
+    extract_question_messages,
+    is_question_message,
     is_paperread_message,
     message_text,
     normalize_messages,
@@ -89,6 +92,18 @@ class DailyReportHelpersTest(unittest.TestCase):
         self.assertEqual(summary["rhythm"]["active_share_percent"], 100.0)
         self.assertEqual(summary["rhythm"]["application_switches"], 1)
         self.assertEqual(summary["rhythm"]["keypresses_per_active_hour"], 50.0)
+        self.assertEqual(summary["application_breakdown"][0]["top_windows"][0]["title"], "paperRead")
+
+    def test_question_sender_must_be_configured(self):
+        message = {"sender_name": "configured-user", "text": "How?"}
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(is_question_message(message))
+        with patch.dict(
+            os.environ,
+            {"DAILY_REPORT_QUESTION_SENDER_NAME": "configured-user"},
+            clear=True,
+        ):
+            self.assertTrue(is_question_message(message))
 
     def test_paperread_messages_are_separated(self):
         message = {
@@ -101,6 +116,36 @@ class DailyReportHelpersTest(unittest.TestCase):
         ordinary, paperread = split_chat_messages(normalize_messages([message]))
         self.assertEqual(ordinary, [])
         self.assertEqual(len(paperread), 1)
+
+    def test_questions_from_xu_junyi_are_extracted(self):
+        with patch.dict(
+            os.environ,
+            {"DAILY_REPORT_QUESTION_SENDER_NAME": "configured-user"},
+            clear=True,
+        ):
+            self._assert_questions_from_configured_sender()
+
+    def _assert_questions_from_configured_sender(self):
+        messages = [
+            {
+                "sender_name": "configured-user ",
+                "sender_id": "user-1",
+                "text": "这个结果为什么会这样？",
+            },
+            {
+                "sender_name": "configured-user ",
+                "sender_id": "user-1",
+                "text": "今天继续验证 GeoCoT-VLN。",
+            },
+            {
+                "sender_name": "其他成员",
+                "sender_id": "user-2",
+                "text": "请问如何运行？",
+            },
+        ]
+        self.assertTrue(is_question_message(messages[0]))
+        self.assertFalse(is_question_message(messages[1]))
+        self.assertEqual(extract_question_messages(messages), [messages[0]])
 
     def test_read_document_link_uses_docx_id(self):
         client = FeishuClient("app", "secret")

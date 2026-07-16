@@ -168,6 +168,20 @@ class ActivityWatchClient:
             return result
 
         window_rows = rows(windows, ("app", "title", "url"))
+        application_breakdown = []
+        for app_row in rows(apps, ("app",))[:30]:
+            app = app_row["app"]
+            app_windows = [row for row in window_rows if row["app"] == app][:5]
+            application_breakdown.append(
+                {
+                    "app": app,
+                    "hours": app_row["hours"],
+                    "share_of_active_percent": round(
+                        apps[app] / active_seconds * 100, 1
+                    ) if active_seconds else 0.0,
+                    "top_windows": app_windows,
+                }
+            )
         window_event_sequence.sort(key=lambda item: item[0])
         application_switches = 0
         window_switches = 0
@@ -203,6 +217,7 @@ class ActivityWatchClient:
             "active_hours": round(active_seconds / 3600, 2),
             "away_hours": round(afk_seconds / 3600, 2),
             "applications": rows(apps, ("app",))[:30],
+            "application_breakdown": application_breakdown,
             "windows": window_rows[:80],
             "input": {key: round(value, 2) for key, value in input_totals.items()},
             "buckets_found": bucket_counts,
@@ -547,6 +562,42 @@ def split_chat_messages(messages):
     return ordinary, paperread
 
 
+def is_question_message(message):
+    """Return whether the configured sender's message contains a question."""
+    configured_name = os.getenv(
+        "DAILY_REPORT_QUESTION_SENDER_NAME",
+        "",
+    ).strip().casefold()
+    configured_id = os.getenv("DAILY_REPORT_QUESTION_SENDER_ID", "").strip()
+    sender_name = str(message.get("sender_name", "")).strip().casefold()
+    sender_id = str(message.get("sender_id", "")).strip()
+    if not (
+        (configured_name and sender_name == configured_name)
+        or (configured_id and sender_id == configured_id)
+    ):
+        return False
+
+    text = str(message.get("text", "")).strip()
+    question_markers = (
+        "?",
+        "？",
+        "请问",
+        "怎么",
+        "如何",
+        "为什么",
+        "是否",
+        "能否",
+        "有没有",
+        "什么",
+    )
+    return any(marker in text for marker in question_markers)
+
+
+def extract_question_messages(messages):
+    """Extract Xu Junyi's questions for explicit answers in the report."""
+    return [message for message in messages if is_question_message(message)]
+
+
 def collect_knowledge_documents(client, paperread_messages):
     """Read linked Feishu knowledge-base documents referenced by PaperRead."""
     if os.getenv("DAILY_REPORT_KNOWLEDGE_BASE_ENABLED", "1") != "1":
@@ -646,6 +697,7 @@ def generate_report(
     paperread_messages=None,
     knowledge_documents=None,
     document_activity=None,
+    question_messages=None,
 ):
     """Call the repository's existing multi-model LLM and return plain text."""
     from llm_client import llm  # Reuse the shared client/model fallback pool.
@@ -653,6 +705,7 @@ def generate_report(
     paperread_messages = paperread_messages or []
     knowledge_documents = knowledge_documents or []
     document_activity = document_activity or []
+    question_messages = question_messages or []
     chat_text = "\n".join(
         f"[{item['time']}] ({item['sender_type']}) {item['text']}" for item in chat_messages
     ) or "（当天群聊中没有可读取的文本消息）"
@@ -671,6 +724,10 @@ def generate_report(
             f"版本 {item['version']} | creator={item['creator_id']} | {item['url']}"
         ),
     ) or "（时间范围内没有读取到已知飞书文档的版本变更）"
+    question_text = _bounded_context(
+        question_messages,
+        lambda item: f"[{item['time']}] {item['sender_name']}: {item['text']}",
+    ) or "（没有检测到需要回答的群聊问题）"
     activity_text = json.dumps(activity_summary, ensure_ascii=False, indent=2)
     prompt = f"""你是我的工作日报助手。请根据飞书群聊记录和 ActivityWatch 数据生成一份简洁、客观的中文日报。
 
@@ -709,13 +766,39 @@ def generate_report(
 【PaperRead 今日推送】
 {paperread_text}
 
+【需要回答的群聊问题】请在日报中新增“群聊问题解答”部分，逐条回答以下由已配置群聊提问对象提出的问题。先给明确结论，再说明依据；如果现有群聊、ActivityWatch、PaperRead或知识库信息不足，必须明确说出无法确定以及需要补充什么信息，不要编造。
+{question_text}
+
 【PaperRead 关联的飞书知识库内容】
 {knowledge_text}
 
 【时间范围内的飞书文档变更】
 {document_activity_text}
 """
-    response = llm.call([{"role": "user", "content": prompt + additional_prompt}])
+    question_target_configured = bool(
+        os.getenv("DAILY_REPORT_QUESTION_SENDER_ID", "").strip()
+        or os.getenv("DAILY_REPORT_QUESTION_SENDER_NAME", "").strip()
+    )
+    refinement_prompt = f"""
+
+【细化与隐私要求】
+1. “今日完成”只写有证据支持的动作和结果，每条尽量包含“做了什么—作用于什么对象—得到什么结果”。
+   - 群聊明确说已完成、已修改、已推送的事项可写为完成事实；ActivityWatch 只能证明使用过某个应用或页面，不能单独证明代码已完成、问题已解决或配置已生效。
+   - PaperRead 推送数量必须以消息记录为准；可以概括论文主题，但不要把模型推断写成论文原文结论。
+   - 对“查看、排查、尝试、待确认”等状态保持原状态，不要升级成“完成”。
+2. “时间投入”要比只列应用更具体：按应用或工作对象分组，给出小时 h、占有效活跃时间比例，并列出最多 2 个窗口/网页标题作为证据。
+   - 对 VS Code，要尽可能从窗口标题识别项目名和具体文件、配置或开发任务；无法确认时写“项目/事项无法从窗口证据确定”。
+   - 对浏览器，要区分服务器运维、cron-job、SSH、支付/配置、论文阅读等可辨认事项；无法确认的页面只写“浏览器页面，事项无法确定”。
+   - 应用总时长与其子项不要重复相加；所有时长统一使用 h，保留两位小数。
+3. “时间投入”必须同时给出一个简短的证据边界说明：哪些是窗口标题/URL直接支持的，哪些只是群聊内容与时间段的对应关系。
+4. 输出保留并细化“今日完成、时间投入、工作节奏、明日计划建议、风险或待跟进、PaperRead 论文与未来研究建议、飞书文档变更、群聊问题解答”八个部分；没有证据的部分写“暂无”或“无法确定”，不要补写。
+5. 当前群聊提问对象已通过 GitHub Actions 配置：{"已配置，仅回答该对象的问题" if question_target_configured else "未配置，不要识别或回答任何个人的问题"}。不要自行猜测、补充或输出其他群成员的身份信息。
+6. 这是开源项目，日报正文不要泄露 chat_id、app_secret、Webhook、sender_id、完整私密 URL 参数或其他凭据；只输出必要的工作对象和结论。
+总长度可放宽到 900 个中文字符，以保证“今日完成”和“时间投入”足够具体；仍需保持简洁。
+"""
+    response = llm.call(
+        [{"role": "user", "content": prompt + additional_prompt + refinement_prompt}]
+    )
     return response.choices[0].message.content.strip()
 
 
@@ -726,6 +809,8 @@ def run_report():
     client = FeishuClient()
     messages = normalize_messages(client.list_messages(chat_id, start, end))
     ordinary_messages, paperread_messages = split_chat_messages(messages)
+    question_messages = extract_question_messages(ordinary_messages)
+    ordinary_messages = [item for item in ordinary_messages if item not in question_messages]
     knowledge_documents = collect_knowledge_documents(client, paperread_messages)
     document_activity = collect_document_activity(client, messages, start, end)
     report = generate_report(
@@ -734,6 +819,7 @@ def run_report():
         paperread_messages,
         knowledge_documents,
         document_activity,
+        question_messages,
     )
     client.send_text(chat_id, report)
     print(f"日报已发送：{start.isoformat()} 至 {end.isoformat()}；群聊消息 {len(messages)} 条。")
@@ -754,6 +840,8 @@ def main():
     client = FeishuClient()
     messages = normalize_messages(client.list_messages(chat_id, start, end))
     ordinary_messages, paperread_messages = split_chat_messages(messages)
+    question_messages = extract_question_messages(ordinary_messages)
+    ordinary_messages = [item for item in ordinary_messages if item not in question_messages]
     knowledge_documents = collect_knowledge_documents(client, paperread_messages)
     document_activity = collect_document_activity(client, messages, start, end)
     report = generate_report(
@@ -762,6 +850,7 @@ def main():
         paperread_messages,
         knowledge_documents,
         document_activity,
+        question_messages,
     )
     if args.preview:
         print(report)

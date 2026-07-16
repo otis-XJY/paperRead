@@ -1,9 +1,9 @@
 name: Daily Work Report
 
 on:
-  schedule:
-    # 15:30 UTC = 23:30 Asia/Shanghai (UTC+8, no DST)
-    - cron: "30 15 * * *"
+  # schedule:
+  #   # 15:30 UTC = 23:30 Asia/Shanghai (UTC+8, no DST)
+  #   - cron: "30 15 * * *"
   workflow_dispatch:
 
 jobs:
@@ -24,6 +24,9 @@ jobs:
       DAILY_REPORT_FEISHU_APP_ID: ${{ secrets.DAILY_REPORT_FEISHU_APP_ID }}
       DAILY_REPORT_FEISHU_APP_SECRET: ${{ secrets.DAILY_REPORT_FEISHU_APP_SECRET }}
       DAILY_REPORT_FEISHU_CHAT_ID: ${{ secrets.DAILY_REPORT_FEISHU_CHAT_ID }}
+      # Configure the watched sender in repository Variables, never in source.
+      DAILY_REPORT_QUESTION_SENDER_NAME: ${{ vars.DAILY_REPORT_QUESTION_SENDER_NAME }}
+      DAILY_REPORT_QUESTION_SENDER_ID: ${{ vars.DAILY_REPORT_QUESTION_SENDER_ID }}
       DAILY_REPORT_PAPERREAD_SENDER_ID: ${{ vars.DAILY_REPORT_PAPERREAD_SENDER_ID }}
       DAILY_REPORT_PAPERREAD_APP_ID: ${{ vars.DAILY_REPORT_PAPERREAD_APP_ID }}
       DAILY_REPORT_KNOWLEDGE_BASE_ENABLED: ${{ vars.DAILY_REPORT_KNOWLEDGE_BASE_ENABLED || '1' }}

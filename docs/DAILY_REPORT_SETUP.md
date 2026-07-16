@@ -82,6 +82,17 @@ MODELSCOPE_API_KEY       # 或 OPENAI_API_KEY
 OPENAI_API_KEY           # 可选备用
 ```
 
+在同一页面的 Repository variables 中配置群聊关注对象，不要把个人姓名或 ID 写进代码、`.env.example` 或 workflow：
+
+```text
+DAILY_REPORT_QUESTION_SENDER_ID    # 推荐，配置要识别其问题的 sender ID
+DAILY_REPORT_QUESTION_SENDER_NAME  # 可选，仅在 API 不返回 sender ID 时使用
+DAILY_REPORT_PAPERREAD_SENDER_ID   # 可选，PaperRead 机器人的 sender ID
+DAILY_REPORT_PAPERREAD_APP_ID      # 可选，PaperRead 的 app ID
+```
+
+未配置 `DAILY_REPORT_QUESTION_SENDER_ID` 和 `DAILY_REPORT_QUESTION_SENDER_NAME` 时，日报不会识别任何个人的群聊问题。`DAILY_REPORT_FEISHU_CHAT_ID` 必须继续作为 Repository secret 保存；它决定只读取和回发哪个群聊，不应改为公开变量。
+
 可选 Repository variables：`LLM_MODEL`、`BASE_URL`、`REPORT_TIMEZONE`。ActivityWatch 默认使用 `http://127.0.0.1:5600`，workflow 使用 `15:30 UTC`（等价于北京时间 23:30）定时，脚本统计时区仍为 `Asia/Shanghai`。手动运行 workflow 前，确认 ActivityWatch、`aw-watcher-window`、`aw-watcher-afk` 和 `aw-watcher-input` 都在记录数据。
 
 ## 5. 本地验证
@@ -94,3 +105,5 @@ python daily_report.py --preview
 ```
 
 `--preview` 会调用飞书和大模型但不发送群消息；它仍会把完整内容发送给已配置的大模型服务。正式 workflow 不打印聊天内容、窗口标题或 ActivityWatch 原始数据，也不保存中间文件。
+
+日报中的“今日完成”只采纳群聊明确表述、PaperRead 消息或文档版本记录等证据；ActivityWatch 只能证明使用过应用或页面。“时间投入”会按应用和窗口标题/URL 证据细化到小时，并明确无法确认的事项。由于群聊历史和本地活动数据都可能包含个人信息，建议把日报部署仓库设为 private，并仅授予飞书应用读取目标群的必要权限。
