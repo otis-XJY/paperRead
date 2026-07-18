@@ -691,6 +691,140 @@ def _bounded_context(items, formatter, max_chars=60000, item_max_chars=8000):
     return "\n\n".join(chunks)
 
 
+def parse_report_payload(response):
+    """Extract the structured JSON object from the model's final message."""
+    choices = getattr(response, "choices", None) or []
+    if not choices:
+        raise ValueError("日报模型没有返回 choices")
+    message = getattr(choices[0], "message", None)
+    content = getattr(message, "content", None)
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("日报模型的最终 content 为空")
+    payload = json.loads(content)
+    if not isinstance(payload, dict):
+        raise ValueError("日报模型返回的 JSON 不是对象")
+    return payload
+
+
+def _report_items(value):
+    """Return report list fields in a renderer-friendly form."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _report_text(value):
+    if isinstance(value, dict):
+        return str(value.get("text") or value.get("title") or value.get("name") or "").strip()
+    return str(value or "").strip()
+
+
+def _report_hours(value):
+    try:
+        return f"{float(value):.2f}h"
+    except (TypeError, ValueError):
+        return "无法确定"
+
+
+def _append_report_items(lines, items, empty_text="暂无"):
+    if not items:
+        lines.append(f"• {empty_text}")
+        return
+    for item in items:
+        if isinstance(item, dict):
+            title = _report_text(item.get("title") or item.get("name") or item.get("topic"))
+            detail = _report_text(item.get("detail") or item.get("summary") or item.get("answer"))
+            evidence = _report_text(item.get("evidence") or item.get("basis"))
+            text = "：".join(part for part in (title, detail) if part)
+            if evidence:
+                text = f"{text}（依据：{evidence}）" if text else f"依据：{evidence}"
+        else:
+            text = _report_text(item)
+        if text:
+            lines.append(f"• {text}")
+
+
+def render_report_payload(payload):
+    """Render the structured report as compact, detailed Feishu chat text."""
+    date = _report_text(payload.get("date")) or "工作日报"
+    lines = [f"📅 工作日报 {date}", "", "✅ 今日完成"]
+    _append_report_items(lines, _report_items(payload.get("today_completed")))
+
+    lines.extend(["", "⏱️ 时间投入"])
+    investments = _report_items(payload.get("time_investment"))
+    if investments:
+        for item in investments:
+            if not isinstance(item, dict):
+                lines.append(f"• {_report_text(item)}")
+                continue
+            label = _report_text(item.get("app_or_topic") or item.get("title") or item.get("name")) or "事项"
+            duration = _report_hours(item.get("hours"))
+            share = item.get("share_percent")
+            share_text = f"，占有效活跃 {float(share):.1f}%" if isinstance(share, (int, float)) else ""
+            detail = _report_text(item.get("detail") or item.get("summary"))
+            evidence = _report_text(item.get("evidence") or item.get("windows"))
+            line = f"• {label}：{duration}{share_text}"
+            if detail:
+                line += f"；{detail}"
+            if evidence:
+                line += f"（证据：{evidence}）"
+            lines.append(line)
+    else:
+        lines.append("• 暂无")
+    boundary = _report_text(payload.get("evidence_boundary"))
+    if boundary:
+        lines.append(f"• 证据边界：{boundary}")
+
+    lines.extend(["", "📊 工作节奏"])
+    rhythm = payload.get("rhythm") if isinstance(payload.get("rhythm"), dict) else {}
+    active = _report_hours(rhythm.get("active_hours"))
+    away = _report_hours(rhythm.get("away_hours"))
+    active_share = rhythm.get("active_share_percent")
+    share_text = f"，活跃占比 {float(active_share):.1f}%" if isinstance(active_share, (int, float)) else ""
+    lines.append(f"• 有效活跃 {active}，离开 {away}{share_text}")
+    lines.append(
+        f"• 应用切换 {_report_text(rhythm.get('application_switches')) or '无法确定'} 次，"
+        f"窗口切换 {_report_text(rhythm.get('window_switches')) or '无法确定'} 次"
+    )
+    lines.append(
+        f"• 键盘 {_report_text(rhythm.get('keypresses')) or '无法确定'} 次，"
+        f"鼠标点击 {_report_text(rhythm.get('mouse_clicks')) or '无法确定'} 次"
+    )
+
+    sections = (
+        ("🗓️ 明日计划建议", "tomorrow_plan"),
+        ("⚠️ 风险或待跟进", "risks"),
+    )
+    for heading, key in sections:
+        lines.extend(["", heading])
+        _append_report_items(lines, _report_items(payload.get(key)))
+
+    lines.extend(["", "📚 PaperRead 论文与未来研究建议"])
+    papers = payload.get("papers")
+    if isinstance(papers, dict):
+        if _report_text(papers.get("summary")):
+            lines.append(f"• 总结：{_report_text(papers.get('summary'))}")
+        _append_report_items(lines, _report_items(papers.get("items") or papers.get("papers")))
+        if papers.get("suggestions"):
+            lines.append("• 后续建议：")
+            _append_report_items(lines, _report_items(papers.get("suggestions")))
+    else:
+        _append_report_items(lines, _report_items(papers))
+
+    lines.extend(["", "📝 飞书文档变更"])
+    documents = payload.get("documents") if isinstance(payload.get("documents"), dict) else {}
+    for label, key in (("新增", "added"), ("修改", "modified"), ("删除/回收", "deleted")):
+        values = _report_items(documents.get(key))
+        lines.append(f"• {label}：")
+        _append_report_items(lines, values)
+
+    lines.extend(["", "💬 群聊问题解答"])
+    _append_report_items(lines, _report_items(payload.get("questions")))
+    return "\n".join(lines).strip()
+
+
 def generate_report(
     chat_messages,
     activity_summary,
@@ -739,7 +873,7 @@ def generate_report(
 3. 工作节奏（有效活跃、离开、键盘次数、鼠标移动/点击）
 4. 明日计划建议（结合用户明确写出的计划，给出优先级和具体建议）
 5. 风险或待跟进（没有则写“暂无”）
-总长度控制在 600 个中文字符以内，直接输出日报正文，不要解释数据来源。
+总长度控制在 2200 个中文字符以内，以保留详细分析为优先；不要为了短而删除关键论文、事项或证据。
 
 【飞书群聊记录】
 {chat_text}
@@ -794,12 +928,17 @@ def generate_report(
 4. 输出保留并细化“今日完成、时间投入、工作节奏、明日计划建议、风险或待跟进、PaperRead 论文与未来研究建议、飞书文档变更、群聊问题解答”八个部分；没有证据的部分写“暂无”或“无法确定”，不要补写。
 5. 当前群聊提问对象已通过 GitHub Actions 配置：{"已配置，仅回答该对象的问题" if question_target_configured else "未配置，不要识别或回答任何个人的问题"}。不要自行猜测、补充或输出其他群成员的身份信息。
 6. 这是开源项目，日报正文不要泄露 chat_id、app_secret、Webhook、sender_id、完整私密 URL 参数或其他凭据；只输出必要的工作对象和结论。
-总长度可放宽到 900 个中文字符，以保证“今日完成”和“时间投入”足够具体；仍需保持简洁。
+总长度控制在 2200 个中文字符以内，以保证“今日完成”“时间投入”和 PaperRead 研究建议足够具体；保持条理清晰，不要泛泛压缩成摘要。
+7. 你必须只返回一个合法 JSON 对象，不要返回 Markdown、代码围栏、解释文字、草稿或思考过程。模型的最终回答字段只放 JSON，不要把 reasoning/thinking 字段复制到 content。
+8. JSON 使用以下字段，内容要保留足够详细的分析：
+   {"date":"YYYY-MM-DD","today_completed":[{"title":"","detail":"","evidence":""}],"time_investment":[{"app_or_topic":"","hours":0,"share_percent":0,"detail":"","evidence":""}],"evidence_boundary":"","rhythm":{"active_hours":0,"away_hours":0,"active_share_percent":0,"application_switches":0,"window_switches":0,"keypresses":0,"mouse_clicks":0},"tomorrow_plan":[{"title":"","detail":"","evidence":""}],"risks":[{"title":"","detail":"","evidence":""}],"papers":{"summary":"","items":[{"title":"","detail":"","evidence":""}],"suggestions":[{"title":"","detail":"","evidence":""}]},"documents":{"added":[],"modified":[],"deleted":[]},"questions":[{"title":"","answer":"","basis":""}]}
+   `today_completed` 保持 3-6 条；`time_investment` 按应用/事项拆分并保留窗口证据；`papers.items` 保留每篇论文的主题、相关性和事实/推断边界。不要为了压缩 JSON 而删掉关键细节。
 """
     response = llm.call(
-        [{"role": "user", "content": prompt + additional_prompt + refinement_prompt}]
+        [{"role": "user", "content": prompt + additional_prompt + refinement_prompt}],
+        response_format={"type": "json_object"},
     )
-    return response.choices[0].message.content.strip()
+    return render_report_payload(parse_report_payload(response))
 
 
 def run_report():

@@ -12,7 +12,9 @@ from daily_report import (
     message_text,
     normalize_messages,
     overlap_seconds,
+    parse_report_payload,
     reporting_window,
+    render_report_payload,
     split_chat_messages,
 )
 
@@ -104,6 +106,51 @@ class DailyReportHelpersTest(unittest.TestCase):
             clear=True,
         ):
             self.assertTrue(is_question_message(message))
+
+    def test_structured_report_payload_is_parsed_and_rendered(self):
+        response = type(
+            "Response",
+            (),
+            {
+                "choices": [
+                    type(
+                        "Choice",
+                        (),
+                        {
+                            "message": type(
+                                "Message",
+                                (),
+                                {
+                                    "content": '{"date":"2026-07-17","today_completed":[{"title":"测试","detail":"保留详细分析","evidence":"群聊"}],"rhythm":{"active_hours":7.02,"away_hours":1.5,"application_switches":3,"window_switches":4,"keypresses":100,"mouse_clicks":20}}'
+                                },
+                            )()
+                        },
+                    )()
+                ]
+            },
+        )()
+        payload = parse_report_payload(response)
+        self.assertEqual(
+            render_report_payload(payload).splitlines()[:4],
+            ["📅 工作日报 2026-07-17", "", "✅ 今日完成", "• 测试：保留详细分析（依据：群聊）"],
+        )
+
+    def test_structured_report_payload_rejects_non_json_content(self):
+        response = type(
+            "Response",
+            (),
+            {
+                "choices": [
+                    type(
+                        "Choice",
+                        (),
+                        {"message": type("Message", (), {"content": "not json"})()},
+                    )()
+                ]
+            },
+        )()
+        with self.assertRaises(ValueError):
+            parse_report_payload(response)
 
     def test_paperread_messages_are_separated(self):
         message = {
