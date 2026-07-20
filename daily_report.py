@@ -931,7 +931,7 @@ def generate_report(
 总长度控制在 2200 个中文字符以内，以保证“今日完成”“时间投入”和 PaperRead 研究建议足够具体；保持条理清晰，不要泛泛压缩成摘要。
 7. 你必须只返回一个合法 JSON 对象，不要返回 Markdown、代码围栏、解释文字、草稿或思考过程。模型的最终回答字段只放 JSON，不要把 reasoning/thinking 字段复制到 content。
 8. JSON 使用以下字段，内容要保留足够详细的分析：
-   {"date":"YYYY-MM-DD","today_completed":[{"title":"","detail":"","evidence":""}],"time_investment":[{"app_or_topic":"","hours":0,"share_percent":0,"detail":"","evidence":""}],"evidence_boundary":"","rhythm":{"active_hours":0,"away_hours":0,"active_share_percent":0,"application_switches":0,"window_switches":0,"keypresses":0,"mouse_clicks":0},"tomorrow_plan":[{"title":"","detail":"","evidence":""}],"risks":[{"title":"","detail":"","evidence":""}],"papers":{"summary":"","items":[{"title":"","detail":"","evidence":""}],"suggestions":[{"title":"","detail":"","evidence":""}]},"documents":{"added":[],"modified":[],"deleted":[]},"questions":[{"title":"","answer":"","basis":""}]}
+   {{"date":"YYYY-MM-DD","today_completed":[{{"title":"","detail":"","evidence":""}}],"time_investment":[{{"app_or_topic":"","hours":0,"share_percent":0,"detail":"","evidence":""}}],"evidence_boundary":"","rhythm":{{"active_hours":0,"away_hours":0,"active_share_percent":0,"application_switches":0,"window_switches":0,"keypresses":0,"mouse_clicks":0}},"tomorrow_plan":[{{"title":"","detail":"","evidence":""}}],"risks":[{{"title":"","detail":"","evidence":""}}],"papers":{{"summary":"","items":[{{"title":"","detail":"","evidence":""}}],"suggestions":[{{"title":"","detail":"","evidence":""}}]}},"documents":{{"added":[],"modified":[],"deleted":[]}},"questions":[{{"title":"","answer":"","basis":""}}]}}
    `today_completed` 保持 3-6 条；`time_investment` 按应用/事项拆分并保留窗口证据；`papers.items` 保留每篇论文的主题、相关性和事实/推断边界。不要为了压缩 JSON 而删掉关键细节。
 """
     response = llm.call(

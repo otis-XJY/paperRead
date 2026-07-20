@@ -1,12 +1,15 @@
+import json
 import os
+import sys
 import unittest
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from daily_report import (
     ActivityWatchClient,
     FeishuClient,
     extract_question_messages,
+    generate_report,
     is_question_message,
     is_paperread_message,
     message_text,
@@ -151,6 +154,52 @@ class DailyReportHelpersTest(unittest.TestCase):
         )()
         with self.assertRaises(ValueError):
             parse_report_payload(response)
+
+    def test_generate_report_formats_json_schema_example(self):
+        payload = {
+            "date": "2026-07-20",
+            "today_completed": [],
+            "time_investment": [],
+            "evidence_boundary": "",
+            "rhythm": {},
+            "tomorrow_plan": [],
+            "risks": [],
+            "papers": {},
+            "documents": {},
+            "questions": [],
+        }
+        response = type(
+            "Response",
+            (),
+            {
+                "choices": [
+                    type(
+                        "Choice",
+                        (),
+                        {"message": type("Message", (), {"content": json.dumps(payload)})()},
+                    )()
+                ]
+            },
+        )()
+        activity = {
+            "period": {
+                "start": "2026-07-20T01:00:00+08:00",
+                "end": "2026-07-20T23:00:00+08:00",
+            },
+            "active_hours": 0,
+            "away_hours": 0,
+            "rhythm": {},
+        }
+        fake_llm = type("FakeLLM", (), {})()
+        fake_llm.call = Mock(return_value=response)
+        fake_module = type("FakeLLMModule", (), {"llm": fake_llm})()
+        with patch.dict(sys.modules, {"llm_client": fake_module}):
+            report = generate_report([], activity)
+        self.assertIn("工作日报 2026-07-20", report)
+        self.assertEqual(
+            fake_llm.call.call_args.kwargs["response_format"],
+            {"type": "json_object"},
+        )
 
     def test_paperread_messages_are_separated(self):
         message = {
