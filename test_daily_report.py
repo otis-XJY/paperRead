@@ -100,6 +100,10 @@ class DailyReportHelpersTest(unittest.TestCase):
         self.assertEqual(summary["rhythm"]["application_switches"], 1)
         self.assertEqual(summary["rhythm"]["keypresses_per_active_hour"], 50.0)
         self.assertEqual(summary["application_breakdown"][0]["top_windows"][0]["title"], "paperRead")
+        self.assertEqual(summary["concentration"]["window_sessions"], 2)
+        self.assertEqual(summary["concentration"]["longest_window_session_hours"], 1.0)
+        self.assertEqual(summary["concentration"]["window_switches_per_active_hour"], 0.5)
+        self.assertEqual(summary["concentration"]["sessions_at_least_10_minutes"], 2)
 
     def test_question_sender_must_be_configured(self):
         message = {"sender_name": "configured-user", "text": "How?"}

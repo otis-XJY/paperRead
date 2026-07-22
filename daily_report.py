@@ -12,6 +12,7 @@ import os
 import re
 from collections import defaultdict
 from datetime import datetime, time as dt_time, timedelta, timezone
+from statistics import median
 try:
     from zoneinfo import ZoneInfo
 except ImportError:  # Python 3.8 compatibility
@@ -141,7 +142,7 @@ class ActivityWatchClient:
                     windows[(app, title, url)] += duration
                     if duration > 0:
                         window_event_sequence.append(
-                            (parse_timestamp(event.get("timestamp")), app, title, url)
+                            (parse_timestamp(event.get("timestamp")), app, title, url, duration)
                         )
                 elif kind == "afk":
                     if str(data.get("status", "")).lower() in {"afk", "away"}:
@@ -183,11 +184,101 @@ class ActivityWatchClient:
                 }
             )
         window_event_sequence.sort(key=lambda item: item[0])
+
+        def build_sessions(sequence, key_function):
+            """Merge adjacent ActivityWatch events into observable work sessions."""
+            sessions = []
+            session_gap = timedelta(seconds=15)
+            for timestamp, app, title, url, duration in sequence:
+                end = timestamp + timedelta(seconds=duration)
+                key = key_function(app, title, url)
+                if (
+                    sessions
+                    and sessions[-1]["key"] == key
+                    and timestamp <= sessions[-1]["end"] + session_gap
+                ):
+                    sessions[-1]["end"] = max(sessions[-1]["end"], end)
+                    sessions[-1]["seconds"] = (
+                        sessions[-1]["end"] - sessions[-1]["start"]
+                    ).total_seconds()
+                else:
+                    sessions.append(
+                        {
+                            "key": key,
+                            "start": timestamp,
+                            "end": end,
+                            "seconds": max(duration, 0.0),
+                            "app": app,
+                            "title": title,
+                            "url": url,
+                        }
+                    )
+            return sessions
+
+        window_sessions = build_sessions(
+            window_event_sequence,
+            lambda app, title, url: (app, title, url),
+        )
+        application_sessions = build_sessions(
+            window_event_sequence,
+            lambda app, title, url: app,
+        )
+
+        window_session_seconds = [item["seconds"] for item in window_sessions]
+        long_sessions = [item for item in window_sessions if item["seconds"] >= 600]
+        short_sessions = [item for item in window_sessions if item["seconds"] < 120]
+        observed_window_seconds = sum(window_session_seconds)
+
+        def session_hours(value):
+            return round(value / 3600, 2)
+
+        top_focus_sessions = sorted(
+            long_sessions,
+            key=lambda item: item["seconds"],
+            reverse=True,
+        )[:5]
+        concentration = {
+            "window_sessions": len(window_sessions),
+            "application_sessions": len(application_sessions),
+            "average_window_session_hours": session_hours(
+                sum(window_session_seconds) / len(window_session_seconds)
+            ) if window_session_seconds else 0.0,
+            "median_window_session_hours": session_hours(
+                median(window_session_seconds)
+            ) if window_session_seconds else 0.0,
+            "longest_window_session_hours": session_hours(
+                max(window_session_seconds)
+            ) if window_session_seconds else 0.0,
+            "sessions_at_least_10_minutes": len(long_sessions),
+            "deep_focus_hours": session_hours(sum(item["seconds"] for item in long_sessions)),
+            "short_session_share_percent": round(
+                len(short_sessions) / len(window_sessions) * 100, 1
+            ) if window_sessions else 0.0,
+            "window_switches_per_active_hour": round(
+                max(len(window_sessions) - 1, 0) / active_seconds * 3600, 1
+            ) if active_seconds else 0.0,
+            "application_switches_per_active_hour": round(
+                max(len(application_sessions) - 1, 0) / active_seconds * 3600, 1
+            ) if active_seconds else 0.0,
+            "deep_focus_share_of_active_percent": round(
+                sum(item["seconds"] for item in long_sessions) / active_seconds * 100, 1
+            ) if active_seconds else 0.0,
+            "top_focus_sessions": [
+                {
+                    "app": item["app"],
+                    "title": item["title"],
+                    "url": item["url"],
+                    "hours": session_hours(item["seconds"]),
+                }
+                for item in top_focus_sessions
+            ],
+            "observed_window_hours": session_hours(observed_window_seconds),
+        }
         application_switches = 0
         window_switches = 0
         previous_app = None
         previous_window = None
-        for _, app, title, url in window_event_sequence:
+        for _, app, title, url, _ in window_event_sequence:
             current_window = (app, title, url)
             if previous_app is not None and app != previous_app:
                 application_switches += 1
@@ -222,6 +313,7 @@ class ActivityWatchClient:
             "input": {key: round(value, 2) for key, value in input_totals.items()},
             "buckets_found": bucket_counts,
             "rhythm": rhythm,
+            "concentration": concentration,
         }
 
 
@@ -823,6 +915,19 @@ def render_report_payload(payload):
         f"鼠标点击 {_report_text(rhythm.get('mouse_clicks')) or '无法确定'} 次"
     )
 
+    lines.extend(["", "🎯 专注度分析"])
+    concentration = payload.get("concentration")
+    if isinstance(concentration, dict):
+        summary = _report_text(concentration.get("summary"))
+        if summary:
+            lines.append(f"• 总结：{summary}")
+        _append_report_items(lines, _report_items(concentration.get("findings")))
+        boundary = _report_text(concentration.get("evidence_boundary"))
+        if boundary:
+            lines.append(f"• 证据边界：{boundary}")
+    else:
+        lines.append("• 暂无足够的连续窗口数据")
+
     sections = (
         ("🗓️ 明日计划建议", "tomorrow_plan"),
         ("⚠️ 风险或待跟进", "risks"),
@@ -920,12 +1025,17 @@ def generate_report(
    - 浏览器：识别重点网页、论文、教程或配置事项，并给出各自用时；
    - 无法从证据判断的内容要标注“无法确定”，不要编造。
 3. “工作节奏”只保留有数据支撑的细节，例如活跃占比、应用/窗口切换次数、单位活跃小时的键鼠强度；没有意义的指标可以删除。
-4. 增加“PaperRead 论文与未来研究建议”部分。结合 PaperRead 推送和知识库原文，说明：
+4. 增加“专注度分析”部分。结合 ActivityWatch 的 `concentration` 数据说明：
+   - 连续同一窗口/应用的平均、中位和最长持续时间；
+   - 10 分钟以上连续会话数量与时长、短会话比例；
+   - 应用/窗口每有效活跃小时的切换次数，并据此判断是否存在频繁上下文切换。
+   不要生成没有统计依据的单一“专注分数”；切换不必然代表分心（例如开发与查资料的正常协作），必须结合窗口标题和事项解释，并明确这是行为代理指标而非心理状态测量。
+5. 增加“PaperRead 论文与未来研究建议”部分。结合 PaperRead 推送和知识库原文，说明：
    - 哪些论文与当前研究方向相关；
    - 对当前 GeoCoT-VLN、VLN、CoT 或相关研究有什么启发；
    - 可以形成哪些具体的后续研究问题、实验或改进方向。
    必须区分论文原文事实、群聊中明确表达的计划和模型推断；知识库未读取成功时要明确说明依据不完整。
-5. 增加“飞书文档变更”部分，按新增、修改、删除/回收分类，结合变更时间、文档标题和版本信息说明当天实际处理过的文档。版本记录只能证明文档版本活动，不能证明具体删改了哪些句子；不要过度推断。
+6. 增加“飞书文档变更”部分，按新增、修改、删除/回收分类，结合变更时间、文档标题和版本信息说明当天实际处理过的文档。版本记录只能证明文档版本活动，不能证明具体删改了哪些句子；不要过度推断。
 
 【PaperRead 今日推送】
 {paperread_text}
@@ -961,7 +1071,7 @@ def generate_report(
 总长度控制在 2200 个中文字符以内，以保证“今日完成”“时间投入”和 PaperRead 研究建议足够具体；保持条理清晰，不要泛泛压缩成摘要。
 7. 你必须只返回一个合法 JSON 对象，不要返回 Markdown、代码围栏、解释文字、草稿或思考过程。模型的最终回答字段只放 JSON，不要把 reasoning/thinking 字段复制到 content。
 8. JSON 使用以下字段，内容要保留足够详细的分析：
-   {{"date":"YYYY-MM-DD","today_completed":[{{"title":"","detail":"","evidence":""}}],"time_investment":[{{"app_or_topic":"","hours":0,"share_percent":0,"detail":"","evidence":""}}],"evidence_boundary":"","rhythm":{{"active_hours":0,"away_hours":0,"active_share_percent":0,"application_switches":0,"window_switches":0,"keypresses":0,"mouse_clicks":0}},"tomorrow_plan":[{{"title":"","detail":"","evidence":""}}],"risks":[{{"title":"","detail":"","evidence":""}}],"papers":{{"summary":"","items":[{{"title":"","detail":"","evidence":""}}],"suggestions":[{{"title":"","detail":"","evidence":""}}]}},"documents":{{"added":[],"modified":[],"deleted":[]}},"questions":[{{"title":"","answer":"","basis":""}}]}}
+   {{"date":"YYYY-MM-DD","today_completed":[{{"title":"","detail":"","evidence":""}}],"time_investment":[{{"app_or_topic":"","hours":0,"share_percent":0,"detail":"","evidence":""}}],"evidence_boundary":"","rhythm":{{"active_hours":0,"away_hours":0,"active_share_percent":0,"application_switches":0,"window_switches":0,"keypresses":0,"mouse_clicks":0}},"concentration":{{"summary":"","findings":[{{"title":"","detail":"","evidence":""}}],"evidence_boundary":""}},"tomorrow_plan":[{{"title":"","detail":"","evidence":""}}],"risks":[{{"title":"","detail":"","evidence":""}}],"papers":{{"summary":"","items":[{{"title":"","detail":"","evidence":""}}],"suggestions":[{{"title":"","detail":"","evidence":""}}]}},"documents":{{"added":[],"modified":[],"deleted":[]}},"questions":[{{"title":"","answer":"","basis":""}}]}}
    `today_completed` 保持 3-6 条；`time_investment` 按应用/事项拆分并保留窗口证据；`papers.items` 保留每篇论文的主题、相关性和事实/推断边界。不要为了压缩 JSON 而删掉关键细节。
 """
     response = llm.call(
