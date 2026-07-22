@@ -1,8 +1,10 @@
 import json
+import importlib
 import os
 import sys
 import unittest
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from daily_report import (
@@ -155,6 +157,55 @@ class DailyReportHelpersTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_report_payload(response)
 
+    def test_structured_report_payload_accepts_wrapped_json(self):
+        response = type(
+            "Response",
+            (),
+            {
+                "choices": [
+                    type(
+                        "Choice",
+                        (),
+                        {
+                            "message": type(
+                                "Message",
+                                (),
+                                {"content": "思考说明\n```json\n{\"date\":\"2026-07-20\"}\n```"},
+                            )()
+                        },
+                    )()
+                ]
+            },
+        )()
+        self.assertEqual(parse_report_payload(response), {"date": "2026-07-20"})
+
+    def test_structured_report_payload_prefers_report_object_over_thinking_object(self):
+        response = type(
+            "Response",
+            (),
+            {
+                "choices": [
+                    type(
+                        "Choice",
+                        (),
+                        {
+                            "message": type(
+                                "Message",
+                                (),
+                                {
+                                    "content": '{"scratch":"内部推理"}\n{"date":"2026-07-20","today_completed":[]}'
+                                },
+                            )()
+                        },
+                    )()
+                ]
+            },
+        )()
+        self.assertEqual(
+            parse_report_payload(response),
+            {"date": "2026-07-20", "today_completed": []},
+        )
+
     def test_generate_report_formats_json_schema_example(self):
         payload = {
             "date": "2026-07-20",
@@ -200,6 +251,43 @@ class DailyReportHelpersTest(unittest.TestCase):
             fake_llm.call.call_args.kwargs["response_format"],
             {"type": "json_object"},
         )
+        self.assertIs(fake_llm.call.call_args.kwargs["response_validator"], parse_report_payload)
+
+    def test_llm_client_falls_back_after_invalid_structured_output(self):
+        fake_openai = SimpleNamespace(OpenAI=lambda **kwargs: object())
+        with patch.dict(
+            os.environ,
+            {"MODELSCOPE_API_KEY": "test-key", "HTTPS_PROXY": "", "ALL_PROXY": ""},
+            clear=False,
+        ), patch.dict(sys.modules, {"openai": fake_openai}):
+            llm_client = importlib.import_module("llm_client")
+
+        bad_response = type(
+            "Response",
+            (),
+            {"choices": [type("Choice", (), {"message": type("Message", (), {"content": "not json"})()})()]},
+        )()
+        good_response = type(
+            "Response",
+            (),
+            {"choices": [type("Choice", (), {"message": type("Message", (), {"content": "{}"})()})()]},
+        )()
+        completions = Mock()
+        completions.create.side_effect = [bad_response, good_response]
+        fake_client = type(
+            "Client",
+            (),
+            {"chat": type("Chat", (), {"completions": completions})()},
+        )()
+        model_pool = llm_client.MultiModelLLM(fake_client, ["bad-model", "good-model"])
+        result = model_pool.call(
+            [{"role": "user", "content": "return JSON"}],
+            response_format={"type": "json_object"},
+            max_rounds=1,
+            response_validator=parse_report_payload,
+        )
+        self.assertIs(result, good_response)
+        self.assertEqual(completions.create.call_count, 2)
 
     def test_paperread_messages_are_separated(self):
         message = {

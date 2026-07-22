@@ -12,9 +12,9 @@ from openai import OpenAI
 
 
 DEFAULT_FALLBACK_MODELS = [
-    "ZhipuAI/GLM-5.2",
+    "ZhipuAI/GLM-5.2:DashScope",
     "ZhipuAI/GLM-5.1",
-    "MiniMax/MiniMax-M2.5",
+    "MiniMax/MiniMax-M2.5:DashScope",
     "moonshotai/Kimi-K2.5",
     "MiniMax/MiniMax-M1-80k",
     "XiaomiMiMo/MiMo-V2-Flash:xiaomi",
@@ -67,7 +67,7 @@ class MultiModelLLM:
     def current_model(self):
         return self.models[self.current_idx]
 
-    def call(self, messages, response_format=None, max_rounds=2):
+    def call(self, messages, response_format=None, max_rounds=2, response_validator=None):
         total_models = len(self.models)
         last_exc = None
         start_idx = self.next_start_idx % total_models
@@ -95,6 +95,8 @@ class MultiModelLLM:
                             f"Model {model} returned empty response "
                             f"(choices={response.choices})"
                         )
+                    if response_validator:
+                        response_validator(response)
 
                     self.current_idx = idx
                     self.next_start_idx = (idx + 1) % total_models

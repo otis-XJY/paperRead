@@ -54,14 +54,14 @@ def load_categories_config():
 
 CONFIG = {
     "categories": load_categories_config(),
-    "llm_model": os.getenv("LLM_MODEL") or "ZhipuAI/GLM-5.2",
+    "llm_model": os.getenv("LLM_MODEL") or "ZhipuAI/GLM-5.2:DashScope",
     "base_url": os.getenv("BASE_URL") or "https://api-inference.modelscope.cn/v1/",
     # 多模型备选：遇到 429 限速时自动切换到下一个模型
     # 所有模型共用同一个 base_url 和 API key
     "fallback_models": [
-        "ZhipuAI/GLM-5.2",
+        "ZhipuAI/GLM-5.2:DashScope",
         "ZhipuAI/GLM-5.1",
-        "MiniMax/MiniMax-M2.5",
+        "MiniMax/MiniMax-M2.5:DashScope",
         "moonshotai/Kimi-K2.5",
         "MiniMax/MiniMax-M1-80k",
         "XiaomiMiMo/MiMo-V2-Flash:xiaomi",

@@ -692,7 +692,12 @@ def _bounded_context(items, formatter, max_chars=60000, item_max_chars=8000):
 
 
 def parse_report_payload(response):
-    """Extract the structured JSON object from the model's final message."""
+    """Extract the structured JSON object from the model's final message.
+
+    PaperRead's analysis path accepts providers that wrap JSON in prose or a
+    Markdown code fence. Keep the same tolerant extraction here while still
+    rejecting responses that contain no JSON object at all.
+    """
     choices = getattr(response, "choices", None) or []
     if not choices:
         raise ValueError("日报模型没有返回 choices")
@@ -700,10 +705,35 @@ def parse_report_payload(response):
     content = getattr(message, "content", None)
     if not isinstance(content, str) or not content.strip():
         raise ValueError("日报模型的最终 content 为空")
-    payload = json.loads(content)
-    if not isinstance(payload, dict):
-        raise ValueError("日报模型返回的 JSON 不是对象")
-    return payload
+    decoder = json.JSONDecoder()
+    candidates = []
+    for index, character in enumerate(content):
+        if character != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(content, index)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            candidates.append(payload)
+    if candidates:
+        expected_keys = {
+            "date",
+            "today_completed",
+            "time_investment",
+            "rhythm",
+            "papers",
+            "documents",
+            "questions",
+        }
+        return max(
+            enumerate(candidates),
+            key=lambda item: (
+                len(expected_keys.intersection(item[1])),
+                item[0],
+            ),
+        )[1]
+    raise ValueError("日报模型返回内容中没有可解析的 JSON 对象")
 
 
 def _report_items(value):
@@ -937,6 +967,7 @@ def generate_report(
     response = llm.call(
         [{"role": "user", "content": prompt + additional_prompt + refinement_prompt}],
         response_format={"type": "json_object"},
+        response_validator=parse_report_payload,
     )
     return render_report_payload(parse_report_payload(response))
 
