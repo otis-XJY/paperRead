@@ -19,6 +19,16 @@
 
 ---
 
+## 📌 项目近期修改（2026-07-23）
+
+- **日报输出**：`daily_report.py` 增加 ActivityWatch 专注度分析，结合应用/窗口切换、持续使用时长、键盘输入和鼠标点击等指标生成节奏分析。
+- **日报解析稳定性**：支持从 Markdown 代码块中提取 JSON，降低模型返回带代码围栏或附加说明时的解析失败风险。
+- **模型调用容错**：LLM 模型池支持失败后自动切换备用模型；模型不可用或请求超时时会继续尝试后续模型。
+- **论文推送触发方式**：`daily_paper.yml` 移除 GitHub 内置 `schedule`，改为接收外部 `repository_dispatch` 事件 `daily-paper`，并保留手动运行入口。
+- **配置安全**：外部 cron 调度所需的 GitHub Token 仅保存在 cron-job.org 的凭据配置中，不写入开源仓库；论文推送对象等群聊相关配置应通过 GitHub Secrets 或环境变量管理。
+
+---
+
 ## 🆕 最近更新 (v1.4.0 - 2026/05/15)
 
 | 版本 | 日期 | 主要更新 |
@@ -329,7 +339,7 @@ DEBUG_PHASE_ONE=1 python main.py
 
 ### 3. GitHub Actions 自动化
 
-配置 GitHub Actions 实现每日自动运行：
+配置 GitHub Actions，并由外部 cron 服务触发每日运行：
 
 1. **Fork 本仓库**
 2. **在仓库设置中添加 Secrets**：
@@ -343,6 +353,47 @@ DEBUG_PHASE_ONE=1 python main.py
 3. **启用 Actions 工作流**
 
 详见 [`.github/workflows/daily_paper.yml`](./.github/workflows/daily_paper.yml)
+
+工作流不再使用 GitHub 内置 `schedule`。外部 cron 服务应调用 GitHub `repository_dispatch` 接口，事件类型为 `daily-paper`：
+
+```bash
+curl -L -X POST https://api.github.com/repos/OWNER/REPO/dispatches \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  -d '{"event_type":"daily-paper"}'
+```
+
+其中 `GITHUB_TOKEN` 只应保存在外部 cron 服务的凭据配置中，不要写入仓库。也可以通过 GitHub 页面或 API 使用 `workflow_dispatch` 手动运行。
+
+#### 使用 cron-job.org 配置外部触发
+
+在 [cron-job.org 控制台](https://console.cron-job.org/jobs) 新建一个 Job，按以下字段填写：
+
+1. **Title**：例如 `paperRead-daily-paper`。
+2. **URL**：`https://api.github.com/repos/OWNER/REPO/dispatches`，将 `OWNER/REPO` 替换为实际仓库路径，例如 `otis-XJY/paperRead`。
+3. **Schedule**：选择每天运行，并设置所需的时区和时间。该时间由 cron-job.org 控制，不再受 GitHub Actions 的 UTC 定时规则影响。
+4. **Request method**：选择 `POST`。
+5. **Request body**：填写以下 JSON，不要添加 Markdown 代码围栏：
+
+   ```json
+   {"event_type":"daily-paper"}
+   ```
+
+6. **Headers / Custom headers**：添加以下三个请求头：
+
+   | Name | Value |
+   |------|-------|
+   | `Accept` | `application/vnd.github+json` |
+   | `Authorization` | `Bearer <你的 GitHub Token>` |
+   | `X-GitHub-Api-Version` | `2022-11-28` |
+
+   Token 建议使用仅授权该仓库、具备 `Contents: write` 权限的 Fine-grained Personal Access Token。不要把 Token 放进 URL、提交到仓库或截图公开。
+
+7. 保存后点击 **Run now / Execute** 测试。GitHub API 成功时通常返回 HTTP `204 No Content`；随后应在仓库的 **Actions** 页面看到 `Zotero AI Daily Papers` 工作流被触发。
+8. 若测试成功，再启用 Job，并在 cron-job.org 的执行历史中确认后续请求状态。GitHub Actions 仍可能运行最长 120 分钟，cron-job.org 只负责发起触发请求。
+
+如果控制台提供“保存响应内容”的选项，建议仅在排查问题时临时开启，避免在第三方服务中长期保存 GitHub API 响应。若出现 `401/403`，优先检查 Token 是否过期、仓库授权范围是否正确；若返回 `204` 但没有工作流，检查事件类型是否严格为 `daily-paper` 以及 workflow 文件是否已推送到默认分支。
 
 > 工作流的增量逻辑依赖 `state.json` 的 `last_date` 和 `initialized_categories`，以及 `history.json` 的已处理 arXiv ID。只要这些文件成功提交回仓库，下一次 Actions 就会按增量方式继续跑。
 

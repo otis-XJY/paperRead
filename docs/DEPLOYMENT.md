@@ -135,9 +135,21 @@ docker-compose up -d
 
 ## GitHub Actions
 
-### Automatic Daily Runs
+### External Daily Runs
 
-The `.github/workflows/daily_paper.yml` file is configured for daily runs.
+The `.github/workflows/daily_paper.yml` file does not use GitHub's internal `schedule`. It accepts a `repository_dispatch` event with type `daily-paper`, so an external cron service controls the run time.
+
+Example trigger:
+
+```bash
+curl -L -X POST https://api.github.com/repos/OWNER/REPO/dispatches \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  -d '{"event_type":"daily-paper"}'
+```
+
+For cron-job.org, create a daily job with `POST` as the request method, the URL above, and the JSON body `{"event_type":"daily-paper"}`. Add the `Accept`, `Authorization`, and `X-GitHub-Api-Version` headers shown in the example. Use a fine-grained GitHub token limited to this repository with `Contents: write` permission, and store it only in cron-job.org's credential configuration.
 
 ### Setup
 

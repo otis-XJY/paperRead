@@ -1,9 +1,9 @@
 name: Zotero AI Daily Papers
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
   workflow_dispatch:
+  repository_dispatch:
+    types: [daily-paper]
 
 jobs:
   run-auto-paper:

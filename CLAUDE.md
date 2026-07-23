@@ -139,7 +139,7 @@ See `.env.example` for the full list. Key ones:
 
 One GitHub Actions workflow in `.github/workflows/`:
 
-- **daily_paper.yml** — runs at 00:00 UTC daily (+ manual dispatch), builds knowledge base, runs main.py, commits state files back to repo. 120-minute timeout. Uses Python 3.10. Concurrency group `paperread-daily` prevents parallel runs.
+- **daily_paper.yml** — runs when an external `repository_dispatch` event with type `daily-paper` is received (+ manual dispatch), builds knowledge base, runs main.py, and commits state files back to repo. It no longer uses GitHub's internal schedule. 120-minute timeout. Uses Python 3.10. Concurrency group `paperread-daily` prevents parallel runs.
 
 ## Conventions
 

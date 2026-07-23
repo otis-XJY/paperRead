@@ -19,6 +19,16 @@
 
 ---
 
+## 📌 Recent Project Changes (2026-07-23)
+
+- **Daily report output**: `daily_report.py` now analyzes ActivityWatch focus signals using application/window switching, continuous usage duration, keypresses, and mouse clicks.
+- **Report parsing robustness**: Markdown code fences containing JSON are extracted before parsing, reducing failures caused by extra formatting in model responses.
+- **LLM fallback**: The model pool automatically tries the next model after a timeout or provider failure.
+- **Paper-push trigger**: `daily_paper.yml` no longer uses GitHub's built-in `schedule`; it accepts the external `repository_dispatch` event `daily-paper` and still supports manual dispatch.
+- **Configuration security**: Keep the GitHub token used by the external scheduler in cron-job.org credentials, never in this open-source repository. Group-chat recipients and similar deployment-specific settings should be managed through GitHub Secrets or environment variables.
+
+---
+
 ## 🆕 Recent Updates (v1.4.0 - 2026/05/15)
 
 | Version | Date | Highlights |
@@ -322,7 +332,7 @@ DEBUG_PHASE_ONE=1 python main.py
 
 ### 3. GitHub Actions Automation
 
-Configure GitHub Actions for daily automatic runs:
+Configure GitHub Actions and trigger daily runs from an external cron service:
 
 1. **Fork this repository**
 2. **Add Secrets in repository settings**:
@@ -336,6 +346,47 @@ Configure GitHub Actions for daily automatic runs:
 3. **Enable Actions workflow**
 
 See [`.github/workflows/daily_paper.yml`](./.github/workflows/daily_paper.yml) for details
+
+The workflow no longer uses GitHub's built-in `schedule`. An external cron service should call GitHub's `repository_dispatch` endpoint with the `daily-paper` event type:
+
+```bash
+curl -L -X POST https://api.github.com/repos/OWNER/REPO/dispatches \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  -d '{"event_type":"daily-paper"}'
+```
+
+Keep `GITHUB_TOKEN` in the external cron service's credential store, never in the repository. The workflow can also be started manually with `workflow_dispatch`.
+
+#### Configure the external trigger with cron-job.org
+
+Create a new job in the [cron-job.org console](https://console.cron-job.org/jobs) with these fields:
+
+1. **Title**: for example, `paperRead-daily-paper`.
+2. **URL**: `https://api.github.com/repos/OWNER/REPO/dispatches`, replacing `OWNER/REPO` with the actual repository path.
+3. **Schedule**: run once per day at the desired time and timezone. The schedule is controlled by cron-job.org, not by GitHub's UTC scheduler.
+4. **Request method**: `POST`.
+5. **Request body** (plain JSON, without Markdown fences):
+
+   ```json
+   {"event_type":"daily-paper"}
+   ```
+
+6. **Headers / Custom headers**:
+
+   | Name | Value |
+   |------|-------|
+   | `Accept` | `application/vnd.github+json` |
+   | `Authorization` | `Bearer <your GitHub token>` |
+   | `X-GitHub-Api-Version` | `2022-11-28` |
+
+   Prefer a fine-grained token limited to this repository with `Contents: write` permission (the API requires write access). Do not put the token in the URL, commit it, or expose it in screenshots.
+
+7. Save the job and click **Run now / Execute**. A successful GitHub API request normally returns HTTP `204 No Content`; the `Zotero AI Daily Papers` workflow should then appear under GitHub Actions.
+8. Enable the job after the test succeeds and check its execution history. GitHub Actions may still run for up to 120 minutes; cron-job.org only sends the trigger request.
+
+Keep response saving disabled except when troubleshooting. For `401/403`, check token expiry and repository permissions. If the API returns `204` but no workflow starts, verify the exact `daily-paper` event type and that the workflow file is present on the default branch.
 
 > Incremental updates depend on `state.json` (`last_date`, `initialized_categories`) and `history.json` (processed arXiv IDs). The workflow commits these files back to the repository after a successful run.
 
