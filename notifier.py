@@ -7,7 +7,45 @@ import sys
 import json
 import time
 import requests
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Any
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # Python 3.8 on environments without zoneinfo support
+    ZoneInfo = None
+
+
+DEFAULT_REPORT_TIMEZONE = "Asia/Shanghai"
+
+
+def get_report_timezone():
+    """Return the configured display timezone for notifications."""
+    timezone_name = os.getenv("REPORT_TIMEZONE", DEFAULT_REPORT_TIMEZONE).strip()
+    if ZoneInfo is not None:
+        try:
+            return ZoneInfo(timezone_name)
+        except Exception:
+            print(
+                f"⚠️ 无法识别 REPORT_TIMEZONE={timezone_name!r}，"
+                f"回退到 {DEFAULT_REPORT_TIMEZONE}"
+            )
+            try:
+                return ZoneInfo(DEFAULT_REPORT_TIMEZONE)
+            except Exception:
+                pass
+
+    # Python 3.8 Windows installations may not include the IANA timezone data.
+    # Keep the default deployment timezone correct even in that case.
+    return timezone(timedelta(hours=8), name="CST")
+
+
+def format_report_time(now=None) -> str:
+    """Format a notification timestamp in the configured report timezone."""
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return current.astimezone(get_report_timezone()).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def configure_utf8_stdio():
@@ -572,8 +610,7 @@ class NotificationManager:
 
     def _get_current_time(self) -> str:
         """获取当前时间字符串"""
-        from datetime import datetime
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return format_report_time()
 
 
 # 全局通知管理器实例

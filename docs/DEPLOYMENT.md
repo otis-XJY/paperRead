@@ -151,6 +151,8 @@ curl -L -X POST https://api.github.com/repos/OWNER/REPO/dispatches \
 
 For cron-job.org, create a daily job with `POST` as the request method, the URL above, and the JSON body `{"event_type":"daily-paper"}`. Add the `Accept`, `Authorization`, and `X-GitHub-Api-Version` headers shown in the example. Use a fine-grained GitHub token limited to this repository with `Contents: write` permission, and store it only in cron-job.org's credential configuration.
 
+Set the optional `REPORT_TIMEZONE` repository variable to control the timezone displayed in Feishu run notifications; it defaults to `Asia/Shanghai`. The incremental cursor in `state.json.last_date` is independent of notification time and is stored as a canonical UTC publication timestamp.
+
 ### Setup
 
 1. Go to repository Settings → Secrets and variables → Actions

@@ -18,7 +18,7 @@ import re
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def configure_utf8_stdio():
@@ -39,6 +39,12 @@ from notifier import notifier
 from feishu_wiki import FeishuWikiClient
 from zotero_indexer import build_knowledge_base
 from llm_client import llm as shared_llm
+from time_utils import (
+    DEFAULT_LAST_DATE,
+    format_utc_timestamp,
+    newer_timestamp,
+    parse_utc_timestamp,
+)
 
 __version__ = "1.0.0"
 
@@ -403,19 +409,25 @@ def get_or_create_collection(name, parent_key=None):
     return resp['successful']['0']['key']
 # ================= 2. 状态管理 =================
 def load_state():
-    default_state = {"is_first_run": True, "last_date": "2000-01-01T00:00:00Z", "initialized_categories": []}
+    default_state = {"is_first_run": True, "last_date": DEFAULT_LAST_DATE, "initialized_categories": []}
     state = load_json_file(STATE_FILE, default_state)
     if not isinstance(state, dict):
         return default_state
     if "is_first_run" not in state or "last_date" not in state:
         return default_state
+    normalized_last_date = format_utc_timestamp(state.get("last_date"))
+    if not normalized_last_date:
+        print(f"⚠️ state.json 的 last_date 无法解析，回退到 {DEFAULT_LAST_DATE}")
+        return default_state
+    state["last_date"] = normalized_last_date
     # 向后兼容：旧格式没有 initialized_categories，视为全局首次运行已完成
     if "initialized_categories" not in state:
         state["initialized_categories"] = list(CONFIG["categories"].keys()) if not state["is_first_run"] else []
     return state
 
 def save_state(last_date, initialized_categories=None):
-    data = {"is_first_run": False, "last_date": last_date}
+    canonical_last_date = format_utc_timestamp(last_date) or DEFAULT_LAST_DATE
+    data = {"is_first_run": False, "last_date": canonical_last_date}
     if initialized_categories is not None:
         data["initialized_categories"] = initialized_categories
     with open(STATE_FILE, "w", encoding="utf-8") as f:
@@ -844,7 +856,7 @@ async def fetch_arxiv_single(session, url, max_retries=3, base_delay=6.0):
 
 async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_first_run=None, cat_name=""):
     all_papers = {}
-    max_published_date = state["last_date"]
+    max_published_date = format_utc_timestamp(state.get("last_date")) or DEFAULT_LAST_DATE
 
     # 分类级别的首次运行标志优先于全局标志
     is_first = cat_is_first_run if cat_is_first_run is not None else state["is_first_run"]
@@ -856,7 +868,7 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
         failed_keywords = []
 
         # 首次运行：冷启动填充，不过滤日期，全量接收 arXiv 返回的论文
-        first_run_cutoff = "2000-01-01T00:00:00Z"
+        first_run_cutoff = DEFAULT_LAST_DATE
 
         for kw in keywords:
             encoded_kw = urllib.parse.quote(kw)
@@ -880,7 +892,7 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
                 latest_feed = feedparser.parse(latest_text)
                 for e in latest_feed.entries:
                     pub_date = e.get('published', '')
-                    if pub_date > first_run_cutoff:
+                    if newer_timestamp(pub_date, first_run_cutoff):
                         pid = e.id.split('/')[-1]
                         authors = extract_authors_from_entry(e)
                         paper = {
@@ -891,8 +903,8 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
                             "authors": authors,
                         }
                         latest_candidates[pid] = paper
-                        if pub_date > max_published_date:
-                            max_published_date = pub_date
+                        if newer_timestamp(pub_date, max_published_date):
+                            max_published_date = format_utc_timestamp(pub_date)
 
             # 请求之间添加更长的延迟（30秒，避免触发 arXiv 速率限制）
             print("⏳ 请求间隔 30s...")
@@ -908,7 +920,7 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
                 hot_feed = feedparser.parse(hot_text)
                 for e in hot_feed.entries:
                     pub_date = e.get('published', '')
-                    if pub_date > first_run_cutoff:
+                    if newer_timestamp(pub_date, first_run_cutoff):
                         pid = e.id.split('/')[-1]
                         authors = extract_authors_from_entry(e)
                         paper = {
@@ -921,14 +933,18 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
                         if pid not in hot_candidates:
                             hot_order.append(pid)
                         hot_candidates[pid] = paper
-                        if pub_date > max_published_date:
-                            max_published_date = pub_date
+                        if newer_timestamp(pub_date, max_published_date):
+                            max_published_date = format_utc_timestamp(pub_date)
 
             # 关键词之间添加更长的延迟（45秒，避免触发 arXiv 速率限制）
             print("⏳ 关键词间隔 45s...")
             await asyncio.sleep(45.0)
 
-        latest_ranked = sorted(latest_candidates.values(), key=lambda x: x.get("published", ""), reverse=True)
+        latest_ranked = sorted(
+            latest_candidates.values(),
+            key=lambda x: parse_utc_timestamp(x.get("published")) or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
         latest_top10 = latest_ranked[:10]
         hot_ranked = [hot_candidates[pid] for pid in hot_order if pid in hot_candidates]
         hot_top10 = hot_ranked[:10]
@@ -973,7 +989,7 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
         for e in feed.entries:
             pub_date = e.get('published', '')
             # 增量过滤逻辑：只接受比 last_date 新的论文（首次运行时 last_date 极小，等于全收）
-            if pub_date > state["last_date"]:
+            if newer_timestamp(pub_date, state["last_date"]):
                 pid = e.id.split('/')[-1]
                 all_papers[pid] = {
                     "id": pid,
@@ -983,8 +999,8 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
                     "authors": extract_authors_from_entry(e),
                 }
                 new_papers_count += 1
-                if pub_date > max_published_date:
-                    max_published_date = pub_date
+                if newer_timestamp(pub_date, max_published_date):
+                    max_published_date = format_utc_timestamp(pub_date)
 
         if new_papers_count == 0:
             print(f"✅ 该关键词暂无新论文: {kw}")
@@ -1003,11 +1019,11 @@ async def fetch_arxiv(session, keywords, state, arxiv_categories=None, cat_is_fi
                 new_count = 0
                 for p in matched:
                     # 增量过滤：只接受比 last_date 新的论文
-                    if p["id"] not in all_papers and p.get("published", "") > state["last_date"]:
+                    if p["id"] not in all_papers and newer_timestamp(p.get("published"), state["last_date"]):
                         all_papers[p["id"]] = p
                         new_count += 1
-                        if p.get("published", "") > max_published_date:
-                            max_published_date = p["published"]
+                        if newer_timestamp(p.get("published"), max_published_date):
+                            max_published_date = format_utc_timestamp(p.get("published"))
                 print(f"✅ OAI-PMH 备选方案: 拉取 {len(oai_papers)} 篇，关键词匹配 {len(matched)} 篇，新增 {new_count} 篇")
                 # OAI-PMH 成功则清除失败标记
                 failed_keywords = []
@@ -1086,7 +1102,7 @@ async def _main_impl():
 
     state = load_state()
     initialized_categories = set(state.get("initialized_categories", []))
-    global_max_date = state["last_date"]
+    global_max_date = format_utc_timestamp(state.get("last_date")) or DEFAULT_LAST_DATE
     print(f"🧭 当前状态: is_first_run={state['is_first_run']}, last_date={state['last_date']}")
     print(f"🧭 已初始化分类: {', '.join(initialized_categories) if initialized_categories else '无'}")
     
@@ -1142,7 +1158,8 @@ async def _main_impl():
                 cat_is_first_run=cat_is_first_run,
                 cat_name=cat_name
             )
-            if cat_max_date > global_max_date: global_max_date = cat_max_date
+            if newer_timestamp(cat_max_date, global_max_date):
+                global_max_date = format_utc_timestamp(cat_max_date)
             if failed_kws:
                 all_failed_keywords.extend([(cat_name, kw) for kw in failed_kws])
             

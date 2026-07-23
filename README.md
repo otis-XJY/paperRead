@@ -24,6 +24,7 @@
 - **日报输出**：`daily_report.py` 增加 ActivityWatch 专注度分析，结合应用/窗口切换、持续使用时长、键盘输入和鼠标点击等指标生成节奏分析。
 - **日报解析稳定性**：支持从 Markdown 代码块中提取 JSON，降低模型返回带代码围栏或附加说明时的解析失败风险。
 - **模型调用容错**：LLM 模型池支持失败后自动切换备用模型；模型不可用或请求超时时会继续尝试后续模型。
+- **时间处理**：飞书运行通知按 `REPORT_TIMEZONE` 显示（默认 `Asia/Shanghai`）；增量游标 `state.json.last_date` 统一保存为 UTC 论文发布时间，不与任务开始时间混用。
 - **论文推送触发方式**：`daily_paper.yml` 移除 GitHub 内置 `schedule`，改为接收外部 `repository_dispatch` 事件 `daily-paper`，并保留手动运行入口。
 - **配置安全**：外部 cron 调度所需的 GitHub Token 仅保存在 cron-job.org 的凭据配置中，不写入开源仓库；论文推送对象等群聊相关配置应通过 GitHub Secrets 或环境变量管理。
 

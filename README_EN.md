@@ -24,6 +24,7 @@
 - **Daily report output**: `daily_report.py` now analyzes ActivityWatch focus signals using application/window switching, continuous usage duration, keypresses, and mouse clicks.
 - **Report parsing robustness**: Markdown code fences containing JSON are extracted before parsing, reducing failures caused by extra formatting in model responses.
 - **LLM fallback**: The model pool automatically tries the next model after a timeout or provider failure.
+- **Time handling**: Feishu run notifications use `REPORT_TIMEZONE` (default `Asia/Shanghai`); the incremental cursor in `state.json.last_date` is always stored as the UTC publication-time cutoff and is never mixed with the job start time.
 - **Paper-push trigger**: `daily_paper.yml` no longer uses GitHub's built-in `schedule`; it accepts the external `repository_dispatch` event `daily-paper` and still supports manual dispatch.
 - **Configuration security**: Keep the GitHub token used by the external scheduler in cron-job.org credentials, never in this open-source repository. Group-chat recipients and similar deployment-specific settings should be managed through GitHub Secrets or environment variables.
 
