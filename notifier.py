@@ -7,6 +7,7 @@ import sys
 import json
 import time
 import requests
+from feishu_sdk import FeishuOpenAPIClient, FeishuSDKError
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Any
 
@@ -166,21 +167,70 @@ class FeishuNotifier:
     
     def __init__(self, webhook_url: Optional[str] = None):
         self.webhook_url = webhook_url or os.getenv("FEISHU_WEBHOOK_URL")
-        if not self.webhook_url:
+        # The paper bot and daily-report bot share one group in this setup.
+        # Keep the dedicated name supported, but reuse the daily chat ID when
+        # FEISHU_PAPER_CHAT_ID is not configured.
+        self.chat_id = (
+            os.getenv("FEISHU_PAPER_CHAT_ID", "").strip()
+            or os.getenv("DAILY_REPORT_FEISHU_CHAT_ID", "").strip()
+        )
+        self.sdk = None
+        app_id = os.getenv("FEISHU_APP_ID", "").strip()
+        app_secret = os.getenv("FEISHU_APP_SECRET", "").strip()
+        if app_id and app_secret and self.chat_id:
+            try:
+                self.sdk = FeishuOpenAPIClient(app_id, app_secret)
+            except Exception as exc:
+                print(f"⚠️ 飞书官方 SDK 初始化失败，将回退 Webhook: {exc}")
+        if not self.webhook_url and not self.sdk:
             print("⚠️ 未配置飞书 Webhook URL")
+
+    def _send_sdk(self, msg_type: str, content: Dict[str, Any]) -> bool:
+        if not self.sdk or not self.chat_id:
+            return False
+        try:
+            self.sdk.request(
+                "POST",
+                "/open-apis/im/v1/messages",
+                params={"receive_id_type": "chat_id"},
+                json_body={
+                    "receive_id": self.chat_id,
+                    "msg_type": msg_type,
+                    "content": json.dumps(content, ensure_ascii=False),
+                },
+            )
+            print("✅ 飞书 SDK 推送成功")
+            return True
+        except FeishuSDKError as exc:
+            print(f"⚠️ 飞书 SDK 推送失败: {exc}")
+            return False
     
     def send_text(self, content: str) -> bool:
-        """发送文本消息"""
+        """发送卡片消息；保留原文本接口供通知管理器调用。"""
+        return self.send_card("Zotero AI Daily Papers", content)
+
+    def send_card(self, title: str, markdown: str, template: str = "blue") -> bool:
+        """Send an interactive Feishu card through SDK or webhook fallback."""
+        card = {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "template": template,
+                "title": {"tag": "plain_text", "content": str(title)[:100]},
+            },
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {"tag": "lark_md", "content": str(markdown)[:30000]},
+                }
+            ],
+        }
+        if self._send_sdk("interactive", card):
+            return True
         if not self.webhook_url:
             return False
         
         try:
-            data = {
-                "msg_type": "text",
-                "content": {
-                    "text": content
-                }
-            }
+            data = {"msg_type": "interactive", "card": card}
             response = requests.post(self.webhook_url, json=data, timeout=10)
             result = response.json()
             if result.get("StatusCode") == 0 or result.get("code") == 0:
@@ -194,34 +244,18 @@ class FeishuNotifier:
             return False
     
     def send_post(self, title: str, content: List[List[Dict]]) -> bool:
-        """发送富文本消息"""
-        if not self.webhook_url:
-            return False
-        
-        try:
-            data = {
-                "msg_type": "post",
-                "content": {
-                    "post": {
-                        "zh_cn": {
-                            "title": title,
-                            "content": content
-                        }
-                    }
-                }
-            }
-            response = requests.post(self.webhook_url, json=data, timeout=10)
-            result = response.json()
-            if result.get("StatusCode") == 0 or result.get("code") == 0:
-                print("✅ 飞书推送成功")
-                return True
-            else:
-                print(f"❌ 飞书推送失败: {result}")
-                return False
-        except Exception as e:
-            print(f"❌ 飞书推送异常: {e}")
-            return False
-    
+        """兼容旧富文本调用，将内容转换为交互式卡片。"""
+        parts = []
+        for row in content or []:
+            for item in row or []:
+                tag = item.get("tag")
+                text = str(item.get("text", ""))
+                if tag == "a" and item.get("href"):
+                    parts.append(f"[{text}]({item['href']})")
+                else:
+                    parts.append(text)
+        return self.send_card(title, "".join(parts))
+
     def send_paper_summary(self, category: str, papers: List[Dict]) -> bool:
         """推送论文摘要"""
         if not papers:
@@ -295,7 +329,7 @@ class NotificationManager:
         platforms = []
         if self.wxwork.webhook_url:
             platforms.append("wxwork")
-        if self.feishu.webhook_url:
+        if self.feishu.webhook_url or self.feishu.sdk:
             platforms.append("feishu")
         return platforms
     

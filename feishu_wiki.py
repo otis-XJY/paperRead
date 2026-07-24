@@ -4,14 +4,14 @@
 将 Zotero DailyPapers 的论文笔记同步到飞书 Wiki 知识库，
 镜像 Zotero 的目录结构（DailyPapers → 各研究分类）。
 
-依赖：requests（已存在于 requirements.txt）
+依赖：lark-oapi（飞书官方 Python SDK）
 """
 
 import json
 import os
-import time
+from urllib.parse import urlsplit
 
-import requests
+from feishu_sdk import FeishuOpenAPIClient, FeishuSDKError
 
 CACHE_FILE = "feishu_wiki_node_cache.json"
 FEISHU_BASE = "https://open.feishu.cn/open-apis"
@@ -31,53 +31,26 @@ class FeishuWikiClient:
         self.app_secret = app_secret
         self.root_node_token = root_node_token
         self._daily_folder_name = daily_folder_name or "DailyPapers"
-        self._token = None
-        self._token_expiry = 0
+        self._sdk = FeishuOpenAPIClient(app_id=app_id, app_secret=app_secret)
         self._space_id = None
         self._cache = self._load_node_cache()
 
     # ── Token 管理 ──────────────────────────────────────────────
 
-    def _get_tenant_access_token(self):
-        url = f"{FEISHU_BASE}/auth/v3/tenant_access_token/internal"
-        resp = requests.post(url, json={
-            "app_id": self.app_id,
-            "app_secret": self.app_secret,
-        }, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("code") != 0:
-            raise RuntimeError(f"获取 tenant_access_token 失败: {data}")
-        self._token = data["tenant_access_token"]
-        self._token_expiry = time.time() + data.get("expire", 7200) - 300
-
-    def _ensure_token(self):
-        if not self._token or time.time() >= self._token_expiry:
-            self._get_tenant_access_token()
-        return self._token
-
     # ── 通用 API 请求 ───────────────────────────────────────────
 
     def _api_request(self, method, url, json_body=None, params=None):
-        token = self._ensure_token()
-        headers = {"Authorization": f"Bearer {token}"}
-        resp = requests.request(method, url, json=json_body, params=params,
-                                headers=headers, timeout=15)
-        if resp.status_code == 401:
-            self._get_tenant_access_token()
-            headers["Authorization"] = f"Bearer {self._token}"
-            resp = requests.request(method, url, json=json_body, params=params,
-                                    headers=headers, timeout=15)
-        if resp.status_code >= 400:
-            try:
-                err_body = resp.json()
-            except Exception:
-                err_body = resp.text
-            raise RuntimeError(f"飞书 API HTTP {resp.status_code}: {err_body}")
-        data = resp.json()
-        if data.get("code") != 0:
-            raise RuntimeError(f"飞书 API 错误: {data}")
-        return data.get("data", data)
+        parsed = urlsplit(url)
+        path = parsed.path or url
+        try:
+            return self._sdk.request(
+                method,
+                path,
+                params=params,
+                json_body=json_body,
+            )
+        except FeishuSDKError as exc:
+            raise RuntimeError(str(exc)) from exc
 
     # ── Wiki 空间发现 ───────────────────────────────────────────
 
@@ -152,7 +125,7 @@ class FeishuWikiClient:
         try:
             self.list_child_nodes(node_token)
             return True
-        except (RuntimeError, requests.RequestException):
+        except RuntimeError:
             return False
 
     def _invalidate_cache_prefix(self, prefix):
@@ -191,7 +164,7 @@ class FeishuWikiClient:
                     self._save_node_cache(self._cache)
                 elif not real_token:
                     self._invalidate_cache_prefix(cat_key)
-            except (RuntimeError, requests.RequestException):
+            except RuntimeError:
                 self._invalidate_cache_prefix(daily_key)
                 self._invalidate_cache_prefix(cat_key)
 

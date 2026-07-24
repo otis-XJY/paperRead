@@ -49,6 +49,7 @@ jobs:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_PAPER_CHAT_ID: ${{ secrets.FEISHU_PAPER_CHAT_ID || secrets.DAILY_REPORT_FEISHU_CHAT_ID }}
           FEISHU_WIKI_ROOT_NODE_TOKEN: ${{ secrets.FEISHU_WIKI_ROOT_NODE_TOKEN }}
           FEISHU_WIKI_DAILY_FOLDER_NAME: ${{ secrets.FEISHU_WIKI_DAILY_FOLDER_NAME || 'PaperRead' }}
           REPORT_TIMEZONE: ${{ vars.REPORT_TIMEZONE || 'Asia/Shanghai' }}

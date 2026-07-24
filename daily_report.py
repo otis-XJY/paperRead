@@ -20,6 +20,9 @@ except ImportError:  # Python 3.8 compatibility
 
 import requests
 
+from feishu_sdk import FeishuOpenAPIClient, FeishuSDKError
+from feishu_event_queue import DocumentEventStore
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -113,8 +116,10 @@ class ActivityWatchClient:
         afk_seconds = 0.0
         active_seconds = 0.0
         input_totals = {"keypresses": 0.0, "mouse_distance": 0.0, "mouse_clicks": 0.0}
-        bucket_counts = {"window": 0, "afk": 0, "input": 0}
+        bucket_counts = {"window": 0, "afk": 0, "input": 0, "focus": 0}
         window_event_sequence = []
+        focus_events = []
+        active_intervals = []
 
         for bucket_id, metadata in self.buckets().items():
             identity = f"{bucket_id} {metadata.get('name', '')} {metadata.get('type', '')}".lower()
@@ -124,6 +129,8 @@ class ActivityWatchClient:
                 kind = "afk"
             elif "input" in identity:
                 kind = "input"
+            elif "focus" in identity:
+                kind = "focus"
             else:
                 continue
             bucket_counts[kind] += 1
@@ -149,6 +156,10 @@ class ActivityWatchClient:
                         afk_seconds += duration
                     else:
                         active_seconds += duration
+                        event_start = parse_timestamp(event.get("timestamp"))
+                        active_intervals.append(
+                            (event_start, event_start + timedelta(seconds=duration))
+                        )
                 else:
                     input_totals["keypresses"] += _sum_matching_numbers(
                         data, ("keypress", "key_press", "keys", "presses", "num_keys", "key_count")
@@ -159,6 +170,72 @@ class ActivityWatchClient:
                     input_totals["mouse_clicks"] += _sum_matching_numbers(
                         data, ("mouse_click", "clicks", "num_clicks")
                     )
+                if kind == "focus":
+                    focus_events.append((event, duration, data))
+
+        if focus_events:
+            # Focus events intentionally overlap for the 60-second activity
+            # window.  Collapse intervals per monitor/window before summing so
+            # three monitors cannot make the report exceed elapsed time.
+            def merge_intervals(intervals):
+                merged = []
+                for left, right in sorted(intervals):
+                    if merged and left <= merged[-1][1]:
+                        merged[-1] = (merged[-1][0], max(merged[-1][1], right))
+                    else:
+                        merged.append((left, right))
+                return merged
+
+            focus_by_key = defaultdict(list)
+            focus_all = []
+            focus_counts = {"keypresses": 0.0, "mouse_clicks": 0.0}
+            for event, duration, data in focus_events:
+                timestamp = parse_timestamp(event.get("timestamp"))
+                end_time = timestamp + timedelta(seconds=max(float(duration), 0.0))
+                focus_all.append((timestamp, end_time))
+                monitor = str(data.get("monitor") or "unknown")
+                app = str(data.get("app") or data.get("window_title") or "Unknown")
+                title = str(data.get("window_title") or "").strip()
+                focus_by_key[(app, title, monitor)].append((timestamp, end_time))
+                focus_counts["keypresses"] += float(data.get("keypresses") or 0)
+                focus_counts["mouse_clicks"] += float(data.get("mouse_clicks") or 0)
+            apps.clear()
+            windows.clear()
+            window_event_sequence = []
+            active_seconds = sum((right - left).total_seconds() for left, right in merge_intervals(focus_all))
+            for (app, title, monitor), intervals in focus_by_key.items():
+                seconds = sum((right - left).total_seconds() for left, right in merge_intervals(intervals))
+                apps[app] += seconds
+                windows[(app, title, monitor)] += seconds
+                for left, right in merge_intervals(intervals):
+                    window_event_sequence.append((left, app, title, monitor, (right - left).total_seconds()))
+            input_totals["keypresses"] = focus_counts["keypresses"]
+            input_totals["mouse_clicks"] = focus_counts["mouse_clicks"]
+        elif active_intervals and window_event_sequence:
+            # aw-watcher-window can keep reporting the last foreground window
+            # while the machine is away.  Clip those intervals to not-AFK time.
+            clipped_sequence = []
+            apps.clear()
+            windows.clear()
+            for timestamp, app, title, url, duration in window_event_sequence:
+                left = timestamp
+                right = timestamp + timedelta(seconds=duration)
+                clipped = 0.0
+                for active_left, active_right in active_intervals:
+                    clipped += max(
+                        0.0,
+                        (min(right, active_right) - max(left, active_left)).total_seconds(),
+                    )
+                if clipped <= 0:
+                    continue
+                clipped_sequence.append((timestamp, app, title, url, clipped))
+                apps[app] += clipped
+                windows[(app, title, url)] += clipped
+            window_event_sequence = clipped_sequence
+            active_seconds = sum(
+                max(0.0, (right - left).total_seconds())
+                for left, right in active_intervals
+            )
 
         def rows(mapping, fields):
             result = []
@@ -168,7 +245,7 @@ class ActivityWatchClient:
                 result.append(row)
             return result
 
-        window_rows = rows(windows, ("app", "title", "url"))
+        window_rows = rows(windows, ("app", "title", "context"))
         application_breakdown = []
         for app_row in rows(apps, ("app",))[:30]:
             app = app_row["app"]
@@ -268,6 +345,7 @@ class ActivityWatchClient:
                     "app": item["app"],
                     "title": item["title"],
                     "url": item["url"],
+                    "monitor": item["url"],
                     "hours": session_hours(item["seconds"]),
                 }
                 for item in top_focus_sessions
@@ -318,37 +396,42 @@ class ActivityWatchClient:
 
 
 class FeishuClient:
-    """Minimal Feishu client for reading one group and sending a report."""
+    """Feishu client backed by the official SDK and tenant identity."""
 
     def __init__(self, app_id=None, app_secret=None):
-        self.app_id = app_id or os.environ["DAILY_REPORT_FEISHU_APP_ID"]
-        self.app_secret = app_secret or os.environ["DAILY_REPORT_FEISHU_APP_SECRET"]
-        self._token = None
+        self.app_id = (
+            app_id
+            or os.getenv("DAILY_REPORT_FEISHU_APP_ID")
+            or os.getenv("FEISHU_APP_ID")
+            or ""
+        ).strip()
+        self.app_secret = (
+            app_secret
+            or os.getenv("DAILY_REPORT_FEISHU_APP_SECRET")
+            or os.getenv("FEISHU_APP_SECRET")
+            or ""
+        ).strip()
+        self._sdk = FeishuOpenAPIClient(self.app_id, self.app_secret)
 
     def token(self):
-        if self._token:
-            return self._token
-        response = requests.post(
-            f"{FEISHU_BASE}/auth/v3/tenant_access_token/internal",
-            json={"app_id": self.app_id, "app_secret": self.app_secret},
-            timeout=15,
-        )
-        response.raise_for_status()
-        data = response.json()
-        if data.get("code") != 0:
-            raise RuntimeError(f"获取飞书 tenant_access_token 失败: {data}")
-        self._token = data["tenant_access_token"]
-        return self._token
+        """Compatibility hook; token caching is owned by the official SDK."""
+        return "managed-by-lark-oapi"
 
     def _request(self, method, path, **kwargs):
-        headers = kwargs.pop("headers", {})
-        headers["Authorization"] = f"Bearer {self.token()}"
-        response = requests.request(method, f"{FEISHU_BASE}{path}", headers=headers, timeout=20, **kwargs)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("code") != 0:
-            raise RuntimeError(f"飞书 API 失败: {data}")
-        return data.get("data", {})
+        kwargs.pop("headers", None)
+        json_body = kwargs.pop("json", None)
+        params = kwargs.pop("params", None)
+        if kwargs:
+            raise TypeError(f"不支持的 Feishu SDK 请求参数: {', '.join(kwargs)}")
+        try:
+            return self._sdk.request(
+                method,
+                path,
+                params=params,
+                json_body=json_body,
+            )
+        except FeishuSDKError as exc:
+            raise RuntimeError(str(exc)) from exc
 
     def list_messages(self, chat_id, start, end):
         messages = []
@@ -432,119 +515,111 @@ class FeishuClient:
             document_id = node.get("obj_token") or node.get("node_token", "")
         return document_id
 
-    def list_wiki_documents(self, root_node_token, max_documents=200):
-        """Traverse a Wiki subtree and return its docx nodes."""
-        root_data = self._request(
+    def get_or_create_month_document(self, root_node_token, title):
+        """Find or create one docx Wiki node directly under the configured root."""
+        node_data = self._request(
             "GET",
             "/wiki/v2/spaces/get_node",
             params={"token": root_node_token},
         )
-        root_node = root_data.get("node", root_data)
-        space_id = root_node.get("space_id", "")
+        root = node_data.get("node", node_data)
+        space_id = root.get("space_id", "")
         if not space_id:
-            return []
-
-        documents = []
-        queue = [root_node_token]
-        visited = set()
-        while queue and len(documents) < max_documents:
-            parent_token = queue.pop(0)
-            if parent_token in visited:
-                continue
-            visited.add(parent_token)
-            page_token = None
-            while True:
-                params = {"parent_node_token": parent_token, "page_size": 50}
-                if page_token:
-                    params["page_token"] = page_token
-                data = self._request(
-                    "GET",
-                    f"/wiki/v2/spaces/{space_id}/nodes",
-                    params=params,
-                )
-                for node in data.get("items", []):
-                    node_token = node.get("node_token", "")
-                    obj_token = node.get("obj_token", "")
-                    obj_type = str(node.get("obj_type", "")).lower()
-                    if obj_type == "docx" and obj_token:
-                        documents.append(
-                            {
-                                "document_id": obj_token,
-                                "node_token": node_token,
-                                "title": node.get("title", ""),
-                                "url": f"https://my.feishu.cn/docx/{obj_token}",
-                            }
-                        )
-                        if len(documents) >= max_documents:
-                            return documents
-                    if node_token and node.get("has_child"):
-                        queue.append(node_token)
-                if not data.get("has_more") or not data.get("page_token"):
-                    break
-                page_token = data["page_token"]
-        return documents
-
-    def list_document_versions(self, document_id, start, end):
-        """Return document versions created or updated inside the report window."""
-        versions = []
+            raise RuntimeError("日报根节点没有返回 space_id")
         page_token = None
-        all_versions = []
         while True:
-            params = {"obj_type": "docx", "page_size": 100}
+            params = {"parent_node_token": root_node_token, "page_size": 50}
             if page_token:
                 params["page_token"] = page_token
-            data = self._request(
-                "GET",
-                f"/drive/v1/files/{document_id}/versions",
-                params=params,
-            )
-            all_versions.extend(data.get("items", []))
+            data = self._request("GET", f"/wiki/v2/spaces/{space_id}/nodes", params=params)
+            for node in data.get("items", []):
+                if node.get("title") == title:
+                    document_id = node.get("obj_token", "")
+                    if document_id:
+                        return document_id
+                    node_token = node.get("node_token", "")
+                    if node_token:
+                        resolved = self._request(
+                            "GET",
+                            "/wiki/v2/spaces/get_node",
+                            params={"token": node_token},
+                        )
+                        resolved_node = resolved.get("node", resolved)
+                        return resolved_node.get("obj_token") or node_token
             if not data.get("has_more") or not data.get("page_token"):
                 break
             page_token = data["page_token"]
 
-        all_versions.sort(
-            key=lambda item: (
-                parse_timestamp(item["create_time"]).timestamp()
-                if item.get("create_time")
-                else 0
-            )
+        data = self._request(
+            "POST",
+            f"/wiki/v2/spaces/{space_id}/nodes",
+            json_body={
+                "obj_type": "docx",
+                "node_type": "origin",
+                "parent_node_token": root_node_token,
+                "title": title,
+            },
         )
-        for index, item in enumerate(all_versions):
-            created_at = parse_timestamp(item["create_time"]) if item.get("create_time") else None
-            updated_at = parse_timestamp(item["update_time"]) if item.get("update_time") else None
-            event_time = updated_at if updated_at and start <= updated_at <= end else created_at
-            if not event_time or not (start <= event_time <= end):
-                continue
-
-            raw_status = str(item.get("status", "")).lower()
-            is_deleted = raw_status in {"1", "2", "deleted", "trash", "statusdeleted", "statustrash"}
-            if is_deleted:
-                operation = "deleted"
-            elif index == 0 and created_at and start <= created_at <= end:
-                operation = "added"
-            else:
-                operation = "modified"
-            versions.append(
-                {
-                    "document_id": document_id,
-                    "title": item.get("name", ""),
-                    "version": item.get("version", ""),
-                    "operation": operation,
-                    "event_time": event_time.isoformat(),
-                    "creator_id": item.get("creator_id", ""),
-                    "status": item.get("status", ""),
-                }
+        node = data.get("node", data)
+        document_id = node.get("obj_token", "")
+        if document_id:
+            return document_id
+        node_token = node.get("node_token", "")
+        if node_token:
+            resolved = self._request(
+                "GET",
+                "/wiki/v2/spaces/get_node",
+                params={"token": node_token},
             )
-        return versions
+            resolved_node = resolved.get("node", resolved)
+            return resolved_node.get("obj_token") or node_token
+        return ""
+
+    def append_document_blocks(self, document_id, blocks):
+        """Append simple blocks to a docx document through the SDK transport."""
+        import uuid
+
+        prefix = f"_daily_{uuid.uuid4().hex[:12]}"
+        children_id = [f"{prefix}_{index}" for index, _ in enumerate(blocks)]
+        descendants = []
+        for block_id, block in zip(children_id, blocks):
+            item = dict(block)
+            item["block_id"] = block_id
+            item.setdefault("children", [])
+            descendants.append(item)
+        self._request(
+            "POST",
+            f"/docx/v1/documents/{document_id}/blocks/{document_id}/descendant",
+            params={"document_revision_id": -1},
+            json={
+                "index": -1,
+                "children_id": children_id,
+                "descendants": descendants,
+            },
+        )
+        return True
 
     def send_text(self, chat_id, text):
-        content = json.dumps({"text": text}, ensure_ascii=False)
+        """Send the report as a readable interactive card."""
+        card = {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "template": "blue",
+                "title": {"tag": "plain_text", "content": "工作日报"},
+            },
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {"tag": "lark_md", "content": str(text)[:30000]},
+                }
+            ],
+        }
+        content = json.dumps(card, ensure_ascii=False)
         return self._request(
             "POST",
             "/im/v1/messages",
             params={"receive_id_type": "chat_id"},
-            json={"receive_id": chat_id, "msg_type": "text", "content": content},
+            json={"receive_id": chat_id, "msg_type": "interactive", "content": content},
         )
 
     def list_chats(self):
@@ -717,53 +792,35 @@ def collect_knowledge_documents(client, paperread_messages):
 
 
 def collect_document_activity(client, messages, start, end):
-    """Collect version activity for document links visible in today's chat."""
+    """Read direct SDK listener events instead of scanning documents or folders."""
     if os.getenv("DAILY_REPORT_DOCUMENT_ACTIVITY_ENABLED", "1") != "1":
         return []
+    store = DocumentEventStore()
+    try:
+        activity = store.between(start, end)
+    finally:
+        store.close()
+    max_events = int(os.getenv("DAILY_REPORT_MAX_DOCUMENT_ACTIVITY", "100"))
+    web_base = os.getenv("FEISHU_WEB_BASE", "https://my.feishu.cn").rstrip("/")
+    for item in activity[:max_events]:
+        token = item.get("file_token", "")
+        file_type = str(item.get("file_type", "")).lower()
+        item["url"] = item.get("url") or (
+            f"{web_base}/{'wiki' if file_type == 'wiki' else 'docx'}/{token}"
+            if token else ""
+        )
+        item["version"] = ""
+        item["creator_id"] = ""
+    return activity[:max_events]
 
-    max_documents = int(os.getenv("DAILY_REPORT_MAX_DOCUMENT_ACTIVITY", "30"))
-    activity = []
-    seen_urls = set()
-    link_pattern = re.compile(r"https?://[^/\s]+/(?:docx|wiki)/[A-Za-z0-9_-]+")
-    for message in messages:
-        for url in link_pattern.findall(message.get("text", "")):
-            if url in seen_urls:
-                continue
-            seen_urls.add(url)
-            if len(seen_urls) > max_documents:
-                return activity
-            try:
-                document_id = client.document_id_from_link(url)
-                if not document_id:
-                    continue
-                for version in client.list_document_versions(document_id, start, end):
-                    version["url"] = url
-                    activity.append(version)
-            except Exception as exc:
-                print(f"⚠️ 无法读取飞书文档变更 {url}: {exc}")
-    root_token = os.getenv("DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN", "").strip()
-    if root_token:
-        try:
-            wiki_documents = client.list_wiki_documents(
-                root_token,
-                max_documents=int(os.getenv("DAILY_REPORT_MAX_WIKI_DOCUMENTS", "200")),
-            )
-            for item in wiki_documents:
-                if len(seen_urls) >= max_documents:
-                    break
-                document_id = item.get("document_id", "")
-                url = item.get("url", "")
-                if not document_id or url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                for version in client.list_document_versions(document_id, start, end):
-                    version["url"] = url
-                    if item.get("title") and not version.get("title"):
-                        version["title"] = item["title"]
-                    activity.append(version)
-        except Exception as exc:
-            print(f"⚠️ 无法扫描飞书知识库文档树: {exc}")
-    return activity
+
+def clear_consumed_document_activity(end):
+    """Remove document events consumed by a successfully completed report."""
+    store = DocumentEventStore()
+    try:
+        return store.clear_through(end)
+    finally:
+        store.close()
 
 
 def _bounded_context(items, formatter, max_chars=60000, item_max_chars=8000):
@@ -850,113 +907,87 @@ def _report_hours(value):
         return "无法确定"
 
 
-def _append_report_items(lines, items, empty_text="暂无"):
+def _clean_item_text(item):
+    if isinstance(item, dict):
+        title = _report_text(item.get("title") or item.get("name") or item.get("topic"))
+        detail = _report_text(item.get("detail") or item.get("summary") or item.get("answer"))
+        return "：".join(part for part in (title, detail) if part)
+    return _report_text(item)
+
+
+def _append_clean_items(lines, items, empty_text="暂无"):
+    items = _report_items(items)
     if not items:
-        lines.append(f"• {empty_text}")
+        lines.append(f"- {empty_text}")
         return
     for item in items:
-        if isinstance(item, dict):
-            title = _report_text(item.get("title") or item.get("name") or item.get("topic"))
-            detail = _report_text(item.get("detail") or item.get("summary") or item.get("answer"))
-            evidence = _report_text(item.get("evidence") or item.get("basis"))
-            text = "：".join(part for part in (title, detail) if part)
-            if evidence:
-                text = f"{text}（依据：{evidence}）" if text else f"依据：{evidence}"
-        else:
-            text = _report_text(item)
+        text = _clean_item_text(item)
         if text:
-            lines.append(f"• {text}")
+            lines.append(f"- {text}")
 
 
 def render_report_payload(payload):
-    """Render the structured report as compact, detailed Feishu chat text."""
+    """Render the compact report with only user-facing summary fields."""
     date = _report_text(payload.get("date")) or "工作日报"
     lines = [f"📅 工作日报 {date}", "", "✅ 今日完成"]
-    _append_report_items(lines, _report_items(payload.get("today_completed")))
+    _append_clean_items(lines, payload.get("today_completed"))
 
-    lines.extend(["", "⏱️ 时间投入"])
+    lines.extend(["", "⏱ 时间投入"])
     investments = _report_items(payload.get("time_investment"))
     if investments:
         for item in investments:
             if not isinstance(item, dict):
-                lines.append(f"• {_report_text(item)}")
+                lines.append(f"- {_report_text(item)}")
                 continue
             label = _report_text(item.get("app_or_topic") or item.get("title") or item.get("name")) or "事项"
             duration = _report_hours(item.get("hours"))
-            share = item.get("share_percent")
-            share_text = f"，占有效活跃 {float(share):.1f}%" if isinstance(share, (int, float)) else ""
             detail = _report_text(item.get("detail") or item.get("summary"))
-            evidence = _report_text(item.get("evidence") or item.get("windows"))
-            line = f"• {label}：{duration}{share_text}"
+            line = f"- {label}：{duration}"
             if detail:
-                line += f"；{detail}"
-            if evidence:
-                line += f"（证据：{evidence}）"
+                line += f"，{detail}"
             lines.append(line)
     else:
-        lines.append("• 暂无")
-    boundary = _report_text(payload.get("evidence_boundary"))
-    if boundary:
-        lines.append(f"• 证据边界：{boundary}")
+        lines.append("- 暂无")
 
     lines.extend(["", "📊 工作节奏"])
     rhythm = payload.get("rhythm") if isinstance(payload.get("rhythm"), dict) else {}
-    active = _report_hours(rhythm.get("active_hours"))
-    away = _report_hours(rhythm.get("away_hours"))
-    active_share = rhythm.get("active_share_percent")
-    share_text = f"，活跃占比 {float(active_share):.1f}%" if isinstance(active_share, (int, float)) else ""
-    lines.append(f"• 有效活跃 {active}，离开 {away}{share_text}")
     lines.append(
-        f"• 应用切换 {_report_text(rhythm.get('application_switches')) or '无法确定'} 次，"
-        f"窗口切换 {_report_text(rhythm.get('window_switches')) or '无法确定'} 次"
+        f"- 有效活动 {_report_hours(rhythm.get('active_hours'))}，离开 {_report_hours(rhythm.get('away_hours'))}"
     )
     lines.append(
-        f"• 键盘 {_report_text(rhythm.get('keypresses')) or '无法确定'} 次，"
-        f"鼠标点击 {_report_text(rhythm.get('mouse_clicks')) or '无法确定'} 次"
+        f"- 应用切换 {_report_text(rhythm.get('application_switches')) or '0'} 次，"
+        f"窗口切换 {_report_text(rhythm.get('window_switches')) or '0'} 次，"
+        f"键盘 {_report_text(rhythm.get('keypresses')) or '0'} 次，"
+        f"鼠标点击 {_report_text(rhythm.get('mouse_clicks')) or '0'} 次"
     )
 
-    lines.extend(["", "🎯 专注度分析"])
-    concentration = payload.get("concentration")
-    if isinstance(concentration, dict):
-        summary = _report_text(concentration.get("summary"))
-        if summary:
-            lines.append(f"• 总结：{summary}")
-        _append_report_items(lines, _report_items(concentration.get("findings")))
-        boundary = _report_text(concentration.get("evidence_boundary"))
-        if boundary:
-            lines.append(f"• 证据边界：{boundary}")
-    else:
-        lines.append("• 暂无足够的连续窗口数据")
+    lines.extend(["", "🎯 可观测操作焦点"])
+    concentration = payload.get("concentration") if isinstance(payload.get("concentration"), dict) else {}
+    if concentration.get("summary"):
+        lines.append(f"- {_report_text(concentration.get('summary'))}")
+    _append_clean_items(lines, concentration.get("findings"))
+    if not concentration.get("summary") and not concentration.get("findings"):
+        lines.append("- 暂无")
 
-    sections = (
-        ("🗓️ 明日计划建议", "tomorrow_plan"),
-        ("⚠️ 风险或待跟进", "risks"),
-    )
-    for heading, key in sections:
+    for heading, key in (("明日计划建议", "tomorrow_plan"), ("风险或待跟进", "risks")):
         lines.extend(["", heading])
-        _append_report_items(lines, _report_items(payload.get(key)))
+        _append_clean_items(lines, payload.get(key))
 
     lines.extend(["", "📚 PaperRead 论文与未来研究建议"])
-    papers = payload.get("papers")
-    if isinstance(papers, dict):
-        if _report_text(papers.get("summary")):
-            lines.append(f"• 总结：{_report_text(papers.get('summary'))}")
-        _append_report_items(lines, _report_items(papers.get("items") or papers.get("papers")))
-        if papers.get("suggestions"):
-            lines.append("• 后续建议：")
-            _append_report_items(lines, _report_items(papers.get("suggestions")))
-    else:
-        _append_report_items(lines, _report_items(papers))
+    papers = payload.get("papers") if isinstance(payload.get("papers"), dict) else {}
+    if papers.get("summary"):
+        lines.append(f"- 总结：{_report_text(papers.get('summary'))}")
+    lines.append("- 未来建议：")
+    _append_clean_items(lines, _report_items(papers.get("suggestions"))[:3])
 
-    lines.extend(["", "📝 飞书文档变更"])
+    lines.extend(["", "📄 飞书文档变更"])
     documents = payload.get("documents") if isinstance(payload.get("documents"), dict) else {}
     for label, key in (("新增", "added"), ("修改", "modified"), ("删除/回收", "deleted")):
-        values = _report_items(documents.get(key))
-        lines.append(f"• {label}：")
-        _append_report_items(lines, values)
+        lines.append(f"- {label}：")
+        _append_clean_items(lines, documents.get(key))
 
     lines.extend(["", "💬 群聊问题解答"])
-    _append_report_items(lines, _report_items(payload.get("questions")))
+    _append_clean_items(lines, payload.get("questions"))
     return "\n".join(lines).strip()
 
 
@@ -968,16 +999,17 @@ def generate_report(
     document_activity=None,
     question_messages=None,
 ):
-    """Call the repository's existing multi-model LLM and return plain text."""
-    from llm_client import llm  # Reuse the shared client/model fallback pool.
+    """Generate a compact structured report and render it for Feishu."""
+    from llm_client import llm
 
     paperread_messages = paperread_messages or []
     knowledge_documents = knowledge_documents or []
     document_activity = document_activity or []
     question_messages = question_messages or []
-    chat_text = "\n".join(
-        f"[{item['time']}] ({item['sender_type']}) {item['text']}" for item in chat_messages
-    ) or "（当天群聊中没有可读取的文本消息）"
+    chat_text = _bounded_context(
+        chat_messages,
+        lambda item: f"[{item['time']}] ({item['sender_type']}) {item['text']}",
+    ) or "（今天没有可读的群聊文本消息）"
     paperread_text = _bounded_context(
         paperread_messages,
         lambda item: f"[{item['time']}] {item['text']}",
@@ -985,101 +1017,99 @@ def generate_report(
     knowledge_text = _bounded_context(
         knowledge_documents,
         lambda item: f"来源：{item['url']}\n{item['text']}",
-    ) or "（没有读取到 PaperRead 关联的飞书知识库文档）"
-    document_activity_text = _bounded_context(
+    ) or "（没有读取到 PaperRead 关联文档）"
+    changes_text = _bounded_context(
         document_activity,
         lambda item: (
-            f"[{item['event_time']}] {item['operation']} | {item['title']} | "
-            f"版本 {item['version']} | creator={item['creator_id']} | {item['url']}"
+            f"[{item['event_time']}] {item['operation']} | {item.get('title') or item.get('file_token')} | "
+            f"{item.get('file_type', '')} | {item.get('url', '')}"
         ),
-    ) or "（时间范围内没有读取到已知飞书文档的版本变更）"
+    ) or "（时间范围内没有直接文档变更事件）"
     question_text = _bounded_context(
         question_messages,
         lambda item: f"[{item['time']}] {item['sender_name']}: {item['text']}",
-    ) or "（没有检测到需要回答的群聊问题）"
-    activity_text = json.dumps(activity_summary, ensure_ascii=False, indent=2)
-    prompt = f"""你是我的工作日报助手。请根据飞书群聊记录和 ActivityWatch 数据生成一份简洁、客观的中文日报。
+    ) or "（没有需要回答的群聊问题）"
+    prompt = f"""你是我的工作日报助手。请根据以下信息生成简洁、客观的中文日报。
 
 日报时间范围：{activity_summary['period']['start']} 至 {activity_summary['period']['end']}。
-请区分“今天已经完成的工作”和“明天计划做的工作”，不要把计划写成已完成事实；没有证据的内容不要臆造。
-输出包含以下部分：
-1. 今日完成（3-6 条）
-2. 时间投入（主要软件/窗口和时长）
-3. 工作节奏（有效活跃、离开、键盘次数、鼠标移动/点击）
-4. 明日计划建议（结合用户明确写出的计划，给出优先级和具体建议）
-5. 风险或待跟进（没有则写“暂无”）
-总长度控制在 2200 个中文字符以内，以保留详细分析为优先；不要为了短而删除关键论文、事项或证据。
+不要把计划写成已完成事实，不要编造无法从输入判断的内容。
 
-【飞书群聊记录】
+群聊记录：
 {chat_text}
 
-【ActivityWatch 数据】
-{activity_text}
-"""
-    additional_prompt = f"""
+ActivityWatch 数据：
+{json.dumps(activity_summary, ensure_ascii=False, indent=2)}
 
-【额外分析要求】
-1. 所有时间统一使用小时 h，不要输出 min、分钟或 minutes。
-2. “时间投入”必须结合窗口标题、网页标题、URL 和群聊证据进行细化：
-   - VS Code 等开发工具：识别项目、具体工作主题或改进事项，并给出各自用时；
-   - 浏览器：识别重点网页、论文、教程或配置事项，并给出各自用时；
-   - 无法从证据判断的内容要标注“无法确定”，不要编造。
-3. “工作节奏”只保留有数据支撑的细节，例如活跃占比、应用/窗口切换次数、单位活跃小时的键鼠强度；没有意义的指标可以删除。
-4. 增加“专注度分析”部分。结合 ActivityWatch 的 `concentration` 数据说明：
-   - 连续同一窗口/应用的平均、中位和最长持续时间；
-   - 10 分钟以上连续会话数量与时长、短会话比例；
-   - 应用/窗口每有效活跃小时的切换次数，并据此判断是否存在频繁上下文切换。
-   不要生成没有统计依据的单一“专注分数”；切换不必然代表分心（例如开发与查资料的正常协作），必须结合窗口标题和事项解释，并明确这是行为代理指标而非心理状态测量。
-5. 增加“PaperRead 论文与未来研究建议”部分。结合 PaperRead 推送和知识库原文，说明：
-   - 哪些论文与当前研究方向相关；
-   - 对当前 GeoCoT-VLN、VLN、CoT 或相关研究有什么启发；
-   - 可以形成哪些具体的后续研究问题、实验或改进方向。
-   必须区分论文原文事实、群聊中明确表达的计划和模型推断；知识库未读取成功时要明确说明依据不完整。
-6. 增加“飞书文档变更”部分，按新增、修改、删除/回收分类，结合变更时间、文档标题和版本信息说明当天实际处理过的文档。版本记录只能证明文档版本活动，不能证明具体删改了哪些句子；不要过度推断。
-
-【PaperRead 今日推送】
+PaperRead 今日推送：
 {paperread_text}
 
-【需要回答的群聊问题】请在日报中新增“群聊问题解答”部分，逐条回答以下由已配置群聊提问对象提出的问题。先给明确结论，再说明依据；如果现有群聊、ActivityWatch、PaperRead或知识库信息不足，必须明确说出无法确定以及需要补充什么信息，不要编造。
-{question_text}
-
-【PaperRead 关联的飞书知识库内容】
+PaperRead 关联文档：
 {knowledge_text}
 
-【时间范围内的飞书文档变更】
-{document_activity_text}
-"""
-    question_target_configured = bool(
-        os.getenv("DAILY_REPORT_QUESTION_SENDER_ID", "").strip()
-        or os.getenv("DAILY_REPORT_QUESTION_SENDER_NAME", "").strip()
-    )
-    refinement_prompt = f"""
+飞书直接变更事件：
+{changes_text}
 
-【细化与隐私要求】
-1. “今日完成”只写有证据支持的动作和结果，每条尽量包含“做了什么—作用于什么对象—得到什么结果”。
-   - 群聊明确说已完成、已修改、已推送的事项可写为完成事实；ActivityWatch 只能证明使用过某个应用或页面，不能单独证明代码已完成、问题已解决或配置已生效。
-   - PaperRead 推送数量必须以消息记录为准；可以概括论文主题，但不要把模型推断写成论文原文结论。
-   - 对“查看、排查、尝试、待确认”等状态保持原状态，不要升级成“完成”。
-2. “时间投入”要比只列应用更具体：按应用或工作对象分组，给出小时 h、占有效活跃时间比例，并列出最多 2 个窗口/网页标题作为证据。
-   - 对 VS Code，要尽可能从窗口标题识别项目名和具体文件、配置或开发任务；无法确认时写“项目/事项无法从窗口证据确定”。
-   - 对浏览器，要区分服务器运维、cron-job、SSH、支付/配置、论文阅读等可辨认事项；无法确认的页面只写“浏览器页面，事项无法确定”。
-   - 应用总时长与其子项不要重复相加；所有时长统一使用 h，保留两位小数。
-3. “时间投入”必须同时给出一个简短的证据边界说明：哪些是窗口标题/URL直接支持的，哪些只是群聊内容与时间段的对应关系。
-4. 输出保留并细化“今日完成、时间投入、工作节奏、明日计划建议、风险或待跟进、PaperRead 论文与未来研究建议、飞书文档变更、群聊问题解答”八个部分；没有证据的部分写“暂无”或“无法确定”，不要补写。
-5. 当前群聊提问对象已通过 GitHub Actions 配置：{"已配置，仅回答该对象的问题" if question_target_configured else "未配置，不要识别或回答任何个人的问题"}。不要自行猜测、补充或输出其他群成员的身份信息。
-6. 这是开源项目，日报正文不要泄露 chat_id、app_secret、Webhook、sender_id、完整私密 URL 参数或其他凭据；只输出必要的工作对象和结论。
-总长度控制在 2200 个中文字符以内，以保证“今日完成”“时间投入”和 PaperRead 研究建议足够具体；保持条理清晰，不要泛泛压缩成摘要。
-7. 你必须只返回一个合法 JSON 对象，不要返回 Markdown、代码围栏、解释文字、草稿或思考过程。模型的最终回答字段只放 JSON，不要把 reasoning/thinking 字段复制到 content。
-8. JSON 使用以下字段，内容要保留足够详细的分析：
-   {{"date":"YYYY-MM-DD","today_completed":[{{"title":"","detail":"","evidence":""}}],"time_investment":[{{"app_or_topic":"","hours":0,"share_percent":0,"detail":"","evidence":""}}],"evidence_boundary":"","rhythm":{{"active_hours":0,"away_hours":0,"active_share_percent":0,"application_switches":0,"window_switches":0,"keypresses":0,"mouse_clicks":0}},"concentration":{{"summary":"","findings":[{{"title":"","detail":"","evidence":""}}],"evidence_boundary":""}},"tomorrow_plan":[{{"title":"","detail":"","evidence":""}}],"risks":[{{"title":"","detail":"","evidence":""}}],"papers":{{"summary":"","items":[{{"title":"","detail":"","evidence":""}}],"suggestions":[{{"title":"","detail":"","evidence":""}}]}},"documents":{{"added":[],"modified":[],"deleted":[]}},"questions":[{{"title":"","answer":"","basis":""}}]}}
-   `today_completed` 保持 3-6 条；`time_investment` 按应用/事项拆分并保留窗口证据；`papers.items` 保留每篇论文的主题、相关性和事实/推断边界。不要为了压缩 JSON 而删掉关键细节。
+待回答问题：
+{question_text}
+
+要求：
+1. 保留今日完成、时间投入、工作节奏、可观测操作焦点、明日计划建议、风险或待跟进、PaperRead 论文与未来研究建议、飞书文档变更、群聊问题解答。
+2. 所有时间使用小时 h。
+3. PaperRead 只输出整体总结和最多 3 条未来研究建议，不逐篇复述论文。
+4. 文档变更按新增、修改、删除/回收分类；只描述事件，不推断具体正文改动。
+5. 可观测操作焦点只描述窗口、显示器、输入和时间数据，不描述心理状态。
+6. 只返回一个 JSON 对象，不要 Markdown 或解释文字。
+
+JSON 格式：
+{{"date":"YYYY-MM-DD","today_completed":[{{"title":"","detail":""}}],"time_investment":[{{"app_or_topic":"","hours":0,"share_percent":0,"detail":""}}],"rhythm":{{"active_hours":0,"away_hours":0,"active_share_percent":0,"application_switches":0,"window_switches":0,"keypresses":0,"mouse_clicks":0}},"concentration":{{"summary":"","findings":[{{"title":"","detail":""}}]}},"tomorrow_plan":[{{"title":"","detail":""}}],"risks":[{{"title":"","detail":""}}],"papers":{{"summary":"","suggestions":[{{"title":"","detail":""}}]}},"documents":{{"added":[],"modified":[],"deleted":[]}},"questions":[{{"title":"","answer":""}}]}}
 """
     response = llm.call(
-        [{"role": "user", "content": prompt + additional_prompt + refinement_prompt}],
+        [{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
         response_validator=parse_report_payload,
     )
     return render_report_payload(parse_report_payload(response))
+
+
+def _daily_report_blocks(date_text, report):
+    marker = f"[DAILY_REPORT:{date_text}]"
+    blocks = [
+        {
+            "block_type": 3,
+            "heading1": {"elements": [{"text_run": {"content": f"工作日报 {date_text}"}}]},
+        },
+        {
+            "block_type": 2,
+            "text": {"elements": [{"text_run": {"content": marker}}]},
+        },
+    ]
+    for line in report.splitlines():
+        if not line.strip():
+            continue
+        blocks.append(
+            {
+                "block_type": 2,
+                "text": {"elements": [{"text_run": {"content": line[:4000]}}]},
+            }
+        )
+    return blocks
+
+
+def write_monthly_report(client, report, report_date):
+    """Append today's report to the one Wiki document for its calendar month."""
+    root_token = os.getenv("DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN", "").strip()
+    if not root_token:
+        print("未配置 DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN，跳过月报写入。")
+        return ""
+    month_title = f"工作日报-{report_date[:7]}"
+    document_id = client.get_or_create_month_document(root_token, month_title)
+    if not document_id:
+        raise RuntimeError(f"无法创建或定位月报文档: {month_title}")
+    marker = f"[DAILY_REPORT:{report_date}]"
+    if marker in client.read_document_text(document_id):
+        return document_id
+    client.append_document_blocks(document_id, _daily_report_blocks(report_date, report))
+    return document_id
 
 
 def run_report():
@@ -1102,6 +1132,8 @@ def run_report():
         question_messages,
     )
     client.send_text(chat_id, report)
+    write_monthly_report(client, report, start.date().isoformat())
+    clear_consumed_document_activity(end)
     print(f"日报已发送：{start.isoformat()} 至 {end.isoformat()}；群聊消息 {len(messages)} 条。")
 
 
@@ -1136,6 +1168,8 @@ def main():
         print(report)
     else:
         client.send_text(chat_id, report)
+        write_monthly_report(client, report, start.date().isoformat())
+        clear_consumed_document_activity(end)
         print(f"日报已发送，读取群聊消息 {len(messages)} 条。")
 
 

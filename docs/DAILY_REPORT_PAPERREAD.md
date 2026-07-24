@@ -13,10 +13,9 @@ DAILY_REPORT_QUESTION_SENDER_NAME       # 可选；不要写入源代码，建�
 DAILY_REPORT_QUESTION_SENDER_ID        # 可选：sender id；如果历史消息没有返回姓名则配置此项
 DAILY_REPORT_KNOWLEDGE_BASE_ENABLED=1  # 默认开启，设为 0 可关闭知识库读取
 DAILY_REPORT_MAX_KNOWLEDGE_DOCUMENTS=8
-DAILY_REPORT_DOCUMENT_ACTIVITY_ENABLED=1 # 默认开启文档版本活动读取
+DAILY_REPORT_DOCUMENT_ACTIVITY_ENABLED=1 # 默认开启官方 SDK 文档事件读取
 DAILY_REPORT_MAX_DOCUMENT_ACTIVITY=30
-DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN  # 可选：扫描整个知识库子树
-DAILY_REPORT_MAX_WIKI_DOCUMENTS=200
+DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN  # 月报知识库单节点，同时用于创建月报文档
 ```
 
 如果没有配置 PaperRead 的 sender id，程序会使用“app/bot 消息 + 分类计数格式 + arXiv 链接 + 推荐/方法论/锐评字段”进行兜底识别。
@@ -37,4 +36,4 @@ DAILY_REPORT_MAX_WIKI_DOCUMENTS=200
 
 ## 分析边界
 
-时间投入中的项目、网页和事项来自 ActivityWatch 的窗口标题、URL 及飞书聊天证据。无法从这些证据确定的内容，日报应标记为无法确定，而不是推断为已完成。论文原文事实、聊天中明确计划和模型推断也应分别表述。
+时间投入中的项目、网页和事项来自 ActivityWatch 的窗口标题、URL 及飞书聊天记录。无法从这些信息确定的内容，日报应标记为无法确定，而不是推断为已完成。论文原文事实、聊天中明确计划和模型推断也应分别表述。

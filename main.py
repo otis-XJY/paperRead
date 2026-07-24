@@ -20,6 +20,13 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 
 def configure_utf8_stdio():
     """Keep console and redirected logs in UTF-8, especially on Windows/Actions."""
@@ -45,6 +52,7 @@ from time_utils import (
     newer_timestamp,
     parse_utc_timestamp,
 )
+from paper_progress import advance_contiguous_cursor
 
 __version__ = "1.0.0"
 
@@ -432,6 +440,16 @@ def save_state(last_date, initialized_categories=None):
         data["initialized_categories"] = initialized_categories
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
+
+
+def save_history_checkpoint(history):
+    """Persist per-paper progress immediately and atomically."""
+    temp_path = f"{HISTORY_FILE}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False)
+    os.replace(temp_path, HISTORY_FILE)
+
+
 
 
 def ensure_knowledge_base():
@@ -1140,6 +1158,19 @@ async def _main_impl():
     }
 
     all_failed_keywords = []  # 追踪所有抓取失败的关键词
+    candidate_papers = []
+
+    def mark_paper_handled(paper):
+        """Record one completed decision without maintaining a second status DB."""
+        if DRY_RUN:
+            return
+        paper_id = paper.get("id", "")
+        if not paper_id or paper_id in history_set:
+            return
+        history.append(paper_id)
+        history_set.add(paper_id)
+        history_base_set.add(re.sub(r"v\d+$", "", paper_id))
+        save_history_checkpoint(history)
 
     async with aiohttp.ClientSession() as session:
         for cat_name, cat_info in CONFIG["categories"].items():
@@ -1158,8 +1189,13 @@ async def _main_impl():
                 cat_is_first_run=cat_is_first_run,
                 cat_name=cat_name
             )
-            if newer_timestamp(cat_max_date, global_max_date):
-                global_max_date = format_utc_timestamp(cat_max_date)
+            candidate_papers.extend(papers)
+            papers.sort(
+                key=lambda item: (
+                    format_utc_timestamp(item.get("published", "")) or DEFAULT_LAST_DATE,
+                    item.get("id", ""),
+                )
+            )
             if failed_kws:
                 all_failed_keywords.extend([(cat_name, kw) for kw in failed_kws])
             
@@ -1177,18 +1213,15 @@ async def _main_impl():
                 if cat_is_first_run:
                     if not simple_first_run_filter(p):
                         print(f"⏭️ 首次运行简单过滤未通过，跳过: {p['title'][:30]}...")
+                        mark_paper_handled(p)
                         continue
 
                     print(f"📖 首次运行深读分析: {p['title'][:50]}...")
                     first_run_analysis = analyze_first_run_paper(p, cat_name)
                     if not first_run_analysis:
-                        first_run_analysis = {
-                            "recommendation": "值得看",
-                            "methodology": "首次运行分析失败，暂无法生成方法论",
-                            "core_concepts": [],
-                            "sharp_review": "首次运行分析失败，暂无法生成锐评",
-                            "summary": "首次运行分析失败，建议后续补充。",
-                        }
+                        stats["llm_failures"] += 1
+                        print(f"⏭️ 首次运行 LLM 分析失败，下次重试: {p['title'][:30]}...")
+                        continue
 
                     if DRY_RUN:
                         print(
@@ -1252,9 +1285,8 @@ async def _main_impl():
                             retry_sync(lambda: zot.create_items([note_template]), "首次运行创建 Zotero 说明笔记")
                         except Exception as _note_err:
                             log_error(f"[Zotero] 首次运行笔记创建失败: {p['title'][:40]}... 原因: {_note_err}", category=cat_name, error_type="zotero_write")
+                            continue
                         print("✅ 首次运行已直存至 Zotero")
-                        history.append(p['id'])
-                        history_set.add(p['id'])
                         # 飞书知识库同步
                         doc_url = None
                         if feishu_wiki_client:
@@ -1274,6 +1306,8 @@ async def _main_impl():
                                     print(f"📝 已同步至飞书知识库: {doc_url}")
                             except Exception as _wiki_err:
                                 log_error(f"[飞书] 知识库同步失败: {p['title'][:40]}... 原因: {_wiki_err}", category=cat_name, error_type="feishu_sync")
+                                continue
+                        mark_paper_handled(p)
                         # 更新统计
                         stats["categories"][cat_name] += 1
                         stats["total_papers"] += 1
@@ -1322,6 +1356,7 @@ async def _main_impl():
                         print(f"⏭️ LLM analysis failed; skipped without relevance judgment: {p['title'][:30]}...")
                     else:
                         print(f"⏭️ Score too low or irrelevant, skipped: {p['title'][:30]}...")
+                        mark_paper_handled(p)
                     continue
 
                 # 阶段二：组装深读上下文并深度对比
@@ -1333,7 +1368,11 @@ async def _main_impl():
 
                 print(f"📖 阶段二深读分析: {p['title'][:50]}...")
                 analysis = deep_analyze_phase_two(p, cat_name, matched_full_notes)
-                if not analysis or analysis.get("recommendation") == "可跳过": continue
+                if not analysis:
+                    continue
+                if analysis.get("recommendation") == "可跳过":
+                    mark_paper_handled(p)
+                    continue
 
                 if DRY_RUN:
                     print(f"✅ DRY_RUN 命中相关论文（不写入）: {p['title'][:50]}... | 推荐: {analysis.get('recommendation', '值得看')}")
@@ -1392,9 +1431,8 @@ async def _main_impl():
                         retry_sync(lambda: zot.create_items([note_template]), "创建 Zotero 笔记")
                     except Exception as _note_err:
                         log_error(f"[Zotero] 增量笔记创建失败: {p['title'][:40]}... 原因: {_note_err}", category=cat_name, error_type="zotero_write")
+                        continue
                     print(f"✅ 成功同步至 Zotero")
-                    history.append(p['id'])
-                    history_set.add(p['id'])
                     # 飞书知识库同步
                     doc_url = None
                     if feishu_wiki_client:
@@ -1414,6 +1452,8 @@ async def _main_impl():
                                 print(f"📝 已同步至飞书知识库: {doc_url}")
                         except Exception as _wiki_err:
                             log_error(f"[飞书] 知识库同步失败: {p['title'][:40]}... 原因: {_wiki_err}", category=cat_name, error_type="feishu_sync")
+                            continue
+                    mark_paper_handled(p)
                     # 更新统计
                     stats["categories"][cat_name] += 1
                     stats["total_papers"] += 1
@@ -1472,22 +1512,24 @@ async def _main_impl():
                 if count > 0:
                     print(f"   - {cat_name}: {count} 篇")
     else:
-        # history.json 始终更新（记录已处理的论文，避免下次重复处理）
-        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False)
+        save_history_checkpoint(history)
 
-        # state.json 仅在无抓取失败时更新 last_date，确保失败的关键词下次能重新抓取
-        # 但 initialized_categories 始终保存（分类初始化不受关键词失败影响）
+        # 只把已经连续完成的论文时间推进到全局游标。若较早论文失败，
+        # 后面成功的论文仍保留在 history，但游标停在失败论文之前。
         if not all_failed_keywords:
+            global_max_date = advance_contiguous_cursor(
+                global_max_date,
+                candidate_papers,
+                history,
+            )
             save_state(global_max_date, list(initialized_categories))
-            print(f"\n🎉 任务完成！记录的最新论文时间戳为：{global_max_date}")
+            print(f"\n🎉 任务完成！记录的连续成功论文时间戳为：{global_max_date}")
         else:
-            # 有失败时只更新 initialized_categories，不更新 last_date
             _state = load_state()
             _state["initialized_categories"] = list(initialized_categories)
             with open(STATE_FILE, "w", encoding="utf-8") as f:
                 json.dump(_state, f, ensure_ascii=False)
-            print(f"\n⚠️ 任务完成但存在抓取失败，不更新 last_date（当前: {state['last_date']}），下次将重试失败的关键词")
+            print(f"\n⚠️ 存在抓取失败，不推进 last_date（当前: {state['last_date']}）")
 
         # 发送通知
         if ENABLE_NOTIFICATION:

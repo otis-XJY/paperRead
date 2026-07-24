@@ -21,6 +21,7 @@ from daily_report import (
     reporting_window,
     render_report_payload,
     split_chat_messages,
+    write_monthly_report,
 )
 
 
@@ -105,6 +106,68 @@ class DailyReportHelpersTest(unittest.TestCase):
         self.assertEqual(summary["concentration"]["window_switches_per_active_hour"], 0.5)
         self.assertEqual(summary["concentration"]["sessions_at_least_10_minutes"], 2)
 
+    def test_focus_bucket_collapses_overlapping_monitor_activity(self):
+        client = ActivityWatchClient()
+        client.buckets = lambda: {"focus": {"name": "aw-watcher-focus"}}
+        client.events = lambda bucket_id, start, end: [
+            {
+                "timestamp": "2026-07-15T01:00:00+00:00",
+                "duration": 60,
+                "data": {
+                    "window_title": "Code",
+                    "monitor": "0,0,1920,1080",
+                    "keypresses": 1,
+                    "mouse_clicks": 0,
+                },
+            },
+            {
+                "timestamp": "2026-07-15T01:00:30+00:00",
+                "duration": 60,
+                "data": {
+                    "window_title": "Code",
+                    "monitor": "0,0,1920,1080",
+                    "keypresses": 0,
+                    "mouse_clicks": 1,
+                },
+            },
+        ]
+        summary = client.summarize(
+            datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+            datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        )
+        self.assertEqual(summary["active_hours"], 0.03)
+        self.assertEqual(summary["input"]["keypresses"], 1)
+        self.assertEqual(summary["input"]["mouse_clicks"], 1)
+        self.assertEqual(summary["windows"][0]["title"], "Code")
+
+    def test_monthly_report_is_idempotent_for_one_day(self):
+        class FakeClient:
+            def __init__(self):
+                self.content = ""
+                self.appended = 0
+
+            def get_or_create_month_document(self, root, title):
+                self.root = root
+                self.title = title
+                return "doc-1"
+
+            def read_document_text(self, document_id):
+                return self.content
+
+            def append_document_blocks(self, document_id, blocks):
+                self.appended += 1
+                self.content = "[DAILY_REPORT:2026-07-24]"
+
+        client = FakeClient()
+        with patch.dict(
+            os.environ,
+            {"DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN": "root-1"},
+            clear=False,
+        ):
+            write_monthly_report(client, "日报内容", "2026-07-24")
+            write_monthly_report(client, "日报内容", "2026-07-24")
+        self.assertEqual(client.appended, 1)
+
     def test_question_sender_must_be_configured(self):
         message = {"sender_name": "configured-user", "text": "How?"}
         with patch.dict(os.environ, {}, clear=True):
@@ -141,8 +204,10 @@ class DailyReportHelpersTest(unittest.TestCase):
         payload = parse_report_payload(response)
         self.assertEqual(
             render_report_payload(payload).splitlines()[:4],
-            ["📅 工作日报 2026-07-17", "", "✅ 今日完成", "• 测试：保留详细分析（依据：群聊）"],
+            ["📅 工作日报 2026-07-17", "", "✅ 今日完成", "- 测试：保留详细分析"],
         )
+        self.assertNotIn("证据", render_report_payload(payload))
+        self.assertNotIn("依据", render_report_payload(payload))
 
     def test_structured_report_payload_rejects_non_json_content(self):
         response = type(
@@ -341,36 +406,6 @@ class DailyReportHelpersTest(unittest.TestCase):
             content = client.read_document_link("https://my.feishu.cn/docx/AbC123")
         self.assertEqual(content, "论文知识库内容")
         read.assert_called_once_with("AbC123")
-
-    def test_document_versions_are_filtered_and_classified(self):
-        client = FeishuClient("app", "secret")
-        client._request = lambda method, path, params=None: {
-            "items": [
-                {
-                    "name": "ReflectVLN",
-                    "version": "v1",
-                    "create_time": "2026-07-15T02:00:00+00:00",
-                    "update_time": "2026-07-15T02:00:00+00:00",
-                    "creator_id": "user-1",
-                    "status": "0",
-                },
-                {
-                    "name": "ReflectVLN",
-                    "version": "v2",
-                    "create_time": "2026-07-15T12:00:00+00:00",
-                    "update_time": "2026-07-15T12:00:00+00:00",
-                    "creator_id": "user-2",
-                    "status": "0",
-                },
-            ],
-            "has_more": False,
-        }
-        start = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
-        end = datetime(2026, 7, 15, 23, tzinfo=timezone.utc)
-        versions = client.list_document_versions("AbC123", start, end)
-        self.assertEqual([item["operation"] for item in versions], ["added", "modified"])
-        self.assertEqual(versions[1]["creator_id"], "user-2")
-
 
 if __name__ == "__main__":
     unittest.main()
