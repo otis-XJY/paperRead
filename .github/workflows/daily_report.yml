@@ -19,7 +19,6 @@ jobs:
     env:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: "utf-8"
-      REPORT_TIMEZONE: "Asia/Shanghai"
       ACTIVITYWATCH_URL: "http://127.0.0.1:5600"
       DAILY_REPORT_FEISHU_APP_ID: ${{ secrets.DAILY_REPORT_FEISHU_APP_ID || secrets.FEISHU_APP_ID }}
       DAILY_REPORT_FEISHU_APP_SECRET: ${{ secrets.DAILY_REPORT_FEISHU_APP_SECRET || secrets.FEISHU_APP_SECRET }}

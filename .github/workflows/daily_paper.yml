@@ -52,7 +52,6 @@ jobs:
           FEISHU_PAPER_CHAT_ID: ${{ secrets.FEISHU_PAPER_CHAT_ID || secrets.DAILY_REPORT_FEISHU_CHAT_ID }}
           FEISHU_WIKI_ROOT_NODE_TOKEN: ${{ secrets.FEISHU_WIKI_ROOT_NODE_TOKEN }}
           FEISHU_WIKI_DAILY_FOLDER_NAME: ${{ secrets.FEISHU_WIKI_DAILY_FOLDER_NAME || 'PaperRead' }}
-          REPORT_TIMEZONE: ${{ vars.REPORT_TIMEZONE || 'Asia/Shanghai' }}
           ENABLE_NOTIFICATION: "1"
           PYTHONUNBUFFERED: "1"
         run: python -u main.py

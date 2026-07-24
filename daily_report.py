@@ -52,7 +52,10 @@ def parse_timestamp(value):
 
 def reporting_window(now=None, tz_name=None):
     """Return today's 01:00 and the current time in the configured timezone."""
-    tz = ZoneInfo(tz_name or os.getenv("REPORT_TIMEZONE", DEFAULT_TIMEZONE))
+    # The report is intentionally fixed to China Standard Time. The optional
+    # argument remains useful for isolated unit tests, but production calls do
+    # not read a configuration variable.
+    tz = ZoneInfo(tz_name or DEFAULT_TIMEZONE)
     current = now.astimezone(tz) if now else datetime.now(tz)
     start = datetime.combine(current.date(), dt_time(1, 0), tzinfo=tz)
     if current < start:

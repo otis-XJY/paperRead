@@ -30,7 +30,7 @@ MODELSCOPE_API_KEY 或 OPENAI_API_KEY
 | `DAILY_REPORT_FEISHU_APP_ID/SECRET` | 可选；设置后覆盖统一应用凭证 |
 | `FEISHU_WEBHOOK_URL` | 可选；官方 SDK 失败或未配置群 ID 时的旧版回退 |
 
-`REPORT_TIMEZONE`、`ACTIVITYWATCH_URL`、`LLM_MODEL`、`BASE_URL` 和消息识别 ID 属于非密配置，可以放在 Repository variables 或本机 `.env` 中。
+`ACTIVITYWATCH_URL`、`LLM_MODEL`、`BASE_URL` 和消息识别 ID 属于非密配置，可以放在 Repository variables 或本机 `.env` 中。日报时区已固定写入代码，为 `Asia/Shanghai`。
 
 由于论文机器人和日报机器人是两个应用，建议设置以下 Repository variables，让日报准确识别论文机器人消息：
 

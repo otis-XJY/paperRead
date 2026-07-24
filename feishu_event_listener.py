@@ -83,7 +83,9 @@ def main() -> None:
         app_id,
         app_secret,
         event_handler=handler,
-        log_level=lark.LogLevel.INFO,
+        # Avoid logging connection URLs containing temporary access_key/ticket
+        # values. Application events are still printed by on_event().
+        log_level=lark.LogLevel.WARNING,
         auto_reconnect=True,
     )
     print("飞书文档事件监听已启动。", flush=True)

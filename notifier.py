@@ -22,7 +22,7 @@ DEFAULT_REPORT_TIMEZONE = "Asia/Shanghai"
 
 def get_report_timezone():
     """Return the configured display timezone for notifications."""
-    timezone_name = os.getenv("REPORT_TIMEZONE", DEFAULT_REPORT_TIMEZONE).strip()
+    timezone_name = DEFAULT_REPORT_TIMEZONE
     if ZoneInfo is not None:
         try:
             return ZoneInfo(timezone_name)
