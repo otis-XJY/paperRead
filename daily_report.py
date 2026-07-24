@@ -35,6 +35,71 @@ DEFAULT_AW_URL = "http://127.0.0.1:5600"
 DEFAULT_TIMEZONE = "Asia/Shanghai"
 
 
+DAILY_REPORT_CARD_HEADINGS = (
+    "✅ 今日完成",
+    "⏱ 时间投入",
+    "📊 工作节奏",
+    "🎯 可观测操作焦点",
+    "明日计划建议",
+    "风险或待跟进",
+    "📚 PaperRead 论文与未来研究建议",
+    "📄 飞书文档变更",
+    "💬 群聊问题解答",
+)
+
+
+def build_daily_report_card(text):
+    """Convert the rendered report into readable card sections."""
+    lines = str(text or "").splitlines()
+    sections = []
+    current_heading = ""
+    current_lines = []
+
+    def flush():
+        if not current_heading:
+            return
+        body = "\n".join(line for line in current_lines if line.strip()).strip()
+        content = f"**{current_heading}**"
+        if body:
+            content += f"\n{body}"
+        sections.append(
+            {
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": content[:6000]},
+            }
+        )
+
+    for line in lines:
+        if line.startswith("📅 工作日报"):
+            continue
+        heading = next(
+            (candidate for candidate in DAILY_REPORT_CARD_HEADINGS if line.startswith(candidate)),
+            None,
+        )
+        if heading:
+            flush()
+            current_heading = heading
+            current_lines = []
+        elif current_heading:
+            current_lines.append(line)
+
+    flush()
+    if not sections:
+        sections.append(
+            {
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": str(text or "")[:30000]},
+            }
+        )
+
+    elements = []
+    for index, section in enumerate(sections):
+        if index:
+            elements.append({"tag": "hr"})
+        elements.append(section)
+    return elements
+
+
 def parse_timestamp(value):
     """Parse an ActivityWatch or Feishu timestamp into an aware datetime."""
     if isinstance(value, (int, float)):
@@ -556,7 +621,7 @@ class FeishuClient:
         data = self._request(
             "POST",
             f"/wiki/v2/spaces/{space_id}/nodes",
-            json_body={
+            json={
                 "obj_type": "docx",
                 "node_type": "origin",
                 "parent_node_token": root_node_token,
@@ -604,18 +669,19 @@ class FeishuClient:
 
     def send_text(self, chat_id, text):
         """Send the report as a readable interactive card."""
+        report_text = str(text)
+        report_date = ""
+        first_line = report_text.splitlines()[0] if report_text.splitlines() else ""
+        match = re.search(r"工作日报\s+(\d{4}-\d{2}-\d{2})", first_line)
+        if match:
+            report_date = f" · {match.group(1)}"
         card = {
             "config": {"wide_screen_mode": True},
             "header": {
                 "template": "blue",
-                "title": {"tag": "plain_text", "content": "工作日报"},
+                "title": {"tag": "plain_text", "content": f"工作日报{report_date}"},
             },
-            "elements": [
-                {
-                    "tag": "div",
-                    "text": {"tag": "lark_md", "content": str(text)[:30000]},
-                }
-            ],
+            "elements": build_daily_report_card(report_text),
         }
         content = json.dumps(card, ensure_ascii=False)
         return self._request(

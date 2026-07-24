@@ -12,25 +12,45 @@ from openai import OpenAI
 
 
 DEFAULT_FALLBACK_MODELS = [
-    "ZhipuAI/GLM-5.2:DashScope",
-    "ZhipuAI/GLM-5.1",
-    "MiniMax/MiniMax-M2.5:DashScope",
-    "moonshotai/Kimi-K2.5",
-    "MiniMax/MiniMax-M1-80k",
-    "XiaomiMiMo/MiMo-V2-Flash:xiaomi",
-    "Qwen/QwQ-32B",
-    "deepseek-ai/DeepSeek-V3.2",
-    "ZhipuAI/GLM-5",
+    "Qwen/Qwen3.5-35B-A3B",
+    "Qwen/Qwen3-Coder-30B-A3B-Instruct",
     "deepseek-ai/DeepSeek-V4-Flash",
+    "ZhipuAI/GLM-5.1",
+    "ZhipuAI/GLM-5",
 ]
 
 
-def get_model_pool():
-    """Return the configured model pool, with ``LLM_MODEL`` first if set."""
+def _normalize_model_id(model, base_url):
+    """Remove provider suffixes when calling ModelScope model IDs."""
+    model = str(model or "").strip()
+    if "modelscope.cn" in str(base_url).lower() and ":" in model:
+        return model.split(":", 1)[0]
+    return model
+
+
+def get_model_pool(client=None, base_url=None):
+    """Return configured models that the current API provider supports."""
     configured_model = os.getenv("LLM_MODEL")
-    if configured_model:
-        return list(dict.fromkeys([configured_model] + DEFAULT_FALLBACK_MODELS))
-    return list(DEFAULT_FALLBACK_MODELS)
+    candidates = list(dict.fromkeys(
+        ([_normalize_model_id(configured_model, base_url)] if configured_model else [])
+        + [_normalize_model_id(model, base_url) for model in DEFAULT_FALLBACK_MODELS]
+    ))
+    if client is None or "modelscope.cn" not in str(base_url or "").lower():
+        return candidates
+
+    try:
+        available = {
+            str(item.id)
+            for item in client.models.list().data
+            if getattr(item, "id", None)
+        }
+        supported = [model for model in candidates if model in available]
+        if supported:
+            return supported
+        print("ModelScope 当前可用模型中没有匹配默认候选，将继续尝试配置列表。")
+    except Exception as exc:
+        print(f"无法读取 ModelScope 可用模型列表，将使用配置候选: {exc}")
+    return candidates
 
 
 def is_auth_error(exc):
@@ -123,7 +143,6 @@ if not LLM_API_KEY:
         "Missing LLM API key; set MODELSCOPE_API_KEY or OPENAI_API_KEY"
     )
 
-MODEL_POOL = get_model_pool()
 BASE_URL = os.getenv("BASE_URL") or "https://api-inference.modelscope.cn/v1/"
 client = OpenAI(
     api_key=LLM_API_KEY,
@@ -131,5 +150,6 @@ client = OpenAI(
     timeout=90.0,
     max_retries=2,
 )
+MODEL_POOL = get_model_pool(client, BASE_URL)
 llm = MultiModelLLM(client, MODEL_POOL)
 print(f"LLM model pool (equal priority): {MODEL_POOL}")
