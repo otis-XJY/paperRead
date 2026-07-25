@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any, Dict, Optional, Tuple
 
 import lark_oapi as lark
+import requests
 from lark_oapi.core import AccessTokenType, BaseRequest, HttpMethod
 
 
@@ -23,6 +25,13 @@ class FeishuSDKError(RuntimeError):
 
 class FeishuOpenAPIClient:
     """Small JSON-oriented adapter around the official Feishu Python SDK."""
+
+    # The SDK obtains the tenant token lazily.  A short network interruption
+    # during that request used to terminate the whole daily-report workflow.
+    # Retry transport failures here so both token acquisition and API calls
+    # receive the same protection.
+    _MAX_TRANSPORT_RETRIES = 3
+    _RETRY_BACKOFF_SECONDS = 1.0
 
     def __init__(
         self,
@@ -75,20 +84,33 @@ class FeishuOpenAPIClient:
         json_body: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Call a Feishu OpenAPI endpoint through ``lark-oapi``."""
-        request = BaseRequest()
-        request.http_method = self._method(method)
         normalized_path = path if path.startswith("/") else f"/{path}"
         if not normalized_path.startswith("/open-apis/"):
             normalized_path = f"/open-apis{normalized_path}"
-        request.uri = normalized_path
-        request.token_types = {AccessTokenType.TENANT}
-        request.body = json_body
-        for key, value in (params or {}).items():
-            if value is None:
-                continue
-            request.add_query(key, value)
 
-        response = self.client.request(request)
+        def build_request() -> BaseRequest:
+            request = BaseRequest()
+            request.http_method = self._method(method)
+            request.uri = normalized_path
+            request.token_types = {AccessTokenType.TENANT}
+            request.body = json_body
+            for key, value in (params or {}).items():
+                if value is not None:
+                    request.add_query(key, value)
+            return request
+
+        response = None
+        for attempt in range(self._MAX_TRANSPORT_RETRIES + 1):
+            try:
+                response = self.client.request(build_request())
+                break
+            except requests.exceptions.RequestException:
+                if attempt >= self._MAX_TRANSPORT_RETRIES:
+                    raise
+                time.sleep(self._RETRY_BACKOFF_SECONDS * (2 ** attempt))
+
+        # ``response`` is set unless the SDK raised after the final retry.
+        assert response is not None
         payload = self._payload(response)
         raw = getattr(response, "raw", None)
         status_code = getattr(raw, "status_code", 200) if raw is not None else 200
