@@ -1,10 +1,9 @@
-"""Shared Feishu official-SDK transport for application-identity calls.
+"""Shared Feishu official-SDK transport for tenant and user calls.
 
-The project uses ``tenant_access_token`` throughout.  This module deliberately
-keeps endpoint-specific payloads close to the existing code while delegating
-authentication, retries supported by the SDK, and HTTP transport to
-``lark-oapi``.  It also makes it easy for tests to replace one client without
-performing real Feishu requests.
+Endpoint-specific payloads remain close to the existing code while
+authentication and HTTP transport are delegated to ``lark-oapi``.  User-token
+requests are used only by the local discovery/subscription process; the
+long-lived event listener continues to use application identity.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ from typing import Any, Dict, Optional, Tuple
 import lark_oapi as lark
 import requests
 from lark_oapi.core import AccessTokenType, BaseRequest, HttpMethod
+from lark_oapi.core.model import RequestOption
 
 
 class FeishuSDKError(RuntimeError):
@@ -39,18 +39,25 @@ class FeishuOpenAPIClient:
         app_secret: Optional[str] = None,
         domain: Optional[str] = None,
         timeout: float = 20,
+        access_token_type: AccessTokenType = AccessTokenType.TENANT,
+        user_access_token: Optional[str] = None,
     ) -> None:
         self.app_id = (app_id or os.getenv("FEISHU_APP_ID") or "").strip()
         self.app_secret = (app_secret or os.getenv("FEISHU_APP_SECRET") or "").strip()
         if not self.app_id or not self.app_secret:
             raise ValueError("FEISHU_APP_ID 和 FEISHU_APP_SECRET 必须同时配置")
         self.domain = (domain or os.getenv("FEISHU_API_DOMAIN") or "https://open.feishu.cn").rstrip("/")
+        self.access_token_type = access_token_type
+        self.user_access_token = (user_access_token or "").strip()
+        if self.access_token_type == AccessTokenType.USER and not self.user_access_token:
+            raise ValueError("使用用户身份调用飞书 API 时必须提供 user_access_token")
         self.client = (
             lark.Client.builder()
             .app_id(self.app_id)
             .app_secret(self.app_secret)
             .domain(self.domain)
             .timeout(timeout)
+            .enable_set_token(True)
             .build()
         )
 
@@ -92,17 +99,23 @@ class FeishuOpenAPIClient:
             request = BaseRequest()
             request.http_method = self._method(method)
             request.uri = normalized_path
-            request.token_types = {AccessTokenType.TENANT}
+            token_type = getattr(self, "access_token_type", AccessTokenType.TENANT)
+            request.token_types = {token_type}
             request.body = json_body
             for key, value in (params or {}).items():
                 if value is not None:
                     request.add_query(key, value)
             return request
 
+        option = RequestOption()
+        token_type = getattr(self, "access_token_type", AccessTokenType.TENANT)
+        if token_type == AccessTokenType.USER:
+            option.user_access_token = self.user_access_token
+
         response = None
         for attempt in range(self._MAX_TRANSPORT_RETRIES + 1):
             try:
-                response = self.client.request(build_request())
+                response = self.client.request(build_request(), option)
                 break
             except requests.exceptions.RequestException:
                 if attempt >= self._MAX_TRANSPORT_RETRIES:

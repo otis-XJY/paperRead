@@ -13,6 +13,7 @@ import re
 from collections import defaultdict
 from datetime import datetime, time as dt_time, timedelta, timezone
 from statistics import median
+from urllib.parse import quote
 try:
     from zoneinfo import ZoneInfo
 except ImportError:  # Python 3.8 compatibility
@@ -176,6 +177,29 @@ class ActivityWatchClient:
             "endtime": end.astimezone(timezone.utc).isoformat(),
         }
         return self._get(f"/api/0/buckets/{bucket_id}/events", params=params)
+
+    def clear_between(self, start, end):
+        """Delete only the ActivityWatch events consumed by this report."""
+        if os.getenv("DAILY_REPORT_ACTIVITY_CLEAR_ENABLED", "1") != "1":
+            return 0
+        removed = 0
+        for bucket_id, metadata in self.buckets().items():
+            identity = f"{bucket_id} {metadata.get('name', '')} {metadata.get('type', '')}".lower()
+            if not any(kind in identity for kind in ("window", "afk", "input", "focus")):
+                continue
+            payload = self.events(bucket_id, start, end)
+            events = payload if isinstance(payload, list) else payload.get("events", [])
+            for event in events:
+                event_id = event.get("id")
+                if event_id is None:
+                    continue
+                response = requests.delete(
+                    f"{self.base_url}/api/0/buckets/{quote(str(bucket_id), safe='')}/events/{quote(str(event_id), safe='')}",
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                removed += 1
+        return removed
 
     def summarize(self, start, end):
         apps = defaultdict(float)
@@ -891,7 +915,11 @@ def collect_document_activity(client, messages, start, end):
     store = DocumentEventStore()
     event_db_path = str(store.path)
     try:
-        activity = store.between(start, end)
+        activity = store.between(
+            start,
+            end,
+            operator_id=os.getenv("DAILY_REPORT_FEISHU_USER_OPEN_ID", "").strip(),
+        )
     finally:
         store.close()
     print(
@@ -1303,7 +1331,14 @@ def run_report():
     client.send_text(chat_id, report)
     write_monthly_report(client, report, start.date().isoformat())
     clear_consumed_document_activity(end)
-    print(f"日报已发送：{start.isoformat()} 至 {end.isoformat()}；群聊消息 {len(messages)} 条。")
+    try:
+        cleared_activity = ActivityWatchClient().clear_between(start, end)
+        if True:
+            print(f"已清理 ActivityWatch 已读取事件: {cleared_activity} 条", flush=True)
+    except requests.RequestException as exc:
+        if True:
+            print(f"ActivityWatch 事件清理失败（日报已完成，不影响下次运行）: {exc}", flush=True)
+        print(f"日报已发送：{start.isoformat()} 至 {end.isoformat()}；群聊消息 {len(messages)} 条。")
 
 
 def main():
@@ -1339,6 +1374,11 @@ def main():
         client.send_text(chat_id, report)
         write_monthly_report(client, report, start.date().isoformat())
         clear_consumed_document_activity(end)
+        try:
+            cleared_activity = ActivityWatchClient().clear_between(start, end)
+            print(f"已清理 ActivityWatch 已读取事件: {cleared_activity} 条", flush=True)
+        except requests.RequestException as exc:
+            print(f"ActivityWatch 事件清理失败（日报已完成，不影响下次运行）: {exc}", flush=True)
         print(f"日报已发送，读取群聊消息 {len(messages)} 条。")
 
 

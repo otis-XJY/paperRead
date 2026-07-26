@@ -33,6 +33,7 @@ jobs:
       DAILY_REPORT_DOCUMENT_ACTIVITY_ENABLED: ${{ vars.DAILY_REPORT_DOCUMENT_ACTIVITY_ENABLED || '1' }}
       DAILY_REPORT_MAX_DOCUMENT_ACTIVITY: ${{ vars.DAILY_REPORT_MAX_DOCUMENT_ACTIVITY || '30' }}
       DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN: ${{ secrets.DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN }}
+      DAILY_REPORT_FEISHU_USER_OPEN_ID: ${{ vars.DAILY_REPORT_FEISHU_USER_OPEN_ID }}
       # Keep the event queue outside the checkout directory; checkout cleans
       # ignored/untracked files before each run.
       DAILY_REPORT_FEISHU_EVENT_DB: ${{ vars.DAILY_REPORT_FEISHU_EVENT_DB || 'D:\\paperRead-runtime\\feishu_document_events.sqlite3' }}

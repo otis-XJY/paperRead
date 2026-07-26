@@ -12,6 +12,7 @@ import ctypes
 from ctypes import wintypes
 import os
 import socket
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -40,6 +41,10 @@ class WindowsFocusCollector:
         self.bucket_id = f"{self.BUCKET_PREFIX}_{socket.gethostname()}"
         self._user32 = ctypes.windll.user32
         self._kernel32 = ctypes.windll.kernel32
+        self._pending = {}
+        self._pending_lock = threading.Lock()
+        self._last_flush = time.monotonic()
+        self.batch_seconds = max(int(os.getenv("FOCUS_EVENT_BATCH_SECONDS", "60")), 1)
         self._create_bucket()
 
     def _create_bucket(self):
@@ -110,14 +115,41 @@ class WindowsFocusCollector:
 
     def record(self, input_kind):
         context = self._window_context()
-        context["input_kind"] = input_kind
-        context["keypresses"] = 1 if input_kind == "keypress" else 0
-        context["mouse_clicks"] = 1 if input_kind in {"click", "scroll"} else 0
-        event = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "duration": self.active_seconds,
-            "data": context,
-        }
+        now = time.time()
+        key = (context["monitor"], context["app"], context["window_title"], context["window_handle"])
+        with self._pending_lock:
+            pending = self._pending.setdefault(
+                key,
+                {"timestamp": now, "context": context, "keypresses": 0, "mouse_clicks": 0},
+            )
+            pending["keypresses"] += 1 if input_kind == "keypress" else 0
+            pending["mouse_clicks"] += 1 if input_kind in {"click", "scroll"} else 0
+            should_flush = time.monotonic() - self._last_flush >= self.batch_seconds
+        if should_flush:
+            self._flush_pending()
+
+    def _flush_pending(self, force=False):
+        with self._pending_lock:
+            if not self._pending:
+                return
+            if not force and time.monotonic() - self._last_flush < self.batch_seconds:
+                return
+            pending = list(self._pending.values())
+            self._pending.clear()
+            self._last_flush = time.monotonic()
+        for item in pending:
+            context = dict(item["context"])
+            context["input_kind"] = "batch"
+            context["keypresses"] = item["keypresses"]
+            context["mouse_clicks"] = item["mouse_clicks"]
+            event = {
+                "timestamp": datetime.fromtimestamp(item["timestamp"], timezone.utc).isoformat(),
+                "duration": self.active_seconds,
+                "data": context,
+            }
+            self._send_event(event)
+
+    def _send_event(self, event):
         response = requests.post(
             f"{self.base_url}/api/0/buckets/{self.bucket_id}/events",
             json=[event],
@@ -141,8 +173,10 @@ class WindowsFocusCollector:
         print(f"三屏焦点采集已启动：{self.bucket_id}", flush=True)
         try:
             while True:
+                self._flush_pending()
                 time.sleep(1)
         finally:
+            self._flush_pending(force=True)
             mouse_listener.stop()
             keyboard_listener.stop()
 
