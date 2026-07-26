@@ -65,7 +65,7 @@ python -m pip install -r requirements.txt
 python feishu_event_listener.py
 ```
 
-监听器会将事件保存到 `DAILY_REPORT_FEISHU_EVENT_DB` 指定的 SQLite 文件。日报读取该事件队列，不再扫描知识库节点、文件夹或文档版本。监听器和日报必须使用同一个绝对路径。
+监听器会将事件保存到 `DAILY_REPORT_FEISHU_EVENT_DB` 指定的 SQLite 文件，并将诊断信息写入同目录的 `feishu_event_listener.log`（最多保留约 3 MB 的滚动日志）。日报读取该事件队列，不再扫描知识库节点、文件夹或文档版本。监听器和日报必须使用同一个绝对路径。
 
 建议在“任务计划程序”中以登录用户启动监听器，并让 ActivityWatch、GitHub self-hosted runner 和监听器使用同一个 Windows 用户会话。
 

@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+from logging.handlers import RotatingFileHandler
 import os
+from pathlib import Path
 from typing import Tuple
 
 import lark_oapi as lark
@@ -40,12 +43,40 @@ def _credentials() -> Tuple[str, str]:
     return app_id, app_secret
 
 
+def _configure_logging(event_db_path):
+    """Persist diagnostics because Task Scheduler runs this script with pythonw."""
+    log_path = os.getenv("DAILY_REPORT_FEISHU_EVENT_LOG", "").strip()
+    if not log_path:
+        log_path = str(Path(event_db_path).with_name("feishu_event_listener.log"))
+    Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        log_path,
+        maxBytes=1_000_000,
+        backupCount=2,
+        encoding="utf-8",
+    )
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[handler],
+    )
+    return logging.getLogger("paperRead.feishu_event_listener")
+
+
 def build_event_handler(store: DocumentEventStore):
     """Build handlers for the official Drive document event types."""
+    logger = logging.getLogger("paperRead.feishu_event_listener")
 
     def on_event(data):
         payload = json.loads(lark.JSON.marshal(data))
         normalized = store.add(payload)
+        logger.info(
+            "document event: operation=%s file_type=%s file_token=%s event_type=%s",
+            normalized["operation"],
+            normalized["file_type"],
+            normalized["file_token"],
+            normalized["event_type"],
+        )
         print(
             "收到飞书文档事件: "
             f"{normalized['operation']} {normalized['file_type']} "
@@ -76,6 +107,7 @@ def main() -> None:
         help="SQLite event queue path",
     )
     args = parser.parse_args()
+    logger = _configure_logging(args.event_db)
     app_id, app_secret = _credentials()
     store = DocumentEventStore(args.event_db)
     handler = build_event_handler(store)
@@ -88,9 +120,17 @@ def main() -> None:
         log_level=lark.LogLevel.WARNING,
         auto_reconnect=True,
     )
+    logger.info(
+        "listener started; event_db=%s; event_types=%s",
+        store.path,
+        "created_in_folder,edit,title_updated,deleted,trashed",
+    )
     print("飞书文档事件监听已启动。", flush=True)
     try:
         ws_client.start()
+    except Exception:
+        logger.exception("listener stopped with exception")
+        raise
     finally:
         store.close()
 

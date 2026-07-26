@@ -39,6 +39,7 @@ class WindowsFocusCollector:
         self.active_seconds = max(int(active_seconds), 1)
         self.bucket_id = f"{self.BUCKET_PREFIX}_{socket.gethostname()}"
         self._user32 = ctypes.windll.user32
+        self._kernel32 = ctypes.windll.kernel32
         self._create_bucket()
 
     def _create_bucket(self):
@@ -52,6 +53,35 @@ class WindowsFocusCollector:
             timeout=10,
         )
         response.raise_for_status()
+
+    def _process_name(self, hwnd):
+        """Return the foreground process name without recording its path."""
+        if not hwnd:
+            return ""
+        process_id = wintypes.DWORD()
+        self._user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+        if not process_id.value:
+            return ""
+        process_handle = self._kernel32.OpenProcess(
+            0x1000,  # PROCESS_QUERY_LIMITED_INFORMATION
+            False,
+            process_id.value,
+        )
+        if not process_handle:
+            return ""
+        try:
+            image_buffer = ctypes.create_unicode_buffer(1024)
+            image_length = wintypes.DWORD(len(image_buffer))
+            if not self._kernel32.QueryFullProcessImageNameW(
+                process_handle,
+                0,
+                image_buffer,
+                ctypes.byref(image_length),
+            ):
+                return ""
+            return os.path.splitext(os.path.basename(image_buffer.value))[0]
+        finally:
+            self._kernel32.CloseHandle(process_handle)
 
     def _window_context(self):
         point = wintypes.POINT()
@@ -73,6 +103,7 @@ class WindowsFocusCollector:
             "monitor": monitor_name,
             "cursor_x": int(point.x),
             "cursor_y": int(point.y),
+            "app": self._process_name(hwnd),
             "window_title": title,
             "window_handle": int(hwnd or 0),
         }

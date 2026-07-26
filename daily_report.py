@@ -39,7 +39,6 @@ DAILY_REPORT_CARD_HEADINGS = (
     "✅ 今日完成",
     "⏱ 时间投入",
     "📊 工作节奏",
-    "🎯 可观测操作焦点",
     "明日计划建议",
     "风险或待跟进",
     "📚 PaperRead 论文与未来研究建议",
@@ -314,6 +313,24 @@ class ActivityWatchClient:
             return result
 
         window_rows = rows(windows, ("app", "title", "context"))
+        browser_tokens = (
+            "edge",
+            "msedge",
+            "chrome",
+            "firefox",
+            "brave",
+            "browser",
+        )
+
+        def is_browser_row(row):
+            context = " ".join(
+                str(row.get(key) or "")
+                for key in ("app", "title", "context")
+            ).casefold()
+            return any(token in context for token in browser_tokens)
+
+        browser_rows = [row for row in window_rows if is_browser_row(row)][:30]
+        application_observed_seconds = sum(apps.values())
         application_breakdown = []
         for app_row in rows(apps, ("app",))[:30]:
             app = app_row["app"]
@@ -325,6 +342,9 @@ class ActivityWatchClient:
                     "share_of_active_percent": round(
                         apps[app] / active_seconds * 100, 1
                     ) if active_seconds else 0.0,
+                    "share_of_application_observed_percent": round(
+                        apps[app] / application_observed_seconds * 100, 1
+                    ) if application_observed_seconds else 0.0,
                     "top_windows": app_windows,
                 }
             )
@@ -460,6 +480,10 @@ class ActivityWatchClient:
             "buckets_found": bucket_counts,
             "rhythm": rhythm,
             "concentration": concentration,
+            "application_observed_hours": round(
+                application_observed_seconds / 3600, 2
+            ),
+            "browser_windows": browser_rows,
         }
 
 
@@ -865,10 +889,15 @@ def collect_document_activity(client, messages, start, end):
     if os.getenv("DAILY_REPORT_DOCUMENT_ACTIVITY_ENABLED", "1") != "1":
         return []
     store = DocumentEventStore()
+    event_db_path = str(store.path)
     try:
         activity = store.between(start, end)
     finally:
         store.close()
+    print(
+        f"飞书文档事件队列：{event_db_path}；时间范围内收到 {len(activity)} 条事件",
+        flush=True,
+    )
     max_events = int(os.getenv("DAILY_REPORT_MAX_DOCUMENT_ACTIVITY", "100"))
     web_base = os.getenv("FEISHU_WEB_BASE", "https://my.feishu.cn").rstrip("/")
     for item in activity[:max_events]:
@@ -995,7 +1024,46 @@ def _append_clean_items(lines, items, empty_text="暂无"):
             lines.append(f"- {text}")
 
 
-def render_report_payload(payload):
+def _number(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _activity_context(activity_summary):
+    """Build compact, concrete window evidence for the report model."""
+    breakdown = activity_summary.get("application_breakdown") or []
+    total_hours = _number(activity_summary.get("application_observed_hours"))
+    lines = [
+        f"应用可观测时长合计：{total_hours:.2f}h（应用间可能因焦点采集窗口重叠而略有重复）"
+    ]
+    for item in breakdown[:15]:
+        app = str(item.get("app") or "Unknown")
+        hours = _number(item.get("hours"))
+        share = _number(item.get("share_of_application_observed_percent"))
+        windows = []
+        for window in item.get("top_windows") or []:
+            title = str(window.get("title") or window.get("context") or "").strip()
+            if title:
+                windows.append(f"{title}({_number(window.get('hours')):.2f}h)")
+        detail = f"；主要窗口：{'、'.join(windows[:3])}" if windows else ""
+        lines.append(f"- {app}：{hours:.2f}h，占应用记录 {share:.1f}%{detail}")
+
+    browser_windows = activity_summary.get("browser_windows") or []
+    if browser_windows:
+        lines.append("浏览器窗口明细：")
+        for window in browser_windows[:15]:
+            label = str(window.get("title") or window.get("app") or "未知窗口").strip()
+            lines.append(
+                f"- {label}：{_number(window.get('hours')):.2f}h"
+            )
+    else:
+        lines.append("浏览器窗口明细：当天没有识别到 Edge/Chrome/Firefox 等浏览器窗口。")
+    return "\n".join(lines)
+
+
+def render_report_payload(payload, activity_summary=None, document_events_received=True):
     """Render the compact report with only user-facing summary fields."""
     date = _report_text(payload.get("date")) or "工作日报"
     lines = [f"📅 工作日报 {date}", "", "✅ 今日完成"]
@@ -1004,14 +1072,25 @@ def render_report_payload(payload):
     lines.extend(["", "⏱ 时间投入"])
     investments = _report_items(payload.get("time_investment"))
     if investments:
+        listed_hours = sum(
+            _number(item.get("hours"))
+            for item in investments
+            if isinstance(item, dict)
+        )
+        if listed_hours:
+            lines.append(
+                f"- 可观测应用/事项合计：{listed_hours:.2f}h（以下百分比按此合计计算）"
+            )
         for item in investments:
             if not isinstance(item, dict):
                 lines.append(f"- {_report_text(item)}")
                 continue
             label = _report_text(item.get("app_or_topic") or item.get("title") or item.get("name")) or "事项"
-            duration = _report_hours(item.get("hours"))
+            hours = _number(item.get("hours"))
+            share = hours / listed_hours * 100 if listed_hours else 0.0
+            duration = _report_hours(hours)
             detail = _report_text(item.get("detail") or item.get("summary"))
-            line = f"- {label}：{duration}"
+            line = f"- {label}：{duration}（{share:.1f}%）"
             if detail:
                 line += f"，{detail}"
             lines.append(line)
@@ -1029,13 +1108,21 @@ def render_report_payload(payload):
         f"键盘 {_report_text(rhythm.get('keypresses')) or '0'} 次，"
         f"鼠标点击 {_report_text(rhythm.get('mouse_clicks')) or '0'} 次"
     )
+    browser_windows = (activity_summary or {}).get("browser_windows") or []
+    if browser_windows:
+        browser_details = []
+        for window in browser_windows[:5]:
+            label = str(window.get("title") or window.get("app") or "未知窗口").strip()
+            browser_details.append(f"{label}({_number(window.get('hours')):.2f}h)")
+        lines.append(f"- 浏览器窗口记录：{'、'.join(browser_details)}")
 
-    lines.extend(["", "🎯 可观测操作焦点"])
+    lines.append("")
     concentration = payload.get("concentration") if isinstance(payload.get("concentration"), dict) else {}
     if concentration.get("summary"):
-        lines.append(f"- {_report_text(concentration.get('summary'))}")
-    _append_clean_items(lines, concentration.get("findings"))
-    if not concentration.get("summary") and not concentration.get("findings"):
+        lines.append(f"- 操作焦点：{_report_text(concentration.get('summary'))}")
+    if concentration.get("findings"):
+        _append_clean_items(lines, concentration.get("findings"))
+    elif not concentration.get("summary"):
         lines.append("- 暂无")
 
     for heading, key in (("明日计划建议", "tomorrow_plan"), ("风险或待跟进", "risks")):
@@ -1051,6 +1138,8 @@ def render_report_payload(payload):
 
     lines.extend(["", "📄 飞书文档变更"])
     documents = payload.get("documents") if isinstance(payload.get("documents"), dict) else {}
+    if not document_events_received:
+        lines.append("- 监听状态：当天事件队列没有收到文档变更，不能据此确认当天没有变更；请检查监听器和飞书事件订阅。")
     for label, key in (("新增", "added"), ("修改", "modified"), ("删除/回收", "deleted")):
         lines.append(f"- {label}：")
         _append_clean_items(lines, documents.get(key))
@@ -1094,6 +1183,7 @@ def generate_report(
             f"{item.get('file_type', '')} | {item.get('url', '')}"
         ),
     ) or "（时间范围内没有直接文档变更事件）"
+    activity_context = _activity_context(activity_summary)
     question_text = _bounded_context(
         question_messages,
         lambda item: f"[{item['time']}] {item['sender_name']}: {item['text']}",
@@ -1109,6 +1199,9 @@ def generate_report(
 ActivityWatch 数据：
 {json.dumps(activity_summary, ensure_ascii=False, indent=2)}
 
+用于细节分析的应用和窗口记录：
+{activity_context}
+
 PaperRead 今日推送：
 {paperread_text}
 
@@ -1122,12 +1215,15 @@ PaperRead 关联文档：
 {question_text}
 
 要求：
-1. 保留今日完成、时间投入、工作节奏、可观测操作焦点、明日计划建议、风险或待跟进、PaperRead 论文与未来研究建议、飞书文档变更、群聊问题解答。
-2. 所有时间使用小时 h。
-3. PaperRead 只输出整体总结和最多 3 条未来研究建议，不逐篇复述论文。
-4. 文档变更按新增、修改、删除/回收分类；只描述事件，不推断具体正文改动。
-5. 可观测操作焦点只描述窗口、显示器、输入和时间数据，不描述心理状态。
-6. 只返回一个 JSON 对象，不要 Markdown 或解释文字。
+1. 保留今日完成、时间投入、工作节奏、明日计划建议、风险或待跟进、PaperRead 论文与未来研究建议、飞书文档变更、群聊问题解答；可观测操作焦点合并到工作节奏中。
+2. 时间投入必须依据应用和窗口记录，列出主要应用/事项的小时数，并填写 share_percent；百分比按列出的应用/事项小时数合计计算。
+3. 今日完成至少给出 2-5 条具体分析，每条说明“做了什么、涉及什么对象、当前结果/状态”；可以使用群聊和窗口标题判断，但不能把仅打开窗口编造成已完成成果。
+4. 如果应用或窗口记录中出现 Edge、Chrome 等浏览器，必须在今日完成或工作节奏中说明相关窗口标题和时长；没有识别到时不要臆测。
+5. 所有时间使用小时 h。
+6. PaperRead 只输出整体总结和最多 3 条未来研究建议，不逐篇复述论文。
+7. 文档变更按新增、修改、删除/回收分类；只描述事件，不推断具体正文改动。如果“飞书直接变更事件”为空，必须写成“未收到事件，无法确认当天无变更”，不能直接断言“暂无变更”。
+8. 可观测操作焦点只描述窗口、显示器、输入和时间数据，不描述心理状态，并合并到工作节奏。
+9. 只返回一个 JSON 对象，不要 Markdown 或解释文字。
 
 JSON 格式：
 {{"date":"YYYY-MM-DD","today_completed":[{{"title":"","detail":""}}],"time_investment":[{{"app_or_topic":"","hours":0,"share_percent":0,"detail":""}}],"rhythm":{{"active_hours":0,"away_hours":0,"active_share_percent":0,"application_switches":0,"window_switches":0,"keypresses":0,"mouse_clicks":0}},"concentration":{{"summary":"","findings":[{{"title":"","detail":""}}]}},"tomorrow_plan":[{{"title":"","detail":""}}],"risks":[{{"title":"","detail":""}}],"papers":{{"summary":"","suggestions":[{{"title":"","detail":""}}]}},"documents":{{"added":[],"modified":[],"deleted":[]}},"questions":[{{"title":"","answer":""}}]}}
@@ -1137,7 +1233,11 @@ JSON 格式：
         response_format={"type": "json_object"},
         response_validator=parse_report_payload,
     )
-    return render_report_payload(parse_report_payload(response))
+    return render_report_payload(
+        parse_report_payload(response),
+        activity_summary=activity_summary,
+        document_events_received=bool(document_activity),
+    )
 
 
 def _daily_report_blocks(date_text, report):

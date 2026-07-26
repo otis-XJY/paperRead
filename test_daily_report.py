@@ -26,6 +26,35 @@ from daily_report import (
 
 
 class DailyReportHelpersTest(unittest.TestCase):
+    def test_render_report_adds_time_shares_and_event_queue_warning(self):
+        payload = {
+            "date": "2026-07-25",
+            "today_completed": [{"title": "参数排查", "detail": "发现数据问题"}],
+            "time_investment": [
+                {"app_or_topic": "ChatGPT", "hours": 7, "detail": "信息检索"},
+                {"app_or_topic": "Microsoft Edge", "hours": 7, "detail": "浏览资料"},
+            ],
+            "rhythm": {"active_hours": 14, "away_hours": 0},
+            "concentration": {"summary": "窗口切换频繁", "findings": []},
+            "documents": {"added": [], "modified": [], "deleted": []},
+        }
+        report = render_report_payload(
+            payload,
+            activity_summary={
+                "browser_windows": [
+                    {"app": "msedge", "title": "Agent 研究资料 - Microsoft Edge", "hours": 2}
+                ]
+            },
+            document_events_received=False,
+        )
+        self.assertIn("可观测应用/事项合计：14.00h", report)
+        self.assertIn("ChatGPT：7.00h（50.0%）", report)
+        self.assertIn("Microsoft Edge：7.00h（50.0%）", report)
+        self.assertEqual(report.count("📊 工作节奏"), 1)
+        self.assertNotIn("🎯 可观测操作焦点\n", report)
+        self.assertIn("浏览器窗口记录：Agent 研究资料 - Microsoft Edge(2.00h)", report)
+        self.assertIn("事件队列没有收到文档变更，不能据此确认当天没有变更", report)
+
     def test_overlap_clips_event_to_window(self):
         start = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
         end = datetime(2026, 7, 15, 2, tzinfo=timezone.utc)
