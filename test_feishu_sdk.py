@@ -57,6 +57,25 @@ class FeishuSDKTransportTests(unittest.TestCase):
             FeishuOpenAPIClient._MAX_TRANSPORT_RETRIES + 1,
         )
 
+    def test_send_interactive_card_uses_typed_im_sdk_request(self):
+        client = FeishuOpenAPIClient.__new__(FeishuOpenAPIClient)
+        create = Mock(return_value=self.response())
+        client.client = SimpleNamespace(
+            im=SimpleNamespace(v1=SimpleNamespace(message=SimpleNamespace(create=create)))
+        )
+
+        result = client.send_interactive_card(
+            "oc_daily",
+            {"header": {"title": {"tag": "plain_text", "content": "工作日报"}}},
+        )
+
+        self.assertEqual(result, {"ok": True})
+        request = create.call_args.args[0]
+        self.assertEqual(request.receive_id_type, "chat_id")
+        self.assertEqual(request.request_body.receive_id, "oc_daily")
+        self.assertEqual(request.request_body.msg_type, "interactive")
+        self.assertIn("工作日报", request.request_body.content)
+
 
 if __name__ == "__main__":
     unittest.main()

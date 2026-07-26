@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 from daily_report import (
     ActivityWatchClient,
     FeishuClient,
+    build_daily_report_card,
     extract_question_messages,
     generate_report,
     is_question_message,
@@ -26,6 +27,79 @@ from daily_report import (
 
 
 class DailyReportHelpersTest(unittest.TestCase):
+    def test_structured_card_groups_work_time_rhythm_and_feishu_context(self):
+        payload = {
+            "date": "2026-07-26",
+            "today_completed": [
+                {
+                    "application": "Microsoft Edge",
+                    "main_work": "飞书 Wiki 整理",
+                    "detail": "核对论文笔记目录并完成链接整理。",
+                }
+            ],
+            "time_investment": [
+                {
+                    "application": "Microsoft Edge",
+                    "main_work": "飞书 Wiki 整理",
+                    "hours": 2,
+                    "detail": "飞书文档页面",
+                },
+                {
+                    "application": "VS Code",
+                    "main_work": "日报卡片开发",
+                    "hours": 1,
+                },
+            ],
+            "rhythm": {
+                "active_hours": 3,
+                "away_hours": 1,
+                "application_switches": 4,
+                "window_switches": 8,
+                "keypresses": 100,
+                "mouse_clicks": 20,
+            },
+            "documents": {
+                "collaboration_summary": "Edge 中打开飞书 Wiki，未收到直接文档事件。",
+                "added": [],
+                "modified": [],
+                "deleted": [],
+            },
+            "tomorrow_plan": {
+                "tasks": [{"title": "补充验证", "detail": "运行一组对照实验"}],
+                "idea_suggestions": [
+                    {
+                        "title": "把 PaperRead 方向接入当前实验",
+                        "detail": "比较今日已整理的飞书笔记与现有实验结果。",
+                        "source": "PaperRead 今日推送",
+                        "next_step": "明天先做小规模可行性验证。",
+                    }
+                ],
+            },
+            "risks": [{"title": "数据不足", "detail": "需要补充对照样本"}],
+            "questions": [{"title": "为什么这样？", "answer": "需要结合实验日志确认。"}],
+        }
+        elements = build_daily_report_card(
+            payload,
+            activity_summary={
+                "concentration": {"longest_window_session_hours": 1.25},
+                "browser_windows": [
+                    {"app": "msedge", "title": "飞书 Wiki - Microsoft Edge", "hours": 2}
+                ],
+            },
+            document_events_received=False,
+        )
+        card_json = json.dumps(elements, ensure_ascii=False)
+        self.assertIn("Microsoft Edge · 飞书 Wiki 整理", card_json)
+        self.assertIn("可观测应用/事项合计：**3.00h**", card_json)
+        self.assertIn("连续专注最长", card_json)
+        self.assertIn("飞书文档与协作", card_json)
+        self.assertIn("飞书 Wiki - Microsoft Edge(2.00h)", card_json)
+        self.assertIn('"tag": "column_set"', card_json)
+        self.assertIn("明日计划", card_json)
+        self.assertIn("Idea 建议（结合 PaperRead 与今日工作）", card_json)
+        self.assertIn("风险或待跟进", card_json)
+        self.assertIn("群聊问题解答", card_json)
+
     def test_render_report_adds_time_shares_and_event_queue_warning(self):
         payload = {
             "date": "2026-07-25",

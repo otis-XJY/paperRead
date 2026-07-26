@@ -135,6 +135,43 @@ class FeishuOpenAPIClient:
             )
         return payload.get("data", payload)
 
+    def send_interactive_card(self, chat_id: str, card: Dict[str, Any]) -> Dict[str, Any]:
+        """Send a native interactive card through the official IM SDK API.
+
+        Keeping this as a typed SDK call (rather than a hand-built HTTP
+        request) makes the daily-report card compatible with SDK-managed
+        tenant authentication and avoids the image-upload/rendering pipeline.
+        """
+        from lark_oapi.api.im.v1 import (
+            CreateMessageRequest,
+            CreateMessageRequestBody,
+        )
+
+        request = (
+            CreateMessageRequest.builder()
+            .receive_id_type("chat_id")
+            .request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(chat_id)
+                .msg_type("interactive")
+                .content(json.dumps(card, ensure_ascii=False))
+                .build()
+            )
+            .build()
+        )
+        response = self.client.im.v1.message.create(request)
+        payload = self._payload(response)
+        raw = getattr(response, "raw", None)
+        status_code = getattr(raw, "status_code", 200) if raw is not None else 200
+        code = payload.get("code", getattr(response, "code", None))
+        if status_code >= 400 or (code not in (None, 0)):
+            raise FeishuSDKError(
+                f"飞书 SDK 发送卡片失败 HTTP {status_code}, code={code}, "
+                f"msg={payload.get('msg', '')}, "
+                f"log_id={getattr(response, 'get_log_id', lambda: '')()}"
+            )
+        return payload.get("data", payload)
+
 
 def configured_feishu_credentials(prefix: str = "") -> Tuple[str, str]:
     """Return credentials with a prefixed pair falling back to shared values."""

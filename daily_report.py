@@ -48,8 +48,8 @@ DAILY_REPORT_CARD_HEADINGS = (
 )
 
 
-def build_daily_report_card(text):
-    """Convert the rendered report into readable card sections."""
+def _build_text_report_card(text):
+    """Legacy fallback for a plain-text report preview."""
     lines = str(text or "").splitlines()
     sections = []
     current_heading = ""
@@ -97,6 +97,195 @@ def build_daily_report_card(text):
         if index:
             elements.append({"tag": "hr"})
         elements.append(section)
+    return elements
+
+
+def _card_text(content, max_chars=6000):
+    return {
+        "tag": "div",
+        "text": {"tag": "lark_md", "content": str(content or "")[:max_chars]},
+    }
+
+
+def _card_divider():
+    return {"tag": "hr"}
+
+
+def _card_bar(percent, width=12):
+    """Return a compact text bar that needs no image upload or chart service."""
+    percent = max(0.0, min(_number(percent), 100.0))
+    filled = int(round(percent / 100 * width))
+    return "█" * filled + "░" * (width - filled)
+
+
+def _card_metric_row(metrics):
+    """Render small numeric indicators with native card columns."""
+    columns = []
+    for label, value in metrics:
+        columns.append(
+            {
+                "tag": "column",
+                "width": "weighted",
+                "weight": 1,
+                "vertical_align": "top",
+                "elements": [_card_text(f"**{label}**\n{value}", max_chars=500)],
+            }
+        )
+    return {
+        "tag": "column_set",
+        "flex_mode": "stretch",
+        "background_style": "default",
+        "columns": columns,
+    }
+
+
+def _completed_item_markdown(item):
+    if not isinstance(item, dict):
+        return f"- {_report_text(item)}"
+    app = _report_text(item.get("application") or item.get("app") or item.get("app_or_topic"))
+    work = _report_text(item.get("main_work") or item.get("title") or item.get("name"))
+    detail = _report_text(item.get("detail") or item.get("result") or item.get("summary"))
+    title = " · ".join(part for part in (app, work) if part) or "已完成事项"
+    return f"- **{title}**" + (f"\n  {detail}" if detail else "")
+
+
+def _feishu_browser_windows(activity_summary):
+    """Return browser evidence that is clearly related to Feishu documents."""
+    rows = (activity_summary or {}).get("browser_windows") or []
+    matches = []
+    for row in rows:
+        label = " ".join(str(row.get(key) or "") for key in ("app", "title", "context"))
+        if re.search(r"feishu|lark|飞书|docs|docx|wiki", label, re.IGNORECASE):
+            title = str(row.get("title") or row.get("context") or row.get("app") or "飞书页面").strip()
+            matches.append({"title": title, "hours": _number(row.get("hours"))})
+    return matches[:8]
+
+
+def build_daily_report_card(payload, activity_summary=None, document_events_received=True):
+    """Build a native Feishu card directly from structured report data.
+
+    The card deliberately uses only documented layout/text components, so the
+    time and focus views remain readable without rendering charts into images.
+    """
+    if not isinstance(payload, dict):
+        return _build_text_report_card(payload)
+
+    elements = []
+    completed = _report_items(payload.get("today_completed"))
+    elements.append(_card_text("**✅ 今日完成**  \n按应用归类，说明主要工作、对象与当前结果。"))
+    if completed:
+        elements.append(_card_text("\n".join(_completed_item_markdown(item) for item in completed), 12000))
+    else:
+        elements.append(_card_text("- 暂无可核实的完成事项。"))
+
+    investments = [item for item in _report_items(payload.get("time_investment")) if isinstance(item, dict)]
+    total_hours = sum(_number(item.get("hours")) for item in investments)
+    elements.extend([_card_divider(), _card_text("**⏱ 时间投入**  \n按“应用 · 主要工作”拆分；条形长度表示已观测时长占比。")])
+    if investments:
+        for item in investments[:12]:
+            app = _report_text(item.get("application") or item.get("app") or item.get("app_or_topic"))
+            work = _report_text(item.get("main_work") or item.get("work_item") or item.get("title"))
+            label = " · ".join(part for part in (app, work) if part) or "未命名事项"
+            hours = _number(item.get("hours"))
+            share = hours / total_hours * 100 if total_hours else 0.0
+            detail = _report_text(item.get("detail") or item.get("summary"))
+            content = f"**{label}**  {hours:.2f}h ({share:.1f}%)\n{_card_bar(share)}"
+            if detail:
+                content += f"  {detail}"
+            elements.append(_card_text(content, 1200))
+        elements.append(_card_text(f"可观测应用/事项合计：**{total_hours:.2f}h**"))
+    else:
+        elements.append(_card_text("- 暂无可用的应用/事项时长。"))
+
+    rhythm = payload.get("rhythm") if isinstance(payload.get("rhythm"), dict) else {}
+    concentration = (activity_summary or {}).get("concentration") or {}
+    active_hours = _number(rhythm.get("active_hours") or (activity_summary or {}).get("active_hours"))
+    away_hours = _number(rhythm.get("away_hours") or (activity_summary or {}).get("away_hours"))
+    tracked_hours = active_hours + away_hours
+    active_share = active_hours / tracked_hours * 100 if tracked_hours else 0.0
+    elements.extend([_card_divider(), _card_text("**📊 工作节奏**  \n只展示 ActivityWatch 可观测的活动、切换和输入信号，不推断心理状态。")])
+    elements.append(_card_metric_row([
+        ("有效活动", f"{active_hours:.2f}h"),
+        ("活动占比", f"{active_share:.1f}%"),
+        ("连续专注最长", f"{_number(concentration.get('longest_window_session_hours')):.2f}h"),
+    ]))
+    elements.append(_card_text(
+        f"活动/离开  {_card_bar(active_share)}  {active_hours:.2f}h / {away_hours:.2f}h\n"
+        f"应用切换 {_report_text(rhythm.get('application_switches')) or '0'} 次；"
+        f"窗口切换 {_report_text(rhythm.get('window_switches')) or '0'} 次；"
+        f"键盘 {_report_text(rhythm.get('keypresses') or (activity_summary or {}).get('input', {}).get('keypresses')) or '0'} 次；"
+        f"鼠标点击 {_report_text(rhythm.get('mouse_clicks') or (activity_summary or {}).get('input', {}).get('mouse_clicks')) or '0'} 次"
+    ))
+    focus_sessions = concentration.get("top_focus_sessions") or []
+    if focus_sessions:
+        details = "、".join(
+            f"{_report_text(item.get('title') or item.get('app'))}({_number(item.get('hours')):.2f}h)"
+            for item in focus_sessions[:3]
+        )
+        elements.append(_card_text(f"主要连续工作段：{details}"))
+
+    documents = payload.get("documents") if isinstance(payload.get("documents"), dict) else {}
+    feishu_windows = _feishu_browser_windows(activity_summary)
+    elements.extend([_card_divider(), _card_text("**📄 飞书文档与协作**  \n把飞书文档事件与 Edge/浏览器中的飞书页面证据放在一起，避免孤立解读。")])
+    if feishu_windows:
+        browser_text = "、".join(f"{item['title']}({_report_hours(item['hours'])})" for item in feishu_windows)
+        elements.append(_card_text(f"**浏览器中的飞书相关活动**：{browser_text}"))
+    else:
+        elements.append(_card_text("浏览器记录中未识别到可明确关联飞书/文档的页面。"))
+    if not document_events_received:
+        elements.append(_card_text("监听状态：当天未收到文档变更事件；这不能证明当天没有文档变更。"))
+    document_lines = []
+    for label, key in (("新增", "added"), ("修改", "modified"), ("删除/回收", "deleted")):
+        values = [_clean_item_text(item) for item in _report_items(documents.get(key))]
+        values = [value for value in values if value and value != "暂无"]
+        if values:
+            document_lines.append(f"**{label}**：" + "；".join(values[:5]))
+    elements.append(_card_text("\n".join(document_lines) if document_lines else "未收到可展示的文档事件明细。", 5000))
+
+    papers = payload.get("papers") if isinstance(payload.get("papers"), dict) else {}
+    paper_summary = _report_text(papers.get("summary"))
+    paper_ideas = [_clean_item_text(item) for item in _report_items(papers.get("suggestions"))]
+    paper_ideas = [value for value in paper_ideas if value]
+    if paper_summary or paper_ideas:
+        paper_content = "**📚 PaperRead 与研究线索**"
+        if paper_summary:
+            paper_content += f"\n{paper_summary}"
+        if paper_ideas:
+            paper_content += "\n" + "\n".join(f"- {item}" for item in paper_ideas[:3])
+        elements.extend([_card_divider(), _card_text(paper_content, 7000)])
+
+    tomorrow = payload.get("tomorrow_plan")
+    if isinstance(tomorrow, dict):
+        plan_values = tomorrow.get("tasks") or tomorrow.get("items") or tomorrow.get("plans") or []
+        idea_values = tomorrow.get("idea_suggestions") or tomorrow.get("ideas") or []
+    else:
+        plan_values = tomorrow
+        idea_values = payload.get("idea_suggestions") or []
+    plans = [_clean_item_text(item) for item in _report_items(plan_values)]
+    plans = [value for value in plans if value]
+    ideas = [_clean_idea_text(item) for item in _report_items(idea_values)]
+    ideas = [value for value in ideas if value]
+    elements.extend([_card_divider(), _card_text("**明日计划**")])
+    elements.append(
+        _card_text("**计划事项**\n" + "\n".join(f"- {item}" for item in plans[:5]) if plans else "**计划事项**\n- 暂无")
+    )
+    elements.append(
+        _card_text(
+            "**Idea 建议（结合 PaperRead 与今日工作）**\n"
+            + "\n".join(f"- {item}" for item in ideas[:5])
+            if ideas
+            else "**Idea 建议（结合 PaperRead 与今日工作）**\n- 暂无可核实的 idea 建议"
+        )
+    )
+
+    risks = [_clean_item_text(item) for item in _report_items(payload.get("risks"))]
+    risks = [value for value in risks if value]
+    elements.extend([_card_divider(), _card_text("**风险或待跟进**\n" + "\n".join(f"- {item}" for item in risks[:5]) if risks else "**风险或待跟进**\n- 暂无")])
+
+    questions = [_clean_item_text(item) for item in _report_items(payload.get("questions"))]
+    questions = [value for value in questions if value]
+    elements.extend([_card_divider(), _card_text("**💬 群聊问题解答**\n" + "\n".join(f"- {item}" for item in questions[:5]) if questions else "**💬 群聊问题解答**\n- 暂无")])
+
     return elements
 
 
@@ -715,28 +904,40 @@ class FeishuClient:
         )
         return True
 
-    def send_text(self, chat_id, text):
-        """Send the report as a readable interactive card."""
-        report_text = str(text)
-        report_date = ""
-        first_line = report_text.splitlines()[0] if report_text.splitlines() else ""
-        match = re.search(r"工作日报\s+(\d{4}-\d{2}-\d{2})", first_line)
-        if match:
-            report_date = f" · {match.group(1)}"
+    def send_report(self, chat_id, payload, activity_summary=None, document_events_received=True):
+        """Send the structured daily report as an SDK-backed native card."""
+        report_date = _report_text(payload.get("date")) if isinstance(payload, dict) else ""
+        title = f"工作日报 · {report_date}" if report_date else "工作日报"
         card = {
             "config": {"wide_screen_mode": True},
             "header": {
                 "template": "blue",
-                "title": {"tag": "plain_text", "content": f"工作日报{report_date}"},
+                "title": {"tag": "plain_text", "content": title},
             },
-            "elements": build_daily_report_card(report_text),
+            "elements": build_daily_report_card(
+                payload,
+                activity_summary=activity_summary,
+                document_events_received=document_events_received,
+            ),
         }
-        content = json.dumps(card, ensure_ascii=False)
-        return self._request(
-            "POST",
-            "/im/v1/messages",
-            params={"receive_id_type": "chat_id"},
-            json={"receive_id": chat_id, "msg_type": "interactive", "content": content},
+        return self._sdk.send_interactive_card(chat_id, card)
+
+    def send_text(self, chat_id, text):
+        """Backward-compatible card send for callers that only have text."""
+        report_text = str(text)
+        first_line = report_text.splitlines()[0] if report_text.splitlines() else ""
+        match = re.search(r"工作日报\s+(\d{4}-\d{2}-\d{2})", first_line)
+        report_date = f" · {match.group(1)}" if match else ""
+        return self._sdk.send_interactive_card(
+            chat_id,
+            {
+                "config": {"wide_screen_mode": True},
+                "header": {
+                    "template": "blue",
+                    "title": {"tag": "plain_text", "content": f"工作日报{report_date}"},
+                },
+                "elements": _build_text_report_card(report_text),
+            },
         )
 
     def list_chats(self):
@@ -1035,10 +1236,30 @@ def _report_hours(value):
 
 def _clean_item_text(item):
     if isinstance(item, dict):
-        title = _report_text(item.get("title") or item.get("name") or item.get("topic"))
+        app = _report_text(item.get("application") or item.get("app"))
+        title = _report_text(
+            item.get("main_work") or item.get("title") or item.get("name") or item.get("topic")
+        )
         detail = _report_text(item.get("detail") or item.get("summary") or item.get("answer"))
-        return "：".join(part for part in (title, detail) if part)
+        heading = " · ".join(part for part in (app, title) if part)
+        return "：".join(part for part in (heading, detail) if part)
     return _report_text(item)
+
+
+def _clean_idea_text(item):
+    """Render an idea with its evidence source and next validation step."""
+    if not isinstance(item, dict):
+        return _report_text(item)
+    title = _report_text(item.get("title") or item.get("name") or item.get("topic"))
+    detail = _report_text(item.get("detail") or item.get("summary"))
+    source = _report_text(item.get("source") or item.get("evidence"))
+    next_step = _report_text(item.get("next_step") or item.get("validation"))
+    text = "：".join(part for part in (title, detail) if part)
+    if source:
+        text += f"（依据：{source}）"
+    if next_step:
+        text += f"；下一步：{next_step}"
+    return text
 
 
 def _append_clean_items(lines, items, empty_text="暂无"):
@@ -1153,9 +1374,27 @@ def render_report_payload(payload, activity_summary=None, document_events_receiv
     elif not concentration.get("summary"):
         lines.append("- 暂无")
 
-    for heading, key in (("明日计划建议", "tomorrow_plan"), ("风险或待跟进", "risks")):
-        lines.extend(["", heading])
-        _append_clean_items(lines, payload.get(key))
+    tomorrow = payload.get("tomorrow_plan")
+    if isinstance(tomorrow, dict):
+        plan_values = tomorrow.get("tasks") or tomorrow.get("items") or tomorrow.get("plans") or []
+        idea_values = tomorrow.get("idea_suggestions") or tomorrow.get("ideas") or []
+    else:
+        plan_values = tomorrow
+        idea_values = payload.get("idea_suggestions") or []
+    lines.extend(["", "明日计划建议", "- 计划事项："])
+    _append_clean_items(lines, plan_values)
+    lines.append("- Idea 建议（结合 PaperRead 与今日工作）：")
+    idea_items = _report_items(idea_values)
+    if idea_items:
+        for item in idea_items:
+            text = _clean_idea_text(item)
+            if text:
+                lines.append(f"- {text}")
+    else:
+        lines.append("- 暂无可核实的 idea 建议")
+
+    lines.extend(["", "风险或待跟进"])
+    _append_clean_items(lines, payload.get("risks"))
 
     lines.extend(["", "📚 PaperRead 论文与未来研究建议"])
     papers = payload.get("papers") if isinstance(payload.get("papers"), dict) else {}
@@ -1166,6 +1405,15 @@ def render_report_payload(payload, activity_summary=None, document_events_receiv
 
     lines.extend(["", "📄 飞书文档变更"])
     documents = payload.get("documents") if isinstance(payload.get("documents"), dict) else {}
+    collaboration_summary = _report_text(documents.get("collaboration_summary"))
+    if collaboration_summary:
+        lines.append(f"- 协作关联：{collaboration_summary}")
+    feishu_windows = _feishu_browser_windows(activity_summary)
+    if feishu_windows:
+        lines.append(
+            "- 浏览器中的飞书相关活动："
+            + "、".join(f"{item['title']}({_report_hours(item['hours'])})" for item in feishu_windows)
+        )
     if not document_events_received:
         lines.append("- 监听状态：当天事件队列没有收到文档变更，不能据此确认当天没有变更；请检查监听器和飞书事件订阅。")
     for label, key in (("新增", "added"), ("修改", "modified"), ("删除/回收", "deleted")):
@@ -1177,7 +1425,7 @@ def render_report_payload(payload, activity_summary=None, document_events_receiv
     return "\n".join(lines).strip()
 
 
-def generate_report(
+def generate_report_payload(
     chat_messages,
     activity_summary,
     paperread_messages=None,
@@ -1185,7 +1433,7 @@ def generate_report(
     document_activity=None,
     question_messages=None,
 ):
-    """Generate a compact structured report and render it for Feishu."""
+    """Generate the structured data used by both card and Wiki renderers."""
     from llm_client import llm
 
     paperread_messages = paperread_messages or []
@@ -1244,25 +1492,47 @@ PaperRead 关联文档：
 
 要求：
 1. 保留今日完成、时间投入、工作节奏、明日计划建议、风险或待跟进、PaperRead 论文与未来研究建议、飞书文档变更、群聊问题解答；可观测操作焦点合并到工作节奏中。
-2. 时间投入必须依据应用和窗口记录，列出主要应用/事项的小时数，并填写 share_percent；百分比按列出的应用/事项小时数合计计算。
-3. 今日完成至少给出 2-5 条具体分析，每条说明“做了什么、涉及什么对象、当前结果/状态”；可以使用群聊和窗口标题判断，但不能把仅打开窗口编造成已完成成果。
-4. 如果应用或窗口记录中出现 Edge、Chrome 等浏览器，必须在今日完成或工作节奏中说明相关窗口标题和时长；没有识别到时不要臆测。
+2. 今日完成至少给出 2-5 条具体分析。每条必须填写 application、main_work、detail：detail 具体说明做了什么、涉及什么对象、当前结果/状态；可以使用群聊和窗口标题判断，但不能把仅打开窗口编造成已完成成果。
+3. 时间投入必须逐条对应“应用 · 主要工作”，填写 application、main_work、hours、detail；hours 必须依据应用和窗口记录，不得把不同主要工作合并成仅一个应用总时长；百分比按列出的应用/事项小时数合计计算。
+4. 如果应用或窗口记录中出现 Edge、Chrome 等浏览器，必须在今日完成或工作节奏中说明相关窗口标题和时长；没有识别到时不要臆测。若页面与飞书、docx、wiki 或 lark 有关，必须在 documents.collaboration_summary 中说明它与文档事件或协作工作的关系；只能写观察到的页面和事件，不能推断文档正文。
 5. 所有时间使用小时 h。
 6. PaperRead 只输出整体总结和最多 3 条未来研究建议，不逐篇复述论文。
-7. 文档变更按新增、修改、删除/回收分类；只描述事件，不推断具体正文改动。如果“飞书直接变更事件”为空，必须写成“未收到事件，无法确认当天无变更”，不能直接断言“暂无变更”。
+7. 文档变更按新增、修改、删除/回收分类，并填写 collaboration_summary；只描述事件和已观察到的飞书页面，不推断具体正文改动。如果“飞书直接变更事件”为空，必须写成“未收到事件，无法确认当天无变更”，不能直接断言“暂无变更”。
 8. 可观测操作焦点只描述窗口、显示器、输入和时间数据，不描述心理状态，并合并到工作节奏。
-9. 只返回一个 JSON 对象，不要 Markdown 或解释文字。
+9. 明日计划必须保留 tasks，并额外填写 idea_suggestions（1-5 条）。每条 idea 必须同时连接 PaperRead 今日推送中的具体方向、今日已完成工作或时间投入中的具体对象，并给出下一步可验证动作；如果证据不足，明确标注为待验证假设，不要编造论文结论。
+10. 必须保留 risks 和 questions 字段，即使为空也返回空数组。
+11. 只返回一个 JSON 对象，不要 Markdown 或解释文字。
 
 JSON 格式：
-{{"date":"YYYY-MM-DD","today_completed":[{{"title":"","detail":""}}],"time_investment":[{{"app_or_topic":"","hours":0,"share_percent":0,"detail":""}}],"rhythm":{{"active_hours":0,"away_hours":0,"active_share_percent":0,"application_switches":0,"window_switches":0,"keypresses":0,"mouse_clicks":0}},"concentration":{{"summary":"","findings":[{{"title":"","detail":""}}]}},"tomorrow_plan":[{{"title":"","detail":""}}],"risks":[{{"title":"","detail":""}}],"papers":{{"summary":"","suggestions":[{{"title":"","detail":""}}]}},"documents":{{"added":[],"modified":[],"deleted":[]}},"questions":[{{"title":"","answer":""}}]}}
+{{"date":"YYYY-MM-DD","today_completed":[{{"application":"","main_work":"","detail":""}}],"time_investment":[{{"application":"","main_work":"","hours":0,"share_percent":0,"detail":""}}],"rhythm":{{"active_hours":0,"away_hours":0,"active_share_percent":0,"application_switches":0,"window_switches":0,"keypresses":0,"mouse_clicks":0}},"concentration":{{"summary":"","findings":[{{"title":"","detail":""}}]}},"tomorrow_plan":{{"tasks":[{{"title":"","detail":""}}],"idea_suggestions":[{{"title":"","detail":"","source":"","next_step":""}}]}},"idea_suggestions":[],"risks":[{{"title":"","detail":""}}],"papers":{{"summary":"","suggestions":[{{"title":"","detail":""}}]}},"documents":{{"collaboration_summary":"","added":[],"modified":[],"deleted":[]}},"questions":[{{"title":"","answer":""}}]}}
 """
     response = llm.call(
         [{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
         response_validator=parse_report_payload,
     )
+    return parse_report_payload(response)
+
+
+def generate_report(
+    chat_messages,
+    activity_summary,
+    paperread_messages=None,
+    knowledge_documents=None,
+    document_activity=None,
+    question_messages=None,
+):
+    """Return the textual form retained in the monthly Feishu Wiki report."""
+    payload = generate_report_payload(
+        chat_messages,
+        activity_summary,
+        paperread_messages,
+        knowledge_documents,
+        document_activity,
+        question_messages,
+    )
     return render_report_payload(
-        parse_report_payload(response),
+        payload,
         activity_summary=activity_summary,
         document_events_received=bool(document_activity),
     )
@@ -1320,7 +1590,7 @@ def run_report():
     ordinary_messages = [item for item in ordinary_messages if item not in question_messages]
     knowledge_documents = collect_knowledge_documents(client, paperread_messages)
     document_activity = collect_document_activity(client, messages, start, end)
-    report = generate_report(
+    report_payload = generate_report_payload(
         ordinary_messages,
         activity,
         paperread_messages,
@@ -1328,7 +1598,17 @@ def run_report():
         document_activity,
         question_messages,
     )
-    client.send_text(chat_id, report)
+    report = render_report_payload(
+        report_payload,
+        activity_summary=activity,
+        document_events_received=bool(document_activity),
+    )
+    client.send_report(
+        chat_id,
+        report_payload,
+        activity_summary=activity,
+        document_events_received=bool(document_activity),
+    )
     write_monthly_report(client, report, start.date().isoformat())
     clear_consumed_document_activity(end)
     try:
@@ -1360,7 +1640,7 @@ def main():
     ordinary_messages = [item for item in ordinary_messages if item not in question_messages]
     knowledge_documents = collect_knowledge_documents(client, paperread_messages)
     document_activity = collect_document_activity(client, messages, start, end)
-    report = generate_report(
+    report_payload = generate_report_payload(
         ordinary_messages,
         activity,
         paperread_messages,
@@ -1368,10 +1648,20 @@ def main():
         document_activity,
         question_messages,
     )
+    report = render_report_payload(
+        report_payload,
+        activity_summary=activity,
+        document_events_received=bool(document_activity),
+    )
     if args.preview:
         print(report)
     else:
-        client.send_text(chat_id, report)
+        client.send_report(
+            chat_id,
+            report_payload,
+            activity_summary=activity,
+            document_events_received=bool(document_activity),
+        )
         write_monthly_report(client, report, start.date().isoformat())
         clear_consumed_document_activity(end)
         try:
