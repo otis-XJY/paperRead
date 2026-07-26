@@ -57,21 +57,19 @@ def main():
         daily_folder_name=daily_name,
     )
 
-    # Step 1: 获取 token
-    print("[1/3] 获取 tenant_access_token...")
-    token = client._ensure_token()
-    print(f"  ✅ token: {token[:10]}...")
-
-    # Step 2: 发现 wiki 空间
-    print("[2/3] 发现 wiki 空间...")
+    # lark-oapi obtains and refreshes tenant_access_token lazily when the
+    # first API request is made; FeishuWikiClient no longer exposes the old
+    # _ensure_token() hook.
+    print("[1/3] 检查凭证并发现 wiki 空间...")
     space_id = client._discover_space_id()
     print(f"  ✅ space_id: {space_id}")
 
-    # Step 3: 创建/确认分类节点
-    print(f"[3/3] 创建/确认分类节点...")
+    # Step 2: 创建/确认分类节点
+    print("[2/3] 创建/确认分类节点...")
     client.bootstrap_layout(cats)
 
-    # 验证最终结构（含推荐级别子节点）
+    # Step 3: 验证最终结构（含推荐级别子节点）
+    print("[3/3] 验证最终目录结构...")
     print()
     print("=== 最终目录结构 ===")
     root_children = client.list_child_nodes(root)

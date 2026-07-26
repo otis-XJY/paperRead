@@ -56,23 +56,18 @@ def main():
         daily_folder_name=DAILY_FOLDER,
     )
 
-    # Step 1: 测试 token 获取
-    print("[1/4] 测试 tenant_access_token 获取...")
-    token = client._ensure_token()
-    print(f"  ✅ token 获取成功: {token[:10]}...")
-
-    # Step 2: 测试 wiki 空间发现
-    print("[2/4] 测试 wiki 空间发现...")
+    # lark-oapi obtains tenant_access_token lazily on the first API request.
+    print("[1/4] 测试凭证和 wiki 空间发现...")
     space_id = client._discover_space_id()
     print(f"  ✅ space_id: {space_id}")
 
-    # Step 3: 测试分类节点创建/查找
-    print(f"[3/4] 确保分类节点 '{CATEGORY}' 存在...")
+    # Step 2: 测试分类节点创建/查找
+    print(f"[2/4] 确保分类节点 '{CATEGORY}' 存在...")
     node_token = client.ensure_category_node(CATEGORY)
     print(f"  ✅ 分类节点 token: {node_token}")
 
-    # Step 4: 写入测试论文
-    print(f"[4/4] 写入测试论文 '{MOCK_PAPER['title'][:50]}'...")
+    # Step 3: 写入测试论文
+    print(f"[3/3] 写入测试论文 '{MOCK_PAPER['title'][:50]}'...")
     doc_url = client.mirror_paper_to_wiki(CATEGORY, MOCK_PAPER)
     print(f"  ✅ 文档已创建: {doc_url}")
 
