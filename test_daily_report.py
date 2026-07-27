@@ -11,6 +11,7 @@ from daily_report import (
     ActivityWatchClient,
     FeishuClient,
     build_daily_report_card,
+    enrich_report_payload,
     extract_question_messages,
     generate_report,
     is_question_message,
@@ -27,6 +28,32 @@ from daily_report import (
 
 
 class DailyReportHelpersTest(unittest.TestCase):
+    def test_enrich_payload_uses_topic_ledger_and_document_events(self):
+        payload = {
+            "time_investment": [{"application": "Microsoft Edge", "hours": 99}],
+            "documents": {},
+        }
+        enriched = enrich_report_payload(
+            payload,
+            {
+                "windows": [
+                    {"app": "msedge", "title": "Param_GeoCoT - Microsoft Edge", "context": "", "hours": 1},
+                    {"app": "msedge", "title": "AgentOs - 飞书云文档", "context": "", "hours": 2},
+                ],
+                "browser_windows": [
+                    {"app": "msedge", "title": "AgentOs - 飞书云文档", "hours": 2}
+                ],
+            },
+            [{"title": "SUM", "operation": "modified", "event_time": "10:23"}],
+        )
+        investments = enriched["time_investment"]
+        self.assertEqual(sorted((item["main_work"], item["hours"]) for item in investments), sorted([
+            ("GeoCoT / Param_GeoCoT", 1.0),
+            ("Agent / AgentOs", 2.0),
+        ]))
+        self.assertIn("SUM", enriched["documents"]["related_work"][0]["title"])
+        self.assertIn("飞书相关页面", enriched["documents"]["collaboration_summary"])
+
     def test_structured_card_groups_work_time_rhythm_and_feishu_context(self):
         payload = {
             "date": "2026-07-26",
@@ -91,14 +118,37 @@ class DailyReportHelpersTest(unittest.TestCase):
         card_json = json.dumps(elements, ensure_ascii=False)
         self.assertIn("Microsoft Edge · 飞书 Wiki 整理", card_json)
         self.assertIn("可观测应用/事项合计：**3.00h**", card_json)
-        self.assertIn("连续专注最长", card_json)
+        self.assertIn("最长连续工作", card_json)
         self.assertIn("飞书文档与协作", card_json)
-        self.assertIn("飞书 Wiki - Microsoft Edge(2.00h)", card_json)
+        self.assertIn("飞书 Wiki(2.00h)", card_json)
         self.assertIn('"tag": "column_set"', card_json)
+        self.assertIn('"tag": "collapsible_panel"', card_json)
+        self.assertIn('"tag": "chart"', card_json)
+        self.assertIn('"type": "pie"', card_json)
         self.assertIn("明日计划", card_json)
         self.assertIn("Idea 建议（结合 PaperRead 与今日工作）", card_json)
         self.assertIn("风险或待跟进", card_json)
         self.assertIn("群聊问题解答", card_json)
+        self.assertNotIn("键盘", card_json)
+        self.assertNotIn("鼠标点击", card_json)
+
+    def test_send_report_wraps_card_json_v2_body(self):
+        client = FeishuClient.__new__(FeishuClient)
+        client._sdk = Mock()
+        client._sdk.send_interactive_card.return_value = {"ok": True}
+        result = client.send_report(
+            "oc_daily",
+            {
+                "date": "2026-07-26",
+                "today_completed": [],
+                "time_investment": [],
+            },
+        )
+        self.assertEqual(result, {"ok": True})
+        card = client._sdk.send_interactive_card.call_args.args[1]
+        self.assertEqual(card["schema"], "2.0")
+        self.assertEqual(card["config"]["width_mode"], "fill")
+        self.assertIn("elements", card["body"])
 
     def test_render_report_adds_time_shares_and_event_queue_warning(self):
         payload = {
@@ -126,7 +176,7 @@ class DailyReportHelpersTest(unittest.TestCase):
         self.assertIn("Microsoft Edge：7.00h（50.0%）", report)
         self.assertEqual(report.count("📊 工作节奏"), 1)
         self.assertNotIn("🎯 可观测操作焦点\n", report)
-        self.assertIn("浏览器窗口记录：Agent 研究资料 - Microsoft Edge(2.00h)", report)
+        self.assertIn("浏览器窗口记录：Agent 研究资料(2.00h)", report)
         self.assertIn("事件队列没有收到文档变更，不能据此确认当天没有变更", report)
 
     def test_overlap_clips_event_to_window(self):
