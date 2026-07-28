@@ -88,6 +88,7 @@ class MultiModelLLM:
         return self.models[self.current_idx]
 
     def call(self, messages, response_format=None, max_rounds=2, response_validator=None):
+        max_rounds = max(int(os.getenv("LLM_MAX_ROUNDS", str(max_rounds))), 1)
         total_models = len(self.models)
         last_exc = None
         start_idx = self.next_start_idx % total_models
@@ -103,6 +104,8 @@ class MultiModelLLM:
             for offset in range(total_models):
                 idx = (start_idx + offset) % total_models
                 model = self.models[idx]
+                attempt_started = time.monotonic()
+                print(f"LLM attempt started: model={model}", flush=True)
                 try:
                     kwargs = {"model": model, "messages": messages}
                     if response_format:
@@ -120,6 +123,10 @@ class MultiModelLLM:
 
                     self.current_idx = idx
                     self.next_start_idx = (idx + 1) % total_models
+                    print(
+                        f"LLM attempt succeeded: model={model} elapsed_seconds={time.monotonic() - attempt_started:.1f}",
+                        flush=True,
+                    )
                     return response
                 except Exception as exc:
                     last_exc = exc
@@ -130,7 +137,11 @@ class MultiModelLLM:
                         reason = "auth failed"
                     else:
                         reason = "call failed"
-                    print(f"LLM model failed, trying next: {model} ({reason}: {exc})")
+                    print(
+                        f"LLM model failed, trying next: {model} ({reason}: {exc}); "
+                        f"elapsed_seconds={time.monotonic() - attempt_started:.1f}",
+                        flush=True,
+                    )
 
         raise RuntimeError(
             f"All LLM models failed after {max_rounds} rounds. Last error: {last_exc}"
@@ -147,8 +158,8 @@ BASE_URL = os.getenv("BASE_URL") or "https://api-inference.modelscope.cn/v1/"
 client = OpenAI(
     api_key=LLM_API_KEY,
     base_url=BASE_URL,
-    timeout=90.0,
-    max_retries=2,
+    timeout=float(os.getenv("LLM_TIMEOUT_SECONDS", "90")),
+    max_retries=int(os.getenv("LLM_MAX_RETRIES", "2")),
 )
 MODEL_POOL = get_model_pool(client, BASE_URL)
 llm = MultiModelLLM(client, MODEL_POOL)

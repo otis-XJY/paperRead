@@ -339,12 +339,19 @@ def build_daily_report_card(payload, activity_summary=None, document_events_rece
     rhythm = payload.get("rhythm") if isinstance(payload.get("rhythm"), dict) else {}
     concentration = (activity_summary or {}).get("concentration") or {}
     theme_focus = (activity_summary or {}).get("theme_focus") or {}
+    focus_source = theme_focus.get("source")
+    focus_source_text = (
+        "切换判定结合鼠标所在显示器、前台窗口和输入事件。"
+        if focus_source == "cursor_position_and_input_focus"
+        else "切换判定基于前台窗口活动。"
+    )
     active_hours = _number(rhythm.get("active_hours") or (activity_summary or {}).get("active_hours"))
     away_hours = _number(rhythm.get("away_hours") or (activity_summary or {}).get("away_hours"))
     tracked_hours = active_hours + away_hours
     active_share = active_hours / tracked_hours * 100 if tracked_hours else 0.0
     elements.extend([_card_divider(), _card_text(
-        "**🎯 专注情况**  \n基于有效活动与主题级会话估计，不直接测量心理状态。"
+        "**🎯 专注情况**  \n基于有效活动与主题级会话估计，不直接测量心理状态。\n"
+        + focus_source_text
     )])
     elements.append(_card_metric_row([
         ("有效活动", f"{active_hours:.2f}h"),
@@ -518,7 +525,11 @@ class _ActivityWatchTransport:
     def clear_between(self, start, end):
         """Delete only the ActivityWatch events consumed by this report."""
         if os.getenv("DAILY_REPORT_ACTIVITY_CLEAR_ENABLED", "1") != "1":
+            _progress("ActivityWatch：事件清理已禁用")
             return 0
+        max_seconds = max(float(os.getenv("DAILY_REPORT_ACTIVITY_CLEAR_MAX_SECONDS", "30")), 1.0)
+        deadline = time_module.monotonic() + max_seconds
+        _progress("ActivityWatch：开始清理已读取事件", max_seconds=max_seconds)
         removed = 0
         for bucket_id, metadata in self.buckets().items():
             identity = f"{bucket_id} {metadata.get('name', '')} {metadata.get('type', '')}".lower()
@@ -527,15 +538,25 @@ class _ActivityWatchTransport:
             payload = self.events(bucket_id, start, end)
             events = payload if isinstance(payload, list) else payload.get("events", [])
             for event in events:
+                if time_module.monotonic() >= deadline:
+                    _progress("ActivityWatch：清理达到时间上限，停止继续删除", removed=removed)
+                    return removed
                 event_id = event.get("id")
                 if event_id is None:
                     continue
-                response = requests.delete(
-                    f"{self.base_url}/api/0/buckets/{quote(str(bucket_id), safe='')}/events/{quote(str(event_id), safe='')}",
-                    timeout=self.timeout,
-                )
-                response.raise_for_status()
+                try:
+                    response = requests.delete(
+                        f"{self.base_url}/api/0/buckets/{quote(str(bucket_id), safe='')}/events/{quote(str(event_id), safe='')}",
+                        timeout=min(self.timeout, 3),
+                    )
+                    response.raise_for_status()
+                except requests.RequestException as exc:
+                    _progress("ActivityWatch：单条事件删除失败，停止清理", removed=removed, error=type(exc).__name__)
+                    return removed
                 removed += 1
+                if removed % 100 == 0:
+                    _progress("ActivityWatch：事件清理进度", removed=removed)
+        _progress("ActivityWatch：事件清理完成", removed=removed)
         return removed
 
 
@@ -628,6 +649,7 @@ class ActivityWatchClient(_ActivityWatchTransport):
         input_totals = {"keypresses": 0.0, "mouse_distance": 0.0, "mouse_clicks": 0.0}
         bucket_counts = {"window": 0, "afk": 0, "input": 0, "focus": 0}
         window_event_sequence = []
+        focus_window_sequence = []
         focus_events = []
         active_intervals = []
         away_intervals = []
@@ -718,17 +740,30 @@ class ActivityWatchClient(_ActivityWatchTransport):
             # three monitors cannot make the report exceed elapsed time.
             focus_by_key = defaultdict(list)
             focus_all = []
+            focus_window_sequence = []
             focus_counts = {"keypresses": 0.0, "mouse_clicks": 0.0}
             for event, duration, data in focus_events:
-                timestamp = parse_timestamp(event.get("timestamp"))
-                end_time = timestamp + timedelta(seconds=max(float(duration), 0.0))
+                raw_timestamp = parse_timestamp(event.get("timestamp"))
+                raw_end_time = raw_timestamp + timedelta(seconds=max(float(duration), 0.0))
+                timestamp = max(raw_timestamp, start.astimezone(timezone.utc))
+                end_time = min(raw_end_time, end.astimezone(timezone.utc))
+                if end_time <= timestamp:
+                    continue
                 focus_all.append((timestamp, end_time))
                 monitor = str(data.get("monitor") or "unknown")
+                # The focus watcher derives monitor from the actual cursor
+                # position. Keep the coordinates as a deterministic fallback
+                # when Windows returns an unknown monitor rectangle.
+                if monitor == "unknown" and data.get("cursor_x") is not None and data.get("cursor_y") is not None:
+                    monitor = f"cursor:{data.get('cursor_x')},{data.get('cursor_y')}"
                 app = str(data.get("app") or data.get("window_title") or "Unknown")
                 title = str(data.get("window_title") or "").strip()
                 focus_by_key[(app, title, monitor)].append((timestamp, end_time))
                 focus_counts["keypresses"] += float(data.get("keypresses") or 0)
                 focus_counts["mouse_clicks"] += float(data.get("mouse_clicks") or 0)
+                focus_window_sequence.append(
+                    (timestamp, app, title, monitor, (end_time - timestamp).total_seconds())
+                )
             apps.clear()
             windows.clear()
             window_event_sequence = []
@@ -769,6 +804,8 @@ class ActivityWatchClient(_ActivityWatchTransport):
 
         screen_exposure_seconds = sum(max(float(item[4]), 0.0) for item in window_event_sequence)
         window_event_sequence = _attribute_window_sequence(window_event_sequence)
+        if focus_window_sequence:
+            focus_window_sequence = _attribute_window_sequence(focus_window_sequence)
         attributed_active_seconds = sum(max(float(item[4]), 0.0) for item in window_event_sequence)
         report_window_seconds = max(
             (end.astimezone(timezone.utc) - start.astimezone(timezone.utc)).total_seconds(),
@@ -931,6 +968,7 @@ class ActivityWatchClient(_ActivityWatchTransport):
             ],
             "observed_window_hours": session_hours(observed_window_seconds),
         }
+        focus_sequence_for_themes = focus_window_sequence or window_event_sequence
         theme_events = [
             {
                 "timestamp": timestamp.isoformat(),
@@ -939,7 +977,7 @@ class ActivityWatchClient(_ActivityWatchTransport):
                 "url": url,
                 "duration": duration,
             }
-            for timestamp, app, title, url, duration in window_event_sequence
+            for timestamp, app, title, url, duration in focus_sequence_for_themes
         ]
         theme_sessions = build_theme_sessions(
             theme_events,
@@ -954,6 +992,7 @@ class ActivityWatchClient(_ActivityWatchTransport):
             for left, right in zip(theme_sessions, theme_sessions[1:])
         ]
         theme_focus = {
+            "source": "cursor_position_and_input_focus" if focus_window_sequence else "foreground_window",
             "median_focus_session_seconds": round(median(theme_session_seconds), 1) if theme_session_seconds else 0.0,
             "average_focus_session_seconds": round(sum(theme_session_seconds) / len(theme_session_seconds), 1) if theme_session_seconds else 0.0,
             "longest_focus_session_seconds": round(max(theme_session_seconds), 1) if theme_session_seconds else 0.0,
@@ -1500,13 +1539,16 @@ def collect_knowledge_documents(client, paperread_messages):
             seen_urls.add(url)
             if len(documents) >= max_documents:
                 return documents
+            _progress("PaperRead 文档：开始读取单个关联文档", index=len(documents) + 1)
             try:
                 text = client.read_document_link(url)
             except Exception as exc:
+                _progress("PaperRead 文档：单个关联文档读取失败", error=type(exc).__name__)
                 print(f"⚠️ 无法读取飞书知识库文档 {url}: {exc}")
                 continue
             if text:
                 documents.append({"url": url, "text": text[:12000]})
+                _progress("PaperRead 文档：单个关联文档读取完成", documents=len(documents))
     _progress("PaperRead 文档：关联文档读取完成", documents=len(documents))
     return documents
 
@@ -2082,6 +2124,8 @@ def render_report_payload(payload, activity_summary=None, document_events_receiv
     activity_rhythm = (activity_summary or {}).get("rhythm") or {}
     concentration = (activity_summary or {}).get("concentration") or {}
     theme_focus = (activity_summary or {}).get("theme_focus") or {}
+    if theme_focus.get("source") == "cursor_position_and_input_focus":
+        lines.append("- 切换判定结合鼠标所在显示器、前台窗口和输入事件")
     active_hours = _number(rhythm.get("active_hours") or (activity_summary or {}).get("active_hours"))
     away_hours = _number(rhythm.get("away_hours") or (activity_summary or {}).get("away_hours"))
     active_share = active_hours / (active_hours + away_hours) * 100 if active_hours + away_hours else 0.0
