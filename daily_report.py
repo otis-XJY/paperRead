@@ -23,6 +23,7 @@ import requests
 
 from feishu_sdk import FeishuOpenAPIClient, FeishuSDKError
 from feishu_event_queue import DocumentEventStore
+from daily_report_topics import TopicClassifier, aggregate_theme_events, build_theme_sessions
 
 try:
     from dotenv import load_dotenv
@@ -171,15 +172,17 @@ def _card_collapsible_panel(title, content):
 
 
 def _time_investment_chart(investments):
-    """Build a native CardKit pie chart for application/topic time."""
-    values = []
-    for item in investments[:16]:
+    """Build a native CardKit pie chart for application time totals."""
+    application_hours = defaultdict(float)
+    for item in investments:
         app = _display_application(item.get("application") or item.get("app") or item.get("app_or_topic"))
-        work = _report_text(item.get("main_work") or item.get("work_item") or item.get("title"))
-        label = " · ".join(part for part in (app, work) if part) or "未命名事项"
         hours = _number(item.get("hours"))
+        if app and hours > 0:
+            application_hours[app] += hours
+    values = []
+    for app, hours in sorted(application_hours.items(), key=lambda pair: pair[1], reverse=True)[:6]:
         if hours > 0:
-            values.append({"topic": label[:80], "hours": round(hours, 2)})
+            values.append({"application": app[:80], "hours": round(hours, 2)})
     if not values:
         return None
     return {
@@ -189,7 +192,7 @@ def _time_investment_chart(investments):
         "chart_spec": {
             "type": "pie",
             "data": [{"id": "time_investment", "values": values}],
-            "categoryField": "topic",
+            "categoryField": "application",
             "valueField": "hours",
             "outerRadius": 0.8,
         },
@@ -239,134 +242,117 @@ def build_daily_report_card(payload, activity_summary=None, document_events_rece
 
     elements = []
     completed = [item for item in _report_items(payload.get("today_completed")) if isinstance(item, dict)]
-    elements.append(_card_text("**✅ 今日完成**  \n按应用展开；每个应用下再按主题、产出和证据分层说明。"))
-    if completed:
-        investments_for_grouping = [item for item in _report_items(payload.get("time_investment")) if isinstance(item, dict)]
-        app_hours = defaultdict(float)
-        for investment in investments_for_grouping:
-            app_name = _display_application(
-                investment.get("application") or investment.get("app") or investment.get("app_or_topic")
-            )
-            app_hours[app_name.casefold()] += _number(investment.get("hours"))
-
-        grouped = {}
-        group_order = []
-        for item in completed:
-            app_name = _display_application(item.get("application") or item.get("app") or item.get("app_or_topic"))
-            key = app_name.casefold()
-            if key not in grouped:
-                grouped[key] = {"name": app_name, "items": []}
-                group_order.append(key)
-            grouped[key]["items"].append(item)
-
-        # Keep topic-level time visible under the relevant application even
-        # when the model has no direct completion evidence for that topic.  It
-        # is explicitly labelled as observation/pending confirmation rather
-        # than being presented as a completed result.
-        for investment in investments_for_grouping:
-            app_name = _display_application(
-                investment.get("application") or investment.get("app") or investment.get("app_or_topic")
-            )
-            key = app_name.casefold()
-            if key not in grouped:
-                grouped[key] = {"name": app_name, "items": []}
-                group_order.append(key)
-            work = _report_text(investment.get("main_work") or investment.get("work_item") or investment.get("title"))
-            if not work:
-                continue
-            existing_work = {
-                _report_text(row.get("main_work") or row.get("title") or row.get("name")).casefold()
-                for row in grouped[key]["items"]
-                if isinstance(row, dict)
+    themes = [item for item in _report_items(payload.get("themes")) if isinstance(item, dict)]
+    if not themes:
+        themes = [
+            {
+                "theme_name": _report_text(item.get("main_work") or item.get("title") or item.get("name")),
+                "summary": _report_text(item.get("detail") or item.get("summary")),
+                # Legacy payloads without an explicit status came from the
+                # model's completed-items field; treat a detailed item as
+                # probable, while keeping bare observations out of the core.
+                "status": item.get("status") or (
+                    "probable" if _report_text(item.get("detail") or item.get("summary")) else "observed"
+                ),
             }
-            if work.casefold() in existing_work:
-                continue
-            evidence = investment.get("evidence") or []
-            evidence_text = "、".join(str(value) for value in evidence[:3]) if isinstance(evidence, list) else str(evidence)
-            grouped[key]["items"].append(
-                {
-                    "main_work": work,
-                    "detail": _report_text(investment.get("detail") or investment.get("summary"))
-                    or "根据应用/窗口主题账本观察到该工作线索。",
-                    "status": "仅观察到访问，待结合产出确认",
-                    "evidence": [evidence_text] if evidence_text else [],
-                }
-            )
-        for key in group_order:
-            group = grouped[key]
-            lines = []
-            for index, item in enumerate(group["items"], 1):
-                work = _report_text(item.get("main_work") or item.get("title") or item.get("name")) or "未命名主题"
-                detail = _report_text(item.get("detail") or item.get("result") or item.get("summary"))
-                status = _report_text(item.get("status"))
-                evidence = item.get("evidence")
-                evidence_text = ""
-                if isinstance(evidence, list) and evidence:
-                    evidence_text = "证据：" + "、".join(str(value) for value in evidence[:3])
-                # Repeat the application in the item label as a searchable
-                # fallback while the surrounding panel provides the visual
-                # hierarchy.
-                lines.append(f"**{index}. {group['name']} · {work}**")
-                for value in (detail, status, evidence_text):
-                    if value:
-                        lines.append(f"   {value}")
-            hours = app_hours.get(key, 0.0)
-            heading = f"{_card_app_icon(group['name'])} {group['name']}"
-            if hours:
-                heading += f"：{hours:.2f}h"
-            elements.append(_card_collapsible_panel(heading, "\n".join(lines)))
-    else:
-        elements.append(_card_text("- 暂无可核实的完成事项。"))
+            for item in completed
+        ]
+    elements.append(_card_text("**✅ 今日核心推进**  \n按研究主题合并跨应用活动；仅窗口访问不会自动写成完成成果。"))
+    shown = 0
+    for item in themes:
+        status = str(item.get("status") or "observed").casefold()
+        if status not in {"confirmed", "probable", "已形成结果", "已形成结果/仅观察到访问/待确认"}:
+            continue
+        title = _report_text(item.get("theme_name") or item.get("name") or item.get("main_work")) or "未命名主题"
+        detail = _report_text(item.get("summary") or item.get("detail") or item.get("result"))
+        outputs = _report_text(item.get("outputs"))
+        next_step = _report_text(item.get("next_step"))
+        duration = _format_duration(item.get("duration_seconds") or _number(item.get("hours")) * 3600)
+        text = f"**{title}**（投入 {duration}）"
+        for value in (detail, outputs, f"当前状态：{status}" if status else "", f"下一步：{next_step}" if next_step else ""):
+            if value:
+                text += f"\n{value}"
+        elements.append(_card_collapsible_panel(title, text))
+        shown += 1
+        if shown >= 5:
+            break
+    if not shown:
+        elements.append(_card_text("- 暂无可核实的核心推进；窗口访问记录保留在内部账本。"))
 
     investments = [item for item in _report_items(payload.get("time_investment")) if isinstance(item, dict)]
-    total_hours = sum(_number(item.get("hours")) for item in investments)
-    elements.extend([_card_divider(), _card_text("**⏱ 时间投入**  \n按“应用 · 主要工作”拆分；饼图展示各主题时长占比，下面保留精确小时数。")])
-    if investments:
-        chart = _time_investment_chart(investments)
+    theme_rows = [item for item in _report_items(payload.get("themes")) if isinstance(item, dict)]
+    if not theme_rows:
+        grouped = defaultdict(lambda: {"theme_name": "", "duration_seconds": 0.0, "application_breakdown": []})
+        for item in investments:
+            theme = _report_text(item.get("main_work") or item.get("work_item") or item.get("title") or item.get("app_or_topic")) or "未归因活动"
+            grouped[theme]["theme_name"] = theme
+            grouped[theme]["duration_seconds"] += _number(item.get("hours")) * 3600
+            grouped[theme]["application_breakdown"].append(
+                {"application": _display_application(item.get("application") or item.get("app")), "hours": _number(item.get("hours"))}
+            )
+        theme_rows = list(grouped.values())
+    application_time = [
+        item for item in _report_items(payload.get("application_time")) if isinstance(item, dict)
+    ]
+    if not application_time:
+        application_time = [
+            {"application": item.get("application"), "hours": item.get("hours")}
+            for item in investments
+        ]
+    total_hours = sum(_number(item.get("hours")) for item in application_time)
+    elements.extend([_card_divider(), _card_text("**⏱ 研究主题时间**  \n主题为主、应用为辅；饼图单独展示各应用的归因时间。")])
+    if theme_rows:
+        chart = _time_investment_chart(application_time)
         if chart:
             elements.append(chart)
-        for item in investments[:12]:
-            app = _display_application(item.get("application") or item.get("app") or item.get("app_or_topic"))
-            work = _report_text(item.get("main_work") or item.get("work_item") or item.get("title"))
-            label = " · ".join(part for part in (app, work) if part) or "未命名事项"
-            hours = _number(item.get("hours"))
-            share = hours / total_hours * 100 if total_hours else 0.0
-            detail = _report_text(item.get("detail") or item.get("summary"))
-            content = f"**{label}**  {hours:.2f}h ({share:.1f}%)\n{_card_bar(share)}"
+        for item in theme_rows[:8]:
+            theme = _report_text(item.get("theme_name") or item.get("name")) or "未归因活动"
+            seconds = _number(item.get("duration_seconds"))
+            hours = _number(item.get("hours")) or seconds / 3600
+            apps = []
+            for app_row in item.get("application_breakdown") or []:
+                app = _display_application(app_row.get("application") or app_row.get("app"))
+                app_hours = _number(app_row.get("hours"))
+                if app and app_hours:
+                    apps.append(f"{app} · {theme} {_format_duration(app_hours * 3600)}")
+            detail = f"应用明细：{'、'.join(apps)}" if apps else ""
+            content = f"**{theme}**：{_format_duration(seconds or hours * 3600)}"
             if detail:
-                content += f"  {detail}"
-            elements.append(_card_text(content, 1200))
+                content += f"\n{detail}"
+            elements.append(_card_text(content, 1800))
+        elements.append(_card_text("应用归因合计：" + _format_duration(total_hours * 3600)))
         elements.append(_card_text(f"可观测应用/事项合计：**{total_hours:.2f}h**"))
     else:
         elements.append(_card_text("- 暂无可用的应用/事项时长。"))
 
     rhythm = payload.get("rhythm") if isinstance(payload.get("rhythm"), dict) else {}
     concentration = (activity_summary or {}).get("concentration") or {}
+    theme_focus = (activity_summary or {}).get("theme_focus") or {}
     active_hours = _number(rhythm.get("active_hours") or (activity_summary or {}).get("active_hours"))
     away_hours = _number(rhythm.get("away_hours") or (activity_summary or {}).get("away_hours"))
     tracked_hours = active_hours + away_hours
     active_share = active_hours / tracked_hours * 100 if tracked_hours else 0.0
-    app_switch_rate = _number(concentration.get("application_switches_per_active_hour"))
-    window_switch_rate = _number(concentration.get("window_switches_per_active_hour"))
     elements.extend([_card_divider(), _card_text(
-        "**📊 工作节奏**  \n只保留可理解的活动时段、连续工作和切换干扰，不展示原始输入计数。"
+        "**🎯 专注情况**  \n基于有效活动与主题级会话估计，不直接测量心理状态。"
     )])
     elements.append(_card_metric_row([
         ("有效活动", f"{active_hours:.2f}h"),
-        ("活动占比", f"{active_share:.1f}%"),
-        ("最长连续工作", f"{_number(concentration.get('longest_window_session_hours')):.2f}h"),
+        ("主题会话中位数", _format_duration(theme_focus.get("median_focus_session_seconds"))),
+        ("最长连续工作（主题）", _format_duration(theme_focus.get("longest_focus_session_seconds"))),
     ]))
     elements.append(_card_text(
         f"活动/离开  {_card_bar(active_share)}  {active_hours:.2f}h / {away_hours:.2f}h\n"
-        f"切换干扰：每有效小时约 {app_switch_rate:.1f} 次应用切换、{window_switch_rate:.1f} 次窗口切换。"
+        f"25 分钟以上专注占比 { _number(theme_focus.get('focus_over_25m_share_percent')):.0f}%；"
+        f"有效主题切换 {int(_number(theme_focus.get('effective_theme_switches')))} 次；"
+        f"切换间隔中位数 {_format_duration(theme_focus.get('median_effective_switch_interval_seconds'))}。"
     ))
-    focus_sessions = concentration.get("top_focus_sessions") or []
+    focus_sessions = theme_focus.get("top_focus_sessions") or []
     if focus_sessions:
         details = "、".join(
-            f"{_report_text(item.get('title') or item.get('app'))}({_number(item.get('hours')):.2f}h)"
+            f"{_report_text(item.get('theme_name'))}({_format_duration(item.get('seconds'))})"
             for item in focus_sessions[:3]
         )
-        elements.append(_card_text(f"主要连续工作段：{details}"))
+        elements.append(_card_text(f"最长主题会话：{details}"))
 
     documents = payload.get("documents") if isinstance(payload.get("documents"), dict) else {}
     feishu_windows = _feishu_browser_windows(activity_summary)
@@ -394,8 +380,11 @@ def build_daily_report_card(payload, activity_summary=None, document_events_rece
     paper_summary = _report_text(papers.get("summary"))
     paper_ideas = [_clean_item_text(item) for item in _report_items(papers.get("suggestions"))]
     paper_ideas = [value for value in paper_ideas if value]
-    if paper_summary or paper_ideas:
+    paper_status = payload.get("paperread_status") if isinstance(payload.get("paperread_status"), dict) else {}
+    if paper_summary or paper_ideas or paper_status:
         paper_content = "**📚 PaperRead 与研究线索**"
+        if paper_status.get("detail"):
+            paper_content += f"\n{paper_status.get('detail')}"
         if paper_summary:
             paper_content += f"\n{paper_summary}"
         if paper_ideas:
@@ -492,7 +481,7 @@ def _sum_matching_numbers(data, aliases):
     return total
 
 
-class ActivityWatchClient:
+class _ActivityWatchTransport:
     """Small REST client for the local ActivityWatch server."""
 
     def __init__(self, base_url=None, timeout=10):
@@ -538,6 +527,55 @@ class ActivityWatchClient:
                 removed += 1
         return removed
 
+
+def _attribute_window_sequence(sequence):
+    """Attribute each real interval to at most one foreground window.
+
+    ActivityWatch can emit overlapping windows for multiple monitors.  Split
+    at event boundaries and select one candidate for each interval; this
+    keeps screen exposure separate from reportable active time.
+    """
+    if not sequence:
+        return []
+    boundaries = sorted(
+        {
+            timestamp
+            for timestamp, _app, _title, _url, duration in sequence
+            for timestamp in (
+                timestamp,
+                timestamp + timedelta(seconds=max(float(duration), 0.0)),
+            )
+        }
+    )
+    attributed = []
+    for left, right in zip(boundaries, boundaries[1:]):
+        seconds = (right - left).total_seconds()
+        if seconds <= 0:
+            continue
+        midpoint = left + (right - left) / 2
+        candidates = [
+            item
+            for item in sequence
+            if item[0] <= midpoint < item[0] + timedelta(seconds=max(float(item[4]), 0.0))
+        ]
+        if not candidates:
+            continue
+        # The latest foreground event is the least surprising winner when a
+        # stale monitor event overlaps the current active window.
+        chosen = max(candidates, key=lambda item: item[0])
+        attributed.append((left, chosen[1], chosen[2], chosen[3], seconds))
+
+    merged = []
+    for item in attributed:
+        if merged and merged[-1][1:4] == item[1:4] and merged[-1][0] + timedelta(seconds=merged[-1][4]) == item[0]:
+            previous = merged[-1]
+            merged[-1] = (previous[0], previous[1], previous[2], previous[3], previous[4] + item[4])
+        else:
+            merged.append(item)
+    return merged
+
+
+class ActivityWatchClient(_ActivityWatchTransport):
     def summarize(self, start, end):
         apps = defaultdict(float)
         windows = defaultdict(float)
@@ -574,11 +612,16 @@ class ActivityWatchClient:
                     app = str(data.get("app") or data.get("program") or "Unknown")
                     title = str(data.get("title") or "").strip()
                     url = str(data.get("url") or "").strip()
-                    apps[app] += duration
-                    windows[(app, title, url)] += duration
                     if duration > 0:
+                        raw_start = parse_timestamp(event.get("timestamp")).astimezone(timezone.utc)
+                        clipped_start = max(raw_start, start.astimezone(timezone.utc))
+                        clipped_end = min(
+                            raw_start + timedelta(seconds=max(float(event.get("duration", 0) or 0), 0.0)),
+                            end.astimezone(timezone.utc),
+                        )
+                        clipped_duration = max((clipped_end - clipped_start).total_seconds(), 0.0)
                         window_event_sequence.append(
-                            (parse_timestamp(event.get("timestamp")), app, title, url, duration)
+                            (clipped_start, app, title, url, clipped_duration)
                         )
                 elif kind == "afk":
                     raw_start = parse_timestamp(event.get("timestamp"))
@@ -679,6 +722,24 @@ class ActivityWatchClient:
                 for left, right in active_intervals
             )
 
+        screen_exposure_seconds = sum(max(float(item[4]), 0.0) for item in window_event_sequence)
+        window_event_sequence = _attribute_window_sequence(window_event_sequence)
+        attributed_active_seconds = sum(max(float(item[4]), 0.0) for item in window_event_sequence)
+        report_window_seconds = max(
+            (end.astimezone(timezone.utc) - start.astimezone(timezone.utc)).total_seconds(),
+            0.0,
+        )
+        if attributed_active_seconds:
+            active_seconds = max(
+                active_seconds,
+                min(attributed_active_seconds, report_window_seconds),
+            )
+        apps.clear()
+        windows.clear()
+        for timestamp, app, title, url, duration in window_event_sequence:
+            apps[app] += duration
+            windows[(app, title, url)] += duration
+
         # Guard against overlapping watcher classifications producing more
         # tracked time than the actual reporting window.
         window_seconds = max(
@@ -693,6 +754,7 @@ class ActivityWatchClient:
             for values, seconds in sorted(mapping.items(), key=lambda item: item[1], reverse=True):
                 row = dict(zip(fields, values if isinstance(values, tuple) else (values,)))
                 row["hours"] = round(seconds / 3600, 2)
+                row["seconds"] = round(float(seconds), 3)
                 result.append(row)
             return result
 
@@ -824,6 +886,45 @@ class ActivityWatchClient:
             ],
             "observed_window_hours": session_hours(observed_window_seconds),
         }
+        theme_events = [
+            {
+                "timestamp": timestamp.isoformat(),
+                "app": app,
+                "title": title,
+                "url": url,
+                "duration": duration,
+            }
+            for timestamp, app, title, url, duration in window_event_sequence
+        ]
+        theme_sessions = build_theme_sessions(
+            theme_events,
+            switch_min_seconds=float(os.getenv("DAILY_REPORT_SWITCH_MIN_SECONDS", "30")),
+            session_gap_seconds=float(os.getenv("DAILY_REPORT_SESSION_GAP_SECONDS", "180")),
+        )
+        theme_session_seconds = [item["seconds"] for item in theme_sessions]
+        deep_focus_threshold = float(os.getenv("DAILY_REPORT_DEEP_FOCUS_MINUTES", "25")) * 60
+        deep_focus_seconds = sum(item["seconds"] for item in theme_sessions if item["seconds"] >= deep_focus_threshold)
+        switch_intervals = [
+            max((right["start"] - left["end"]).total_seconds(), 0.0)
+            for left, right in zip(theme_sessions, theme_sessions[1:])
+        ]
+        theme_focus = {
+            "median_focus_session_seconds": round(median(theme_session_seconds), 1) if theme_session_seconds else 0.0,
+            "average_focus_session_seconds": round(sum(theme_session_seconds) / len(theme_session_seconds), 1) if theme_session_seconds else 0.0,
+            "longest_focus_session_seconds": round(max(theme_session_seconds), 1) if theme_session_seconds else 0.0,
+            "focus_over_25m_seconds": round(deep_focus_seconds, 1),
+            "focus_over_25m_share_percent": round(deep_focus_seconds / active_seconds * 100, 1) if active_seconds else 0.0,
+            "effective_theme_switches": max(len(theme_sessions) - 1, 0),
+            "median_effective_switch_interval_seconds": round(median(switch_intervals), 1) if switch_intervals else 0.0,
+            "top_focus_sessions": [
+                {
+                    "theme_name": item["theme_name"],
+                    "applications": item.get("applications", []),
+                    "seconds": round(item["seconds"], 1),
+                }
+                for item in sorted(theme_sessions, key=lambda row: row["seconds"], reverse=True)[:5]
+            ],
+        }
         application_switches = 0
         window_switches = 0
         previous_app = None
@@ -864,9 +965,14 @@ class ActivityWatchClient:
             "buckets_found": bucket_counts,
             "rhythm": rhythm,
             "concentration": concentration,
+            "theme_focus": theme_focus,
+            "theme_events": theme_events,
             "application_observed_hours": round(
                 application_observed_seconds / 3600, 2
             ),
+            "screen_exposure_seconds": round(screen_exposure_seconds, 3),
+            "attributed_active_seconds": round(attributed_active_seconds, 3),
+            "attributed_active_hours": round(attributed_active_seconds / 3600, 2),
             "browser_windows": browser_rows,
         }
 
@@ -1120,23 +1226,35 @@ class FeishuClient:
         return data.get("items", [])
 
 
-def message_text(message):
-    """Extract readable text from Feishu text/post/card content."""
+def extract_message_content(message):
+    """Extract text and linked URLs from Feishu text/post/card payloads.
+
+    Feishu may return ``body.content`` as JSON, while links can be stored in
+    ``href``/``url`` fields rather than in the visible text.  Keeping both
+    fields lets PaperRead detection work for structured cards as well as
+    ordinary text messages.
+    """
     content = message.get("body", {}).get("content") or message.get("content") or ""
     if isinstance(content, str):
         try:
             content = json.loads(content)
-        except json.JSONDecodeError:
-            return content
+        except (TypeError, json.JSONDecodeError):
+            return {"text": content, "urls": []}
 
     pieces = []
+    urls = []
 
     def walk(value):
         if isinstance(value, dict):
             for key, child in value.items():
-                if key in {"text", "content"} and isinstance(child, str):
+                key_lower = str(key).casefold()
+                if key_lower in {"url", "href", "link"} and isinstance(child, str):
+                    if child.startswith(("http://", "https://")) and child not in urls:
+                        urls.append(child)
+                    continue
+                if key_lower in {"text", "content"} and isinstance(child, str):
                     pieces.append(child)
-                elif key not in {"url", "href", "image_key"}:
+                elif key_lower not in {"image_key", "token", "file_token"}:
                     walk(child)
         elif isinstance(value, list):
             for child in value:
@@ -1145,7 +1263,15 @@ def message_text(message):
             pieces.append(value)
 
     walk(content)
-    return " ".join(piece.strip() for piece in pieces if piece.strip())
+    return {
+        "text": " ".join(piece.strip() for piece in pieces if piece.strip()),
+        "urls": urls,
+    }
+
+
+def message_text(message):
+    """Extract readable text from Feishu text/post/card content."""
+    return extract_message_content(message)["text"]
 
 
 def _sender_fields(message):
@@ -1166,9 +1292,11 @@ def _sender_fields(message):
     return sender_id, sender_name, sender_type
 
 
-def is_paperread_message(message, text=None):
+def is_paperread_message(message, text=None, urls=None):
     """Identify PaperRead bot messages using sender metadata and message shape."""
-    text = text if text is not None else message_text(message)
+    extracted = extract_message_content(message) if text is None or urls is None else None
+    text = text if text is not None else extracted["text"]
+    urls = urls if urls is not None else extracted["urls"]
     sender_id, sender_name, sender_type = _sender_fields(message)
     configured_ids = {
         value.strip()
@@ -1183,12 +1311,19 @@ def is_paperread_message(message, text=None):
     if "paperread" in f"{sender_name} {sender_id}".lower():
         return True
 
+    # Structured card links may carry the arXiv URL only in href/url fields.
+    combined = f"{text} {' '.join(urls)}"
+    if sender_type.lower() in {"app", "bot"} and re.search(
+        r"arxiv\.org/(?:abs|pdf)/", combined, re.IGNORECASE
+    ) and re.search(r"paper\s*read|recommend|method|review|璁烘枃", combined, re.IGNORECASE):
+        return True
+
     # Fallback for Feishu app messages whose sender name is not included in
     # the history response: PaperRead posts use a category counter and an
     # arXiv link, usually together with recommendation/methodology sections.
     looks_like_paperread = bool(
         re.search(r"(?im)^.{1,100}\s+-\s+\d+\s*/\s*\d+", text)
-        and re.search(r"arxiv\.org/abs/", text, re.IGNORECASE)
+        and re.search(r"arxiv\.org/(?:abs|pdf)/", f"{text} {' '.join(urls)}", re.IGNORECASE)
         and ("推荐" in text or "方法论" in text or "锐评" in text)
     )
     return sender_type.lower() in {"app", "bot"} and looks_like_paperread
@@ -1197,8 +1332,10 @@ def is_paperread_message(message, text=None):
 def normalize_messages(messages):
     normalized = []
     for message in messages:
-        text = message_text(message)
-        if not text:
+        extracted = extract_message_content(message)
+        text = extracted["text"]
+        urls = extracted["urls"]
+        if not text and not urls:
             continue
         sender_id, sender_name, sender_type = _sender_fields(message)
         normalized.append(
@@ -1207,18 +1344,46 @@ def normalize_messages(messages):
                 "sender_type": sender_type,
                 "sender_id": sender_id,
                 "sender_name": sender_name,
-                "is_paperread": is_paperread_message(message, text),
+                "is_paperread": is_paperread_message(message, text, urls),
                 "text": text,
+                "urls": urls,
             }
         )
-    return normalized[-int(os.getenv("DAILY_REPORT_MAX_MESSAGES", "200")) :]
+    return normalized
 
 
 def split_chat_messages(messages):
     """Separate ordinary work chat from PaperRead's paper notifications."""
     paperread = [item for item in messages if item.get("is_paperread")]
     ordinary = [item for item in messages if not item.get("is_paperread")]
-    return ordinary, paperread
+    ordinary_limit = int(os.getenv("DAILY_REPORT_MAX_CHAT_MESSAGES", os.getenv("DAILY_REPORT_MAX_MESSAGES", "200")))
+    paperread_limit = int(os.getenv("DAILY_REPORT_MAX_PAPERREAD_MESSAGES", "100"))
+    return ordinary[-ordinary_limit:], paperread[-paperread_limit:]
+
+
+def paperread_diagnostics(raw_messages, paperread_messages, source_chat_id="", read_error=False):
+    """Return a small, truthful status object for the PaperRead section."""
+    raw_messages = raw_messages or []
+    paperread_messages = paperread_messages or []
+    if read_error:
+        status = "read_error"
+        detail = "独立 PaperRead 群聊读取失败，不能据此判断当天是否有推送"
+    elif paperread_messages:
+        status = "ok"
+        detail = f"识别到 {len(paperread_messages)} 条 PaperRead 消息"
+    elif raw_messages:
+        status = "unrecognized"
+        detail = "读取到群聊消息，但没有匹配到 PaperRead 发件人或论文链接"
+    else:
+        status = "none"
+        detail = "独立 PaperRead 群聊在该时间段没有可读消息"
+    return {
+        "status": status,
+        "detail": detail,
+        "source_chat_id": source_chat_id,
+        "raw_count": len(raw_messages),
+        "recognized_count": len(paperread_messages),
+    }
 
 
 def is_question_message(message):
@@ -1267,7 +1432,8 @@ def collect_knowledge_documents(client, paperread_messages):
     seen_urls = set()
     link_pattern = re.compile(r"https?://[^/\s]+/(?:docx|wiki)/[A-Za-z0-9_-]+")
     for message in paperread_messages:
-        for url in link_pattern.findall(message.get("text", "")):
+        candidates = [message.get("text", "")] + list(message.get("urls") or [])
+        for url in link_pattern.findall(" ".join(candidates)):
             if url in seen_urls:
                 continue
             seen_urls.add(url)
@@ -1515,12 +1681,16 @@ def _topic_label(app, title, url=""):
 
 
 def _topic_time_ledger(activity_summary):
-    """Aggregate observable window time by application and conservative topic."""
+    """Aggregate attributed window time by application and conservative topic."""
+    classifier = TopicClassifier()
     grouped = defaultdict(lambda: {"hours": 0.0, "evidence": []})
     for row in (activity_summary or {}).get("windows") or []:
         app = _display_application(row.get("app"))
         title = _clean_window_title(row.get("title") or row.get("context"))
         url = str(row.get("context") or row.get("url") or "").strip()
+        match = classifier.classify(app, title, url, row)
+        if match.visibility in {"system_noise", "non_work"}:
+            continue
         topic = _topic_label(app, title, url)
         key = (app, topic)
         grouped[key]["hours"] += _number(row.get("hours"))
@@ -1537,6 +1707,70 @@ def _topic_time_ledger(activity_summary):
             }
         )
     return rows[:40]
+
+
+def _theme_time_ledger(activity_summary):
+    """Aggregate attributed time across applications into research themes."""
+    classifier = TopicClassifier()
+    grouped = {}
+    application_totals = defaultdict(float)
+    for row in (activity_summary or {}).get("windows") or []:
+        app = _display_application(row.get("app"))
+        title = _clean_window_title(row.get("title") or row.get("context"))
+        url = str(row.get("context") or row.get("url") or "").strip()
+        seconds = max(
+            _number(row.get("seconds"))
+            if row.get("seconds") is not None
+            else _number(row.get("hours")) * 3600.0,
+            0.0,
+        )
+        match = classifier.classify(app, title, url, row)
+        if seconds <= 0 or match.visibility in {"system_noise", "non_work"}:
+            continue
+        item = grouped.setdefault(
+            match.theme_id,
+            {
+                "theme_id": match.theme_id,
+                "theme_name": match.theme_name,
+                "duration_seconds": 0.0,
+                "applications": [],
+                "application_breakdown": defaultdict(float),
+                "activities": [],
+                "visibility": match.visibility,
+                "confidence": match.confidence,
+            },
+        )
+        item["duration_seconds"] += seconds
+        item["application_breakdown"][app] += seconds
+        if app not in item["applications"]:
+            item["applications"].append(app)
+        if title and title not in item["activities"]:
+            item["activities"].append(title)
+        application_totals[app] += seconds
+
+    themes = []
+    for item in grouped.values():
+        item["duration_seconds"] = round(item["duration_seconds"], 3)
+        item["duration_minutes"] = round(item["duration_seconds"] / 60.0, 1)
+        item["application_breakdown"] = [
+            {"application": app, "hours": round(seconds / 3600.0, 2)}
+            for app, seconds in sorted(item["application_breakdown"].items(), key=lambda pair: pair[1], reverse=True)
+        ]
+        themes.append(item)
+    themes.sort(key=lambda item: item["duration_seconds"], reverse=True)
+    return themes, [
+        {"application": app, "hours": round(seconds / 3600.0, 2)}
+        for app, seconds in sorted(application_totals.items(), key=lambda pair: pair[1], reverse=True)
+    ]
+
+
+def _format_duration(seconds):
+    seconds = max(int(round(_number(seconds))), 0)
+    minutes = int(round(seconds / 60.0))
+    if minutes < 60:
+        return f"{minutes} 分钟"
+    hours, remainder = divmod(minutes, 60)
+    return f"{hours} 小时" + (f" {remainder} 分钟" if remainder else "")
 
 
 def _activity_context(activity_summary):
@@ -1573,6 +1807,60 @@ def enrich_report_payload(payload, activity_summary=None, document_activity=None
     result = dict(payload or {})
     activity_summary = activity_summary or {}
     document_activity = document_activity or []
+
+    theme_ledger, application_totals = _theme_time_ledger(activity_summary)
+    model_themes = _report_items(result.get("themes"))
+    model_by_name = {
+        _report_text(item.get("theme_name") or item.get("name") or item.get("title")).casefold(): item
+        for item in model_themes
+        if isinstance(item, dict)
+    }
+    model_by_id = {
+        str(item.get("theme_id") or item.get("id") or "").casefold(): item
+        for item in model_themes
+        if isinstance(item, dict) and str(item.get("theme_id") or item.get("id") or "").strip()
+    }
+    visible_themes = []
+    unclassified = []
+    min_theme_seconds = max(_number(os.getenv("DAILY_REPORT_MIN_THEME_MINUTES", "10")), 0.0) * 60.0
+    for measured in theme_ledger:
+        if measured["visibility"] == "unknown":
+            unclassified.append(measured)
+            continue
+        narrative = model_by_id.get(measured["theme_id"].casefold()) or model_by_name.get(measured["theme_name"].casefold(), {})
+        narrative_status = str(narrative.get("status") or "").casefold()
+        core_min_seconds = max(_number(os.getenv("DAILY_REPORT_MIN_CORE_THEME_MINUTES", "20")), 0.0) * 60.0
+        if (
+            measured["duration_seconds"] < min_theme_seconds
+            and narrative_status not in {"confirmed", "probable"}
+        ) or (
+            measured["visibility"] == "core"
+            and measured["duration_seconds"] < core_min_seconds
+            and narrative_status not in {"confirmed", "probable"}
+        ):
+            unclassified.append(measured)
+            continue
+        merged = dict(measured)
+        for key in ("summary", "outputs", "status", "next_step", "confidence", "evidence_refs"):
+            if narrative.get(key) not in (None, "", [], {}):
+                merged[key] = narrative[key]
+        merged.setdefault("status", "observed")
+        visible_themes.append(merged)
+    if visible_themes:
+        result["themes"] = visible_themes[:8]
+        result["application_time"] = application_totals
+    appendix = dict(result.get("appendix") or {})
+    appendix["unclassified_activity"] = unclassified[:20]
+    result["appendix"] = appendix
+    visible_app_totals = defaultdict(float)
+    for theme in visible_themes:
+        for row in theme.get("application_breakdown") or []:
+            visible_app_totals[row["application"]] += _number(row.get("hours")) * 3600.0
+    result["application_time"] = [
+        {"application": app, "hours": round(seconds / 3600.0, 2)}
+        for app, seconds in sorted(visible_app_totals.items(), key=lambda pair: pair[1], reverse=True)
+    ]
+    result["themes"] = visible_themes[:8]
 
     ledger = _topic_time_ledger(activity_summary)
     if ledger:
@@ -1657,68 +1945,91 @@ def render_report_payload(payload, activity_summary=None, document_events_receiv
     """Render the compact report with only user-facing summary fields."""
     date = _report_text(payload.get("date")) or "工作日报"
     lines = [f"📅 工作日报 {date}", "", "✅ 今日完成"]
-    _append_clean_items(lines, payload.get("today_completed"))
+    themes = [item for item in _report_items(payload.get("themes")) if isinstance(item, dict)]
+    if themes:
+        shown = 0
+        for item in themes:
+            status = str(item.get("status") or "observed").casefold()
+            if status not in {"confirmed", "probable", "已形成结果", "已形成结果/仅观察到访问/待确认"}:
+                continue
+            title = _report_text(item.get("theme_name") or item.get("name") or item.get("main_work")) or "未命名主题"
+            detail = _report_text(item.get("summary") or item.get("detail"))
+            duration = _format_duration(item.get("duration_seconds") or _number(item.get("hours")) * 3600)
+            line = f"- {title}（投入 {duration}）"
+            if detail:
+                line += f"：{detail}"
+            lines.append(line)
+            shown += 1
+            if shown >= 5:
+                break
+        if not shown:
+            lines.append("- 暂无可核实的核心推进；窗口访问记录不列入正文。")
+    else:
+        _append_clean_items(lines, payload.get("today_completed"))
 
-    lines.extend(["", "⏱ 时间投入"])
-    investments = _report_items(payload.get("time_investment"))
-    if investments:
-        listed_hours = sum(
+    lines.extend(["", "⏱ 研究主题时间"])
+    theme_rows = [item for item in _report_items(payload.get("themes")) if isinstance(item, dict)]
+    observed_total = _number((activity_summary or {}).get("application_observed_hours"))
+    if not observed_total:
+        observed_total = sum(
             _number(item.get("hours"))
-            for item in investments
+            for item in _report_items((activity_summary or {}).get("applications"))
             if isinstance(item, dict)
         )
-        if listed_hours:
-            lines.append(
-                f"- 可观测应用/事项合计：{listed_hours:.2f}h（以下百分比按此合计计算）"
-            )
-        for item in investments:
-            if not isinstance(item, dict):
-                lines.append(f"- {_report_text(item)}")
-                continue
-            label = " · ".join(
-                part for part in (
-                    _report_text(item.get("application") or item.get("app")),
-                    _report_text(item.get("main_work") or item.get("work_item") or item.get("app_or_topic") or item.get("title") or item.get("name")),
-                ) if part
-            ) or "事项"
+    if theme_rows:
+        for item in theme_rows[:8]:
+            title = _report_text(item.get("theme_name") or item.get("name")) or "未归因活动"
+            duration = _format_duration(item.get("duration_seconds") or _number(item.get("hours")) * 3600)
+            apps = []
+            for app_row in item.get("application_breakdown") or []:
+                app = _display_application(app_row.get("application") or app_row.get("app"))
+                if app:
+                    apps.append(f"{app} {_format_duration(_number(app_row.get('hours')) * 3600)}")
+            lines.append(f"- {title}：{duration}" + (f"（{ '、'.join(apps) }）" if apps else ""))
+        if observed_total:
+            lines.append(f"- 可观测应用/事项合计：{observed_total:.2f}h")
+    elif _report_items(payload.get("time_investment")):
+        investments = [item for item in _report_items(payload.get("time_investment")) if isinstance(item, dict)]
+        total_investment = sum(_number(item.get("hours")) for item in investments)
+        lines.append(f"- 可观测应用/事项合计：{total_investment:.2f}h")
+        for item in investments[:8]:
+            label = _report_text(item.get("application") or item.get("app") or item.get("app_or_topic")) or "未归因"
             hours = _number(item.get("hours"))
-            share = hours / listed_hours * 100 if listed_hours else 0.0
-            duration = _report_hours(hours)
-            detail = _report_text(item.get("detail") or item.get("summary"))
-            line = f"- {label}：{duration}（{share:.1f}%）"
-            if detail:
-                line += f"，{detail}"
-            evidence = item.get("evidence")
-            if isinstance(evidence, list) and evidence:
-                line += f"；证据：{'、'.join(str(value) for value in evidence[:3])}"
-            lines.append(line)
+            share = hours / total_investment * 100 if total_investment else 0.0
+            lines.append(f"- {label}：{hours:.2f}h（{share:.1f}%）")
+        if observed_total:
+            lines.append(f"- 可观测应用/事项合计：{observed_total:.2f}h")
     else:
         lines.append("- 暂无")
+    # Keep a compact compatibility line for legacy payloads that have no
+    # deterministic theme ledger; modern theme payloads keep raw evidence out
+    # of the main report.
+    if not theme_rows and (activity_summary or {}).get("browser_windows"):
+        browser_items = []
+        for row in (activity_summary or {}).get("browser_windows")[:5]:
+            title = _clean_window_title(row.get("title") or row.get("context"))
+            browser_items.append(f"{title}({_report_hours(row.get('hours'))})")
+        if browser_items:
+            lines.append("- 浏览器窗口记录：" + "、".join(browser_items))
 
-    lines.extend(["", "📊 工作节奏"])
+    lines.extend(["", "🎯 专注情况（📊 工作节奏）"])
     rhythm = payload.get("rhythm") if isinstance(payload.get("rhythm"), dict) else {}
     activity_rhythm = (activity_summary or {}).get("rhythm") or {}
     concentration = (activity_summary or {}).get("concentration") or {}
+    theme_focus = (activity_summary or {}).get("theme_focus") or {}
     active_hours = _number(rhythm.get("active_hours") or (activity_summary or {}).get("active_hours"))
     away_hours = _number(rhythm.get("away_hours") or (activity_summary or {}).get("away_hours"))
     active_share = active_hours / (active_hours + away_hours) * 100 if active_hours + away_hours else 0.0
     lines.append(f"- 有效活动 {active_hours:.2f}h，离开 {away_hours:.2f}h，活动占比 {active_share:.1f}%")
     lines.append(
-        f"- 最长连续工作 {_number(concentration.get('longest_window_session_hours')):.2f}h，"
-        f"深度工作时段 {_number(concentration.get('deep_focus_hours')):.2f}h"
+        f"- 主题会话中位数 {_format_duration(theme_focus.get('median_focus_session_seconds'))}，"
+        f"最长 {_format_duration(theme_focus.get('longest_focus_session_seconds'))}；"
+        f"25 分钟以上占比 {_number(theme_focus.get('focus_over_25m_share_percent')):.0f}%"
     )
     lines.append(
-        f"- 切换干扰：每有效小时约 "
-        f"{_number(concentration.get('application_switches_per_active_hour') or activity_rhythm.get('application_switches_per_active_hour')):.1f} 次应用切换、"
-        f"{_number(concentration.get('window_switches_per_active_hour') or activity_rhythm.get('window_switches_per_active_hour')):.1f} 次窗口切换"
+        f"- 有效主题切换 {int(_number(theme_focus.get('effective_theme_switches')))} 次，"
+        f"切换间隔中位数 {_format_duration(theme_focus.get('median_effective_switch_interval_seconds'))}"
     )
-    browser_windows = (activity_summary or {}).get("browser_windows") or []
-    if browser_windows:
-        browser_details = []
-        for window in browser_windows[:5]:
-            label = _clean_window_title(window.get("title") or window.get("app") or "未知窗口")
-            browser_details.append(f"{label}({_number(window.get('hours')):.2f}h)")
-        lines.append(f"- 浏览器窗口记录：{'、'.join(browser_details)}")
 
     lines.append("")
     concentration = payload.get("concentration") if isinstance(payload.get("concentration"), dict) else {}
@@ -1792,6 +2103,7 @@ def generate_report_payload(
     knowledge_documents=None,
     document_activity=None,
     question_messages=None,
+    paperread_status=None,
 ):
     """Generate the structured data used by both card and Wiki renderers."""
     from llm_client import llm
@@ -1800,13 +2112,14 @@ def generate_report_payload(
     knowledge_documents = knowledge_documents or []
     document_activity = document_activity or []
     question_messages = question_messages or []
+    paperread_status = paperread_status or paperread_diagnostics([], paperread_messages)
     chat_text = _bounded_context(
         chat_messages,
         lambda item: f"[{item['time']}] ({item['sender_type']}) {item['text']}",
     ) or "（今天没有可读的群聊文本消息）"
     paperread_text = _bounded_context(
         paperread_messages,
-        lambda item: f"[{item['time']}] {item['text']}",
+        lambda item: f"[{item['time']}] {item['text']} {' '.join(item.get('urls') or [])}",
     ) or "（今天没有识别到 PaperRead 论文推送）"
     knowledge_text = _bounded_context(
         knowledge_documents,
@@ -1851,6 +2164,7 @@ ActivityWatch 数据（已去除键盘/鼠标原始计数）：
 
 PaperRead 今日推送：
 {paperread_text}
+PaperRead status: {json.dumps(paperread_status, ensure_ascii=False)}
 
 PaperRead 关联文档：
 {knowledge_text}
@@ -1862,32 +2176,51 @@ PaperRead 关联文档：
 {question_text}
 
 要求：
-1. 报告要像工作汇报：先概括每个应用实际支持的工作主题、产出和当前状态，再列数据。不要把“打开窗口/停留页面”直接写成“完成调研/完成配置”。
-2. 今日完成按应用组织，尤其详细拆解浏览器中的主题。对每个应用至少说明：主要主题、查阅/编辑/配置的具体对象、已形成的结果或仍待确认的部分。窗口标题只能证明访问或停留；只有群聊、文档变更或明确文本证据才能表述为已完成成果。
-3. 时间投入必须逐条对应“应用 · 主题”，严格使用“应用—主题时长账本”拆分。例如 Microsoft Edge · GeoCoT、Microsoft Edge · Agent、Microsoft Edge · 飞书文档与协作，不得只输出 Microsoft Edge 总时长。hours 只能来自账本，detail 说明该主题对应的窗口证据。
+1. 报告要像科研工作汇报：先按研究主题概括今日动作、已形成结果和当前状态，再列主题时间。不要把“打开窗口/停留页面”直接写成“完成调研/完成配置”。
+2. 今日核心推进按主题组织，跨 Edge、飞书、VS Code、微信和 ChatGPT 的同一主题必须合并；只展示 confirmed 或高置信度 probable，最多 3-5 个主题。窗口标题只能证明访问或停留；只有群聊、文档变更、代码修改或明确文本证据才能表述为已形成结果。
+3. 时间投入必须以主题为一级条目，并在每个主题下列出应用及其归因时长。严格使用确定性“主题—应用时长账本”，不得重新计算或修改 hours。
 4. 浏览器标题中的“和另外 N 个页面”、个人标记和不可见字符不是工作内容，忽略这些噪声；使用清理后的核心标题和主题分类。无法确认主题时写“未能从窗口标题确认主题”，不要臆测。
-5. “工作节奏”只保留有效活动时长、离开时长、活动占比、最长连续工作段、深度工作时段和切换干扰的可读描述；不要输出键盘次数、鼠标点击次数或每次原始切换总数，也不要把这些信号解释为心理状态。
-5. 所有时间使用小时 h。
-6. PaperRead 只输出整体总结和最多 3 条未来研究建议，不逐篇复述论文。
-7. 飞书文档部分必须填写 collaboration_summary 和 related_work：把文档事件（例如 SUM、FantasyVLN 的修改时间）与 Edge 中飞书页面主题对应起来，说明可确认的操作（查看、编辑、更新、权限配置等）及其证据；不能虚构正文改动。文档变更按新增、修改、删除/回收分类。如果“飞书直接变更事件”为空，必须写成“未收到事件，无法确认当天无变更”，不能直接断言“暂无变更”。
-9. 可观测操作焦点只描述窗口、显示器和时间段，不描述心理状态，并合并到工作节奏。
-10. 明日计划必须保留 tasks，并额外填写 idea_suggestions（1-5 条）。每条 idea 必须同时连接 PaperRead 今日推送中的具体方向、今日已完成工作或时间投入中的具体对象，并给出下一步可验证动作；如果证据不足，明确标注为待验证假设，不要编造论文结论。
-11. 必须保留 risks 和 questions 字段，即使为空也返回空数组。
-12. 只返回一个 JSON 对象，不要 Markdown 或解释文字。
+5. “专注情况”只保留有效活动时长、主题级专注会话中位数/平均值/最长值、25分钟以上专注占比、有效主题切换次数和切换间隔中位数；不要输出键盘次数、鼠标点击次数或原始窗口切换总数，也不要把这些信号解释为心理状态。
+6. 所有时间使用秒或分钟字段，正文由程序格式化为“小时+分钟”。
+7. PaperRead 只输出整体总结和最多 3 条未来研究建议，不逐篇复述论文。
+8. 飞书文档部分必须填写 collaboration_summary 和 related_work：将文档事件与对应研究主题关联，说明可确认的操作；不能虚构正文改动。
+9. 明日计划必须保留 tasks，并额外填写 idea_suggestions（1-5条），每条结合 PaperRead 今日推送与今日研究主题给出可验证下一步。
+10. 必须保留 risks 和 questions 字段，即使为空也返回空数组。
+11. 只返回一个 JSON 对象，不要 Markdown 或解释文字。
 
 JSON 格式：
-{{"date":"YYYY-MM-DD","today_completed":[{{"application":"","main_work":"","detail":"","evidence":"","status":"已形成结果/仅观察到访问/待确认"}}],"time_investment":[{{"application":"","main_work":"","hours":0,"share_percent":0,"detail":"","evidence":[]}}],"rhythm":{{"active_hours":0,"away_hours":0,"active_share_percent":0,"summary":"","findings":[{{"title":"","detail":""}}]}},"concentration":{{"summary":"","findings":[{{"title":"","detail":""}}]}},"tomorrow_plan":{{"tasks":[{{"title":"","detail":""}}],"idea_suggestions":[{{"title":"","detail":"","source":"","next_step":""}}]}},"idea_suggestions":[],"risks":[{{"title":"","detail":""}}],"papers":{{"summary":"","suggestions":[{{"title":"","detail":""}}]}},"documents":{{"collaboration_summary":"","related_work":[{{"title":"","application":"","action":"","detail":"","evidence":""}}],"added":[],"modified":[],"deleted":[]}},"questions":[{{"title":"","answer":""}}]}}
+{{"date":"YYYY-MM-DD","summary":{{"headline":"","main_progress":""}},"themes":[{{"theme_id":"","theme_name":"","summary":"","outputs":[],"status":"confirmed|probable|observed","next_step":"","confidence":0.0}}],"today_completed":[],"time_investment":[],"rhythm":{{"active_hours":0,"away_hours":0,"active_share_percent":0}},"concentration":{{"summary":"","findings":[]}},"tomorrow_plan":{{"tasks":[{{"title":"","detail":""}}],"idea_suggestions":[{{"title":"","detail":"","source":"","next_step":""}}]}},"idea_suggestions":[],"risks":[{{"title":"","detail":""}}],"papers":{{"summary":"","suggestions":[{{"title":"","detail":""}}]}},"documents":{{"collaboration_summary":"","related_work":[{{"title":"","application":"","action":"","detail":"","evidence":""}}],"added":[],"modified":[],"deleted":[]}},"questions":[{{"title":"","answer":""}}]}}
 """
     response = llm.call(
         [{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
         response_validator=parse_report_payload,
     )
-    return enrich_report_payload(
+    enriched = enrich_report_payload(
         parse_report_payload(response),
         activity_summary=activity_summary,
         document_activity=document_activity,
     )
+    enriched["paperread_status"] = paperread_status
+    focus = dict((activity_summary or {}).get("theme_focus") or {})
+    focus.update(
+        {
+            "active_seconds": round(
+                _number((activity_summary or {}).get("attributed_active_seconds"))
+                or _number((activity_summary or {}).get("active_hours")) * 3600,
+                1,
+            ),
+            "away_seconds": round(_number((activity_summary or {}).get("away_hours")) * 3600, 1),
+        }
+    )
+    enriched["focus"] = focus
+    enriched["paperread"] = {
+        "status": paperread_status.get("status"),
+        "messages_read": paperread_status.get("raw_count", 0),
+        "messages_recognized": paperread_status.get("recognized_count", 0),
+        "diagnostics": paperread_status,
+    }
+    return enriched
 
 
 def generate_report(
@@ -1958,10 +2291,29 @@ def write_monthly_report(client, report, report_date):
 def run_report():
     start, end = reporting_window()
     chat_id = os.environ["DAILY_REPORT_FEISHU_CHAT_ID"]
+    paperread_chat_id = os.getenv("DAILY_REPORT_PAPERREAD_CHAT_ID", chat_id).strip() or chat_id
     activity = ActivityWatchClient().summarize(start, end)
     client = FeishuClient()
-    messages = normalize_messages(client.list_messages(chat_id, start, end))
-    ordinary_messages, paperread_messages = split_chat_messages(messages)
+    raw_messages = client.list_messages(chat_id, start, end)
+    messages = normalize_messages(raw_messages)
+    paperread_read_error = False
+    if paperread_chat_id == chat_id:
+        ordinary_messages, paperread_messages = split_chat_messages(messages)
+        paperread_raw_messages = raw_messages
+    else:
+        ordinary_messages, _embedded_paperread = split_chat_messages(messages)
+        try:
+            paperread_raw_messages = client.list_messages(paperread_chat_id, start, end)
+            paperread_messages = [item for item in normalize_messages(paperread_raw_messages) if item.get("is_paperread")]
+        except Exception:
+            paperread_raw_messages = []
+            paperread_messages = []
+            paperread_read_error = True
+    paperread_status = paperread_diagnostics(
+        paperread_raw_messages, paperread_messages, paperread_chat_id, paperread_read_error
+    )
+    if os.getenv("DAILY_REPORT_SHOW_DEBUG_APPENDIX", "0") == "1":
+        print(f"PaperRead diagnostics: {json.dumps(paperread_status, ensure_ascii=False)}", flush=True)
     question_messages = extract_question_messages(ordinary_messages)
     ordinary_messages = [item for item in ordinary_messages if item not in question_messages]
     knowledge_documents = collect_knowledge_documents(client, paperread_messages)
@@ -1973,6 +2325,7 @@ def run_report():
         knowledge_documents,
         document_activity,
         question_messages,
+        paperread_status,
     )
     report = render_report_payload(
         report_payload,
@@ -2008,10 +2361,29 @@ def main():
         return
     start, end = reporting_window()
     chat_id = os.environ["DAILY_REPORT_FEISHU_CHAT_ID"]
+    paperread_chat_id = os.getenv("DAILY_REPORT_PAPERREAD_CHAT_ID", chat_id).strip() or chat_id
     activity = ActivityWatchClient().summarize(start, end)
     client = FeishuClient()
-    messages = normalize_messages(client.list_messages(chat_id, start, end))
-    ordinary_messages, paperread_messages = split_chat_messages(messages)
+    raw_messages = client.list_messages(chat_id, start, end)
+    messages = normalize_messages(raw_messages)
+    paperread_read_error = False
+    if paperread_chat_id == chat_id:
+        ordinary_messages, paperread_messages = split_chat_messages(messages)
+        paperread_raw_messages = raw_messages
+    else:
+        ordinary_messages, _embedded_paperread = split_chat_messages(messages)
+        try:
+            paperread_raw_messages = client.list_messages(paperread_chat_id, start, end)
+            paperread_messages = [item for item in normalize_messages(paperread_raw_messages) if item.get("is_paperread")]
+        except Exception:
+            paperread_raw_messages = []
+            paperread_messages = []
+            paperread_read_error = True
+    paperread_status = paperread_diagnostics(
+        paperread_raw_messages, paperread_messages, paperread_chat_id, paperread_read_error
+    )
+    if os.getenv("DAILY_REPORT_SHOW_DEBUG_APPENDIX", "0") == "1":
+        print(f"PaperRead diagnostics: {json.dumps(paperread_status, ensure_ascii=False)}", flush=True)
     question_messages = extract_question_messages(ordinary_messages)
     ordinary_messages = [item for item in ordinary_messages if item not in question_messages]
     knowledge_documents = collect_knowledge_documents(client, paperread_messages)
@@ -2023,6 +2395,7 @@ def main():
         knowledge_documents,
         document_activity,
         question_messages,
+        paperread_status,
     )
     report = render_report_payload(
         report_payload,

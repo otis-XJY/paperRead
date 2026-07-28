@@ -89,6 +89,7 @@ DAILY_REPORT_QUESTION_SENDER_ID    # 推荐，配置要识别其问题的 sender
 DAILY_REPORT_QUESTION_SENDER_NAME  # 可选，仅在 API 不返回 sender ID 时使用
 DAILY_REPORT_PAPERREAD_SENDER_ID   # 可选，PaperRead 机器人的 sender ID
 DAILY_REPORT_PAPERREAD_APP_ID      # 可选，PaperRead 的 app ID
+DAILY_REPORT_PAPERREAD_CHAT_ID     # 可选；单独读取 PaperRead 推送群聊
 ```
 
 未配置 `DAILY_REPORT_QUESTION_SENDER_ID` 和 `DAILY_REPORT_QUESTION_SENDER_NAME` 时，日报不会识别任何个人的群聊问题。`DAILY_REPORT_FEISHU_CHAT_ID` 必须继续作为 Repository secret 保存；它决定只读取和回发哪个群聊，不应改为公开变量。
