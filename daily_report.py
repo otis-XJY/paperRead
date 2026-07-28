@@ -7,6 +7,7 @@ self-hosted Windows runner. It does not persist chat or ActivityWatch data.
 from __future__ import annotations
 
 import argparse
+import heapq
 import json
 import os
 import re
@@ -547,33 +548,58 @@ def _attribute_window_sequence(sequence):
     """
     if not sequence:
         return []
-    boundaries = sorted(
-        {
-            timestamp
-            for timestamp, _app, _title, _url, duration in sequence
-            for timestamp in (
-                timestamp,
-                timestamp + timedelta(seconds=max(float(duration), 0.0)),
-            )
-        }
-    )
+    attribution_started = time_module.monotonic()
+    _progress("ActivityWatch: 开始多显示器时间归因", events=len(sequence))
+
+    # Sweep interval boundaries once.  The old implementation scanned the
+    # full event list for every boundary (O(n²)); a busy ActivityWatch day can
+    # contain tens of thousands of samples.  The heap keeps the most recent
+    # active foreground event available in O(log n) per start/end event.
+    started = defaultdict(list)
+    ended = defaultdict(list)
+    records = []
+    boundaries = set()
+    for index, item in enumerate(sequence):
+        timestamp, app, title, url, raw_duration = item
+        duration = max(float(raw_duration), 0.0)
+        if duration <= 0:
+            continue
+        end = timestamp + timedelta(seconds=duration)
+        records.append((index, timestamp, end, app, title, url))
+        started[timestamp].append(index)
+        ended[end].append(index)
+        boundaries.add(timestamp)
+        boundaries.add(end)
+    if not records:
+        return []
+
+    record_by_index = {
+        index: (timestamp, end, app, title, url)
+        for index, timestamp, end, app, title, url in records
+    }
+    active = set()
+    # (-timestamp, -index, index) makes the latest event the winner; index is
+    # a deterministic tie-breaker when two monitors report the same timestamp.
+    heap = []
     attributed = []
-    for left, right in zip(boundaries, boundaries[1:]):
+    ordered_boundaries = sorted(boundaries)
+    for boundary_index, (left, right) in enumerate(zip(ordered_boundaries, ordered_boundaries[1:]), 1):
+        for index in ended.get(left, ()):
+            active.discard(index)
+        for index in started.get(left, ()):
+            timestamp = record_by_index[index][0]
+            active.add(index)
+            heapq.heappush(heap, (-timestamp.timestamp(), -index, index))
+        while heap and heap[0][2] not in active:
+            heapq.heappop(heap)
         seconds = (right - left).total_seconds()
-        if seconds <= 0:
+        if seconds <= 0 or not heap:
             continue
-        midpoint = left + (right - left) / 2
-        candidates = [
-            item
-            for item in sequence
-            if item[0] <= midpoint < item[0] + timedelta(seconds=max(float(item[4]), 0.0))
-        ]
-        if not candidates:
-            continue
-        # The latest foreground event is the least surprising winner when a
-        # stale monitor event overlaps the current active window.
-        chosen = max(candidates, key=lambda item: item[0])
-        attributed.append((left, chosen[1], chosen[2], chosen[3], seconds))
+        chosen_index = heap[0][2]
+        _timestamp, _end, app, title, url = record_by_index[chosen_index]
+        attributed.append((left, app, title, url, seconds))
+        if boundary_index % 10000 == 0:
+            _progress("ActivityWatch: 多显示器时间归因进度", boundaries=boundary_index, total_boundaries=len(ordered_boundaries))
 
     merged = []
     for item in attributed:
@@ -582,6 +608,13 @@ def _attribute_window_sequence(sequence):
             merged[-1] = (previous[0], previous[1], previous[2], previous[3], previous[4] + item[4])
         else:
             merged.append(item)
+    _progress(
+        "ActivityWatch: 多显示器时间归因完成",
+        events=len(sequence),
+        boundaries=len(ordered_boundaries),
+        attributed_segments=len(merged),
+        elapsed_seconds=round(time_module.monotonic() - attribution_started, 2),
+    )
     return merged
 
 
