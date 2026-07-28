@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import re
+import time as time_module
 from collections import defaultdict
 from datetime import datetime, time as dt_time, timedelta, timezone
 from statistics import median
@@ -35,6 +36,15 @@ except ImportError:
 FEISHU_BASE = "https://open.feishu.cn/open-apis"
 DEFAULT_AW_URL = "http://127.0.0.1:5600"
 DEFAULT_TIMEZONE = "Asia/Shanghai"
+
+
+def _progress(message, **fields):
+    """Emit a timestamped, non-sensitive progress line for CI diagnostics."""
+    if os.getenv("DAILY_REPORT_PROGRESS", "1").strip().lower() in {"0", "false", "off", "no"}:
+        return
+    suffix = " ".join(f"{key}={value}" for key, value in fields.items())
+    stamp = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z")
+    print(f"[DailyReport {stamp}] {message}" + (f" | {suffix}" if suffix else ""), flush=True)
 
 
 DAILY_REPORT_CARD_HEADINGS = (
@@ -577,6 +587,7 @@ def _attribute_window_sequence(sequence):
 
 class ActivityWatchClient(_ActivityWatchTransport):
     def summarize(self, start, end):
+        _progress("ActivityWatch: 开始读取活动数据", start=start.isoformat(), end=end.isoformat())
         apps = defaultdict(float)
         windows = defaultdict(float)
         afk_seconds = 0.0
@@ -600,6 +611,7 @@ class ActivityWatchClient(_ActivityWatchTransport):
                 kind = "focus"
             else:
                 continue
+            _progress("ActivityWatch: 读取 bucket", kind=kind)
             bucket_counts[kind] += 1
             try:
                 events = self.events(bucket_id, start, end)
@@ -954,7 +966,7 @@ class ActivityWatchClient(_ActivityWatchTransport):
                 input_totals["mouse_clicks"] / active_hours, 1
             ) if active_hours else 0.0,
         }
-        return {
+        result = {
             "period": {"start": start.isoformat(), "end": end.isoformat()},
             "active_hours": round(active_seconds / 3600, 2),
             "away_hours": round(afk_seconds / 3600, 2),
@@ -975,6 +987,14 @@ class ActivityWatchClient(_ActivityWatchTransport):
             "attributed_active_hours": round(attributed_active_seconds / 3600, 2),
             "browser_windows": browser_rows,
         }
+        _progress(
+            "ActivityWatch: 活动数据读取完成",
+            active_hours=result["active_hours"],
+            attributed_hours=result["attributed_active_hours"],
+            screen_exposure_hours=round(result["screen_exposure_seconds"] / 3600, 2),
+            window_rows=len(window_rows),
+        )
+        return result
 
 
 class FeishuClient:
@@ -1016,9 +1036,12 @@ class FeishuClient:
             raise RuntimeError(str(exc)) from exc
 
     def list_messages(self, chat_id, start, end):
+        _progress("飞书消息：开始读取群聊历史", start=start.isoformat(), end=end.isoformat())
         messages = []
         page_token = None
+        page_number = 0
         while True:
+            page_number += 1
             params = {
                 "container_id_type": "chat",
                 "container_id": chat_id,
@@ -1030,10 +1053,13 @@ class FeishuClient:
             if page_token:
                 params["page_token"] = page_token
             data = self._request("GET", "/im/v1/messages", params=params)
-            messages.extend(data.get("items", []))
+            page_items = data.get("items", [])
+            messages.extend(page_items)
+            _progress("飞书消息：收到分页", page=page_number, page_items=len(page_items), total=len(messages))
             if not data.get("has_more") or not data.get("page_token"):
                 break
             page_token = data["page_token"]
+        _progress("飞书消息：群聊历史读取完成", total=len(messages), pages=page_number)
         return messages
 
     def list_document_blocks(self, document_id):
@@ -1425,9 +1451,11 @@ def extract_question_messages(messages):
 def collect_knowledge_documents(client, paperread_messages):
     """Read linked Feishu knowledge-base documents referenced by PaperRead."""
     if os.getenv("DAILY_REPORT_KNOWLEDGE_BASE_ENABLED", "1") != "1":
+        _progress("PaperRead 文档：知识库读取已禁用")
         return []
 
     max_documents = int(os.getenv("DAILY_REPORT_MAX_KNOWLEDGE_DOCUMENTS", "8"))
+    _progress("PaperRead 文档：开始读取关联文档", paperread_messages=len(paperread_messages), max_documents=max_documents)
     documents = []
     seen_urls = set()
     link_pattern = re.compile(r"https?://[^/\s]+/(?:docx|wiki)/[A-Za-z0-9_-]+")
@@ -1446,13 +1474,16 @@ def collect_knowledge_documents(client, paperread_messages):
                 continue
             if text:
                 documents.append({"url": url, "text": text[:12000]})
+    _progress("PaperRead 文档：关联文档读取完成", documents=len(documents))
     return documents
 
 
 def collect_document_activity(client, messages, start, end):
     """Read direct SDK listener events instead of scanning documents or folders."""
     if os.getenv("DAILY_REPORT_DOCUMENT_ACTIVITY_ENABLED", "1") != "1":
+        _progress("飞书文档事件：事件读取已禁用")
         return []
+    _progress("飞书文档事件：开始读取本地事件队列")
     store = DocumentEventStore()
     event_db_path = str(store.path)
     try:
@@ -1467,6 +1498,7 @@ def collect_document_activity(client, messages, start, end):
         f"飞书文档事件队列：{event_db_path}；时间范围内收到 {len(activity)} 条事件",
         flush=True,
     )
+    _progress("飞书文档事件：事件队列读取完成", events=len(activity))
     max_events = int(os.getenv("DAILY_REPORT_MAX_DOCUMENT_ACTIVITY", "100"))
     web_base = os.getenv("FEISHU_WEB_BASE", "https://my.feishu.cn").rstrip("/")
     for item in activity[:max_events]:
@@ -2191,11 +2223,20 @@ PaperRead 关联文档：
 JSON 格式：
 {{"date":"YYYY-MM-DD","summary":{{"headline":"","main_progress":""}},"themes":[{{"theme_id":"","theme_name":"","summary":"","outputs":[],"status":"confirmed|probable|observed","next_step":"","confidence":0.0}}],"today_completed":[],"time_investment":[],"rhythm":{{"active_hours":0,"away_hours":0,"active_share_percent":0}},"concentration":{{"summary":"","findings":[]}},"tomorrow_plan":{{"tasks":[{{"title":"","detail":""}}],"idea_suggestions":[{{"title":"","detail":"","source":"","next_step":""}}]}},"idea_suggestions":[],"risks":[{{"title":"","detail":""}}],"papers":{{"summary":"","suggestions":[{{"title":"","detail":""}}]}},"documents":{{"collaboration_summary":"","related_work":[{{"title":"","application":"","action":"","detail":"","evidence":""}}],"added":[],"modified":[],"deleted":[]}},"questions":[{{"title":"","answer":""}}]}}
 """
+    _progress(
+        "LLM：开始生成结构化日报",
+        chat_messages=len(chat_messages),
+        paperread_messages=len(paperread_messages),
+        knowledge_documents=len(knowledge_documents),
+        document_events=len(document_activity),
+    )
+    llm_started = time_module.monotonic()
     response = llm.call(
         [{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
         response_validator=parse_report_payload,
     )
+    _progress("LLM：结构化日报生成完成", elapsed_seconds=round(time_module.monotonic() - llm_started, 1))
     enriched = enrich_report_payload(
         parse_report_payload(response),
         activity_summary=activity_summary,
@@ -2275,40 +2316,53 @@ def write_monthly_report(client, report, report_date):
     """Append today's report to the one Wiki document for its calendar month."""
     root_token = os.getenv("DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN", "").strip()
     if not root_token:
+        _progress("月报 Wiki：未配置根节点，跳过写入")
         print("未配置 DAILY_REPORT_FEISHU_WIKI_ROOT_NODE_TOKEN，跳过月报写入。")
         return ""
+    _progress("月报 Wiki：开始定位或创建月度文档", report_date=report_date)
     month_title = f"工作日报-{report_date[:7]}"
     document_id = client.get_or_create_month_document(root_token, month_title)
     if not document_id:
         raise RuntimeError(f"无法创建或定位月报文档: {month_title}")
     marker = f"[DAILY_REPORT:{report_date}]"
     if marker in client.read_document_text(document_id):
+        _progress("月报 Wiki：当天内容已存在，跳过追加")
         return document_id
     client.append_document_blocks(document_id, _daily_report_blocks(report_date, report))
+    _progress("月报 Wiki：日报已追加")
     return document_id
 
 
 def run_report():
+    _progress("日报：开始执行正式发送流程")
     start, end = reporting_window()
+    _progress("日报：统计窗口已确定", start=start.isoformat(), end=end.isoformat())
     chat_id = os.environ["DAILY_REPORT_FEISHU_CHAT_ID"]
     paperread_chat_id = os.getenv("DAILY_REPORT_PAPERREAD_CHAT_ID", chat_id).strip() or chat_id
     activity = ActivityWatchClient().summarize(start, end)
+    _progress("日报：ActivityWatch 阶段完成")
     client = FeishuClient()
+    _progress("日报：飞书 SDK 客户端已初始化")
     raw_messages = client.list_messages(chat_id, start, end)
     messages = normalize_messages(raw_messages)
+    _progress("日报：主群聊消息标准化完成", raw=len(raw_messages), normalized=len(messages))
     paperread_read_error = False
     if paperread_chat_id == chat_id:
         ordinary_messages, paperread_messages = split_chat_messages(messages)
         paperread_raw_messages = raw_messages
+        _progress("日报：PaperRead 与主群聊相同，复用已读取消息")
     else:
         ordinary_messages, _embedded_paperread = split_chat_messages(messages)
+        _progress("日报：开始读取独立 PaperRead 群聊")
         try:
             paperread_raw_messages = client.list_messages(paperread_chat_id, start, end)
             paperread_messages = [item for item in normalize_messages(paperread_raw_messages) if item.get("is_paperread")]
+            _progress("日报：独立 PaperRead 群聊读取完成", raw=len(paperread_raw_messages), recognized=len(paperread_messages))
         except Exception:
             paperread_raw_messages = []
             paperread_messages = []
             paperread_read_error = True
+            _progress("日报：独立 PaperRead 群聊读取失败", status="read_error")
     paperread_status = paperread_diagnostics(
         paperread_raw_messages, paperread_messages, paperread_chat_id, paperread_read_error
     )
@@ -2316,6 +2370,12 @@ def run_report():
         print(f"PaperRead diagnostics: {json.dumps(paperread_status, ensure_ascii=False)}", flush=True)
     question_messages = extract_question_messages(ordinary_messages)
     ordinary_messages = [item for item in ordinary_messages if item not in question_messages]
+    _progress(
+        "日报：群聊分流完成",
+        ordinary=len(ordinary_messages),
+        paperread=len(paperread_messages),
+        questions=len(question_messages),
+    )
     knowledge_documents = collect_knowledge_documents(client, paperread_messages)
     document_activity = collect_document_activity(client, messages, start, end)
     report_payload = generate_report_payload(
@@ -2327,27 +2387,36 @@ def run_report():
         question_messages,
         paperread_status,
     )
+    _progress("日报：结构化 payload 已生成")
     report = render_report_payload(
         report_payload,
         activity_summary=activity,
         document_events_received=bool(document_activity),
     )
+    _progress("日报：文本/月报内容已渲染")
+    _progress("日报：开始发送飞书卡片")
     client.send_report(
         chat_id,
         report_payload,
         activity_summary=activity,
         document_events_received=bool(document_activity),
     )
+    _progress("日报：飞书卡片发送完成")
     write_monthly_report(client, report, start.date().isoformat())
+    _progress("日报：月报写入阶段完成")
+    _progress("日报：开始清理飞书文档事件队列")
     clear_consumed_document_activity(end)
+    _progress("日报：飞书文档事件队列清理完成")
     try:
         cleared_activity = ActivityWatchClient().clear_between(start, end)
         if True:
             print(f"已清理 ActivityWatch 已读取事件: {cleared_activity} 条", flush=True)
+        _progress("日报：ActivityWatch 事件清理完成", cleared=cleared_activity)
     except requests.RequestException as exc:
         if True:
             print(f"ActivityWatch 事件清理失败（日报已完成，不影响下次运行）: {exc}", flush=True)
         print(f"日报已发送：{start.isoformat()} 至 {end.isoformat()}；群聊消息 {len(messages)} 条。")
+    _progress("日报：正式发送流程完成")
 
 
 def main():
@@ -2356,29 +2425,40 @@ def main():
     parser.add_argument("--list-chats", action="store_true", help="列出机器人所在群聊及 chat_id")
     args = parser.parse_args()
     if args.list_chats:
+        _progress("日报：开始列出机器人可见群聊")
         for chat in FeishuClient().list_chats():
             print(f"{chat.get('name', '(unnamed)')}\t{chat.get('chat_id', '')}")
+        _progress("日报：群聊列表读取完成")
         return
+    _progress("日报：开始执行命令行流程", preview=args.preview)
     start, end = reporting_window()
+    _progress("日报：统计窗口已确定", start=start.isoformat(), end=end.isoformat())
     chat_id = os.environ["DAILY_REPORT_FEISHU_CHAT_ID"]
     paperread_chat_id = os.getenv("DAILY_REPORT_PAPERREAD_CHAT_ID", chat_id).strip() or chat_id
     activity = ActivityWatchClient().summarize(start, end)
+    _progress("日报：ActivityWatch 阶段完成")
     client = FeishuClient()
+    _progress("日报：飞书 SDK 客户端已初始化")
     raw_messages = client.list_messages(chat_id, start, end)
     messages = normalize_messages(raw_messages)
+    _progress("日报：主群聊消息标准化完成", raw=len(raw_messages), normalized=len(messages))
     paperread_read_error = False
     if paperread_chat_id == chat_id:
         ordinary_messages, paperread_messages = split_chat_messages(messages)
         paperread_raw_messages = raw_messages
+        _progress("日报：PaperRead 与主群聊相同，复用已读取消息")
     else:
         ordinary_messages, _embedded_paperread = split_chat_messages(messages)
+        _progress("日报：开始读取独立 PaperRead 群聊")
         try:
             paperread_raw_messages = client.list_messages(paperread_chat_id, start, end)
             paperread_messages = [item for item in normalize_messages(paperread_raw_messages) if item.get("is_paperread")]
+            _progress("日报：独立 PaperRead 群聊读取完成", raw=len(paperread_raw_messages), recognized=len(paperread_messages))
         except Exception:
             paperread_raw_messages = []
             paperread_messages = []
             paperread_read_error = True
+            _progress("日报：独立 PaperRead 群聊读取失败", status="read_error")
     paperread_status = paperread_diagnostics(
         paperread_raw_messages, paperread_messages, paperread_chat_id, paperread_read_error
     )
@@ -2386,6 +2466,12 @@ def main():
         print(f"PaperRead diagnostics: {json.dumps(paperread_status, ensure_ascii=False)}", flush=True)
     question_messages = extract_question_messages(ordinary_messages)
     ordinary_messages = [item for item in ordinary_messages if item not in question_messages]
+    _progress(
+        "日报：群聊分流完成",
+        ordinary=len(ordinary_messages),
+        paperread=len(paperread_messages),
+        questions=len(question_messages),
+    )
     knowledge_documents = collect_knowledge_documents(client, paperread_messages)
     document_activity = collect_document_activity(client, messages, start, end)
     report_payload = generate_report_payload(
@@ -2397,28 +2483,37 @@ def main():
         question_messages,
         paperread_status,
     )
+    _progress("日报：结构化 payload 已生成")
     report = render_report_payload(
         report_payload,
         activity_summary=activity,
         document_events_received=bool(document_activity),
     )
+    _progress("日报：文本/月报内容已渲染")
     if args.preview:
+        _progress("日报：preview 模式，不发送飞书卡片")
         print(report)
     else:
+        _progress("日报：开始发送飞书卡片")
         client.send_report(
             chat_id,
             report_payload,
             activity_summary=activity,
             document_events_received=bool(document_activity),
         )
+        _progress("日报：飞书卡片发送完成")
         write_monthly_report(client, report, start.date().isoformat())
+        _progress("日报：月报写入阶段完成")
+        _progress("日报：开始清理飞书文档事件队列")
         clear_consumed_document_activity(end)
+        _progress("日报：飞书文档事件队列清理完成")
         try:
             cleared_activity = ActivityWatchClient().clear_between(start, end)
             print(f"已清理 ActivityWatch 已读取事件: {cleared_activity} 条", flush=True)
         except requests.RequestException as exc:
             print(f"ActivityWatch 事件清理失败（日报已完成，不影响下次运行）: {exc}", flush=True)
         print(f"日报已发送，读取群聊消息 {len(messages)} 条。")
+        _progress("日报：命令行发送流程完成")
 
 
 if __name__ == "__main__":
