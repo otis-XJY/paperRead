@@ -37,5 +37,266 @@
     ],
     "arxiv_categories": ["cs:cs:MA", "cs:cs:AI"],
     "desc": "多智能体强化学习核心算法设计与理论改进（MAPPO、QMIX、值分解、策略梯度等），不含具体应用场景。"
+  },
+  "LLM_Agent_General": {
+    "keywords": [
+      "(abs:\"large language model\" OR abs:LLM OR abs:\"foundation model\") AND (abs:agent OR abs:agentic OR abs:\"autonomous agent\")",
+      "(ti:agent OR ti:agentic) AND (abs:\"large language model\" OR abs:LLM)",
+      "abs:\"language model agent\" OR abs:\"LLM-based agent\" OR abs:\"agentic system\" OR abs:\"agentic AI\"",
+      "(abs:\"web agent\" OR abs:\"computer-use agent\" OR abs:\"coding agent\" OR abs:\"software agent\" OR abs:\"research agent\") AND (abs:LLM OR abs:\"large language model\")"
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:LG",
+      "cs:cs:SE",
+      "cs:cs:IR",
+      "cs:cs:HC",
+      "cs:cs:RO"
+    ],
+    "desc": "LLM Agent领域兜底搜索，用于召回未使用特定topic术语的通用Agent论文。"
+  },
+
+  "Agent_Architecture_Workflow": {
+    "keywords": [
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:workflow OR abs:orchestration OR abs:architecture OR abs:framework)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:harness OR abs:scaffold OR abs:pipeline OR abs:\"agent graph\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:planning OR abs:planner OR abs:routing OR abs:\"control flow\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"task decomposition\" OR abs:subtask OR abs:executor OR abs:controller)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"workflow generation\" OR abs:\"workflow synthesis\" OR abs:\"workflow optimization\" OR abs:\"workflow search\")",
+      "ti:\"Agent Workflow\" OR ti:\"Agent Architecture\" OR ti:\"Agent Harness\" OR ti:\"Agent Orchestration\""
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:LG",
+      "cs:cs:SE",
+      "cs:cs:HC"
+    ],
+    "desc": "Agent系统架构与执行组织，包括workflow、orchestration、planning、routing、task decomposition、harness、scaffold和agent graph。"
+  },
+
+  "Agent_Tool_Environment_Interaction": {
+    "keywords": [
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:tool OR abs:\"tool use\" OR abs:\"tool-use\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"tool calling\" OR abs:\"function calling\" OR abs:API)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"tool selection\" OR abs:\"tool retrieval\" OR abs:\"tool discovery\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"tool creation\" OR abs:\"tool synthesis\" OR abs:\"tool learning\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"environment interaction\" OR abs:grounding OR abs:action OR abs:execution)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:browser OR abs:GUI OR abs:\"computer use\" OR abs:shell OR abs:code)"
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:LG",
+      "cs:cs:SE",
+      "cs:cs:IR",
+      "cs:cs:HC",
+      "cs:cs:RO"
+    ],
+    "desc": "Agent与工具和环境的交互，包括工具调用、检索、选择、生成、API、浏览器、GUI、代码执行和环境行动。"
+  },
+
+  "Agent_Memory_Experience_Skill": {
+    "keywords": [
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:skill OR abs:skills OR abs:\"skill library\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"skill reuse\" OR abs:\"skill composition\" OR abs:\"hierarchical skill\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:memory OR abs:experience OR abs:trajectory)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:reflection OR abs:\"self-reflection\" OR abs:\"experience learning\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"procedural knowledge\" OR abs:\"procedural memory\" OR abs:\"reasoning strategy\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"experience abstraction\" OR abs:\"trajectory abstraction\" OR abs:\"knowledge consolidation\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"workflow memory\" OR abs:\"episodic memory\" OR abs:\"semantic memory\")"
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:LG",
+      "cs:cs:SE",
+      "cs:cs:IR",
+      "cs:cs:RO"
+    ],
+    "desc": "Agent如何保存、提炼和复用经验，包括memory、reflection、trajectory、skill library、procedural knowledge和层次化技能。"
+  },
+
+  "Agent_Self_Evolution_Adaptation": {
+    "keywords": [
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"self-evolving\" OR abs:\"self-improving\" OR abs:\"self improving\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"meta-evolving\" OR abs:\"meta-learning\" OR abs:coevolution OR abs:\"co-evolution\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND ((abs:prompt OR abs:memory OR abs:tool OR abs:workflow OR abs:architecture) AND (abs:evolution OR abs:optimization OR abs:adaptation))",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:adaptation OR abs:\"continual learning\" OR abs:\"lifelong learning\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"test-time learning\" OR abs:\"test-time adaptation\" OR abs:\"online learning\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:refinement OR abs:\"iterative improvement\" OR abs:\"self-modification\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"learning from feedback\" OR abs:\"learning from experience\" OR abs:\"environmental feedback\")",
+      "ti:\"Self-Evolving Agent\" OR ti:\"Self-Improving Agent\" OR ti:\"Agent Evolution\""
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:LG",
+      "cs:cs:SE",
+      "cs:cs:RO"
+    ],
+    "desc": "Agent持续改进和适应，包括prompt、memory、tool、workflow、architecture、code或模型参数的演化与优化。"
+  },
+
+  "Agent_Long_Horizon_Autonomy": {
+    "keywords": [
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"long-horizon\" OR abs:\"long horizon\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"multi-step task\" OR abs:\"extended task\" OR abs:\"complex task\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"long-term task\" OR abs:\"persistent task\" OR abs:\"sustained interaction\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"context management\" OR abs:\"context compression\" OR abs:\"persistent state\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"hierarchical planning\" OR abs:subgoal OR abs:\"task decomposition\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:replanning OR abs:\"failure recovery\" OR abs:verification OR abs:rollback)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"error accumulation\" OR abs:\"credit assignment\" OR abs:\"delayed feedback\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"trajectory optimization\" OR abs:\"trajectory compression\" OR abs:\"progress tracking\")"
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:LG",
+      "cs:cs:SE",
+      "cs:cs:IR",
+      "cs:cs:HC",
+      "cs:cs:RO"
+    ],
+    "desc": "长程自主任务，包括多步执行、长期状态、上下文管理、层次规划、进度维护、错误累积和失败恢复。"
+  },
+
+  "Multi_LLM_Agent_General": {
+    "keywords": [
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"multiple agents\" OR abs:\"agent team\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"agent society\" OR abs:\"society of agents\" OR abs:\"agent population\")",
+      "(ti:\"multi-agent\" OR ti:\"agent team\" OR ti:\"agent society\") AND (abs:LLM OR abs:\"large language model\")",
+      "abs:\"LLM-based multi-agent\" OR abs:\"multi-LLM agent\" OR abs:\"language model agents\"",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"collaborative agents\" OR abs:\"cooperative agents\" OR abs:\"collective agents\")"
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:MA",
+      "cs:cs:LG",
+      "cs:cs:SE",
+      "cs:cs:SI",
+      "cs:cs:DC",
+      "cs:cs:NI",
+      "cs:cs:HC",
+      "cs:cs:RO"
+    ],
+    "desc": "Multi-LLM Agent领域兜底搜索，用于召回未明确使用协作、拓扑或演化术语的多Agent论文。"
+  },
+
+  "MultiAgent_Organization_Coordination": {
+    "keywords": [
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:collaboration OR abs:cooperation OR abs:coordination)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:\"role assignment\" OR abs:\"role allocation\" OR abs:\"role specialization\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:\"task allocation\" OR abs:delegation OR abs:\"division of labor\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:\"team formation\" OR abs:\"team composition\" OR abs:\"organizational structure\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:orchestration OR abs:workflow OR abs:hierarchy)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"manager-worker\" OR abs:\"leader-follower\" OR abs:\"peer-to-peer\" OR abs:\"centralized coordination\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"heterogeneous agents\" OR abs:\"specialized agents\" OR abs:\"expert agents\")"
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:MA",
+      "cs:cs:LG",
+      "cs:cs:SE",
+      "cs:cs:SI",
+      "cs:cs:HC"
+    ],
+    "desc": "多Agent系统的组织与协调，包括角色、分工、委派、团队构成、层次关系、多Agent workflow和协作机制。"
+  },
+  "MultiAgent_Communication_Topology": {
+    "keywords": [
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:communication OR abs:\"message passing\" OR abs:protocol)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:topology OR abs:graph OR abs:network)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"communication topology\" OR abs:\"interaction topology\" OR abs:\"collaboration topology\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"communication graph\" OR abs:\"interaction graph\" OR abs:\"collaboration network\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:DAG OR abs:\"directed acyclic graph\" OR abs:\"graph-structured agents\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"information propagation\" OR abs:\"information diffusion\" OR abs:\"message routing\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"latent communication\" OR abs:\"emergent communication\" OR abs:\"communication language\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"shared memory\" OR abs:blackboard OR abs:\"shared context\") AND (abs:agents OR abs:\"multi-agent\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"sparse topology\" OR abs:\"dense topology\" OR abs:\"small-world\" OR abs:\"irregular topology\")"
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:MA",
+      "cs:cs:LG",
+      "cs:cs:SI",
+      "cs:cs:DC",
+      "cs:cs:NI"
+    ],
+    "desc": "多Agent通信机制和结构，包括协议、消息传递、通信图、DAG、稀疏或复杂拓扑、共享信息空间和信息传播。"
+  },
+
+  "MultiAgent_Collective_Reasoning_Decision": {
+    "keywords": [
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:\"collective reasoning\" OR abs:\"collaborative reasoning\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:debate OR abs:deliberation OR abs:discussion)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:consensus OR abs:voting OR abs:aggregation)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"collective intelligence\" OR abs:\"group intelligence\" OR abs:\"swarm intelligence\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"agent ensemble\" OR abs:\"mixture of agents\" OR abs:\"ensemble of agents\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:critique OR abs:verification OR abs:judge)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:competition OR abs:coopetition OR abs:game)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"expert routing\" OR abs:\"agent routing\" OR abs:\"specialist selection\")"
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:MA",
+      "cs:cs:LG",
+      "cs:cs:GT",
+      "cs:cs:SI"
+    ],
+    "desc": "多个LLM Agent如何形成集体推理和决策，包括辩论、共识、投票、聚合、互评、专家路由、合作与竞争。"
+  },
+
+  "MultiAgent_Evolution_Adaptive_Structure": {
+    "keywords": [
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:\"self-evolving\" OR abs:\"self-improving\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:evolution OR abs:evolving OR abs:coevolution)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:\"self-organization\" OR abs:\"self-organizing\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"dynamic topology\" OR abs:\"adaptive topology\" OR abs:\"topology optimization\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"dynamic roles\" OR abs:\"role evolution\" OR abs:\"adaptive roles\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"dynamic collaboration\" OR abs:\"adaptive collaboration\" OR abs:\"team reconfiguration\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"workflow evolution\" OR abs:\"orchestration evolution\" OR abs:\"network evolution\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"textual backpropagation\" OR abs:\"textual gradient\" OR abs:\"natural language gradient\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"evolutionary optimization\" OR abs:\"population-based\" OR abs:\"genetic algorithm\") AND (abs:agent OR abs:agents)"
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:MA",
+      "cs:cs:LG",
+      "cs:cs:SE",
+      "cs:cs:SI"
+    ],
+    "desc": "多Agent组织的自动演化和动态适应，包括拓扑、角色、关系、workflow、协作网络和优化机制的更新。"
+  },
+
+  "MultiAgent_Scaling_Efficiency_Robustness": {
+    "keywords": [
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:scaling OR abs:scalability)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"number of agents\" OR abs:\"team size\" OR abs:\"agent population\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"collaborative scaling\" OR abs:\"scaling law\" OR abs:\"emergent collaboration\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:efficiency OR abs:cost OR abs:budget)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:\"token overhead\" OR abs:latency OR abs:\"communication overhead\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:robustness OR abs:resilience OR abs:\"fault tolerance\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:\"error propagation\" OR abs:\"failure propagation\")",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:\"failure attribution\" OR abs:\"credit assignment\" OR abs:diagnosis)",
+      "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:agents) AND (abs:security OR abs:adversarial OR abs:reliability)"
+    ],
+    "arxiv_categories": [
+      "cs:cs:AI",
+      "cs:cs:CL",
+      "cs:cs:MA",
+      "cs:cs:LG",
+      "cs:cs:SI",
+      "cs:cs:DC",
+      "cs:cs:NI",
+      "cs:cs:CR"
+    ],
+    "desc": "多Agent系统的规模规律、计算和通信效率、成本、可靠性、故障传播、失败归因、安全和鲁棒性。"
   }
 }
