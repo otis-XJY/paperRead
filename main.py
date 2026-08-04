@@ -219,6 +219,35 @@ def log_error(msg: str, category: str = "", error_type: str = "runtime"):
     """记录一条错误，最终汇总发送到飞书"""
     print(msg)
     _errors.append({"category": category, "type": error_type, "message": msg})
+
+
+def get_zotero_item_template(item_type: str, category: str = ""):
+    """Return a Zotero template, with a local fallback for pyzotero cache errors."""
+    try:
+        return zot.item_template(item_type)
+    except Exception as exc:
+        # pyzotero 1.6.2 can omit itemType while validating a stale template
+        # cache, making Zotero reject GET /items/new with HTTP 400.
+        print(
+            f"[Zotero] item_template({item_type}) failed; using local template: {exc}",
+            flush=True,
+        )
+        if item_type == "preprint":
+            return {
+                "itemType": "preprint",
+                "title": "",
+                "creators": [],
+                "abstractNote": "",
+                "url": "",
+                "date": "",
+                "language": "",
+                "citationKey": "",
+                "collections": [],
+                "tags": [],
+            }
+        if item_type == "note":
+            return {"itemType": "note", "note": "", "parentItem": "", "tags": []}
+        raise
 DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 DEBUG_PHASE_ONE = os.getenv("DEBUG_PHASE_ONE", "1") == "1"
 ENABLE_NOTIFICATION = os.getenv("ENABLE_NOTIFICATION", "1") == "1"
@@ -1294,7 +1323,7 @@ async def _main_impl():
                         continue
 
                     print(f"📝 首次运行直存 Zotero: {p['title'][:50]}...")
-                    item = zot.item_template('preprint')
+                    item = get_zotero_item_template("preprint", cat_name)
                     item['title'] = p['title']
                     item['abstractNote'] = p['summary']
                     item['url'] = f"https://arxiv.org/abs/{p['id']}"
@@ -1315,7 +1344,7 @@ async def _main_impl():
                     if resp['successful']:
                         item_key, web_item_link = extract_created_item_meta(resp)
                         ensure_item_in_collection(item_key, cat_keys[cat_name], f"首次-{cat_name}")
-                        note_template = zot.item_template('note')
+                        note_template = get_zotero_item_template("note", cat_name)
                         badge_color = "#d9534f" if first_run_analysis.get("recommendation") == "必读" else "#f0ad4e"
                         authors_str = ", ".join(p.get("authors", [])) if p.get("authors") else "未知"
                         published_str = format_arxiv_published_time(p.get("published", ""))
@@ -1454,12 +1483,7 @@ async def _main_impl():
                 
                 # 写入 Zotero
                 print("📝 写入 Zotero 条目与笔记...")
-                try:
-                    item = zot.item_template('preprint')
-                except Exception as _tmpl_err:
-                    # pyzotero 1.6.2 偶发 item_template 参数丢失，用硬编码模板兜底
-                    log_error(f"[Zotero] item_template 失败，使用备用模板: {_tmpl_err}", category=cat_name, error_type="zotero_template")
-                    item = {"itemType": "preprint", "title": "", "creators": [], "abstractNote": "", "url": "", "date": "", "language": "", "citationKey": "", "collections": [], "tags": []}
+                item = get_zotero_item_template("preprint", cat_name)
                 item['title'] = p['title']
                 item['abstractNote'] = p['summary']
                 item['url'] = f"https://arxiv.org/abs/{p['id']}"
@@ -1498,7 +1522,7 @@ async def _main_impl():
                     <h3 style="color: #2980b9;">💬 锐评</h3><p><i>{analysis.get('sharp_review', '')}</i></p>
                     """
                     
-                    note_template = zot.item_template('note')
+                    note_template = get_zotero_item_template("note", cat_name)
                     note_template['note'] = note_html
                     note_template['parentItem'] = item_key
                     try:

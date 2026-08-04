@@ -51,8 +51,6 @@ jobs:
       LLM_PROVIDER_1_API_KEY: ${{ secrets.LLM_PROVIDER_1_API_KEY }}
       LLM_PROVIDER_2_API_KEY: ${{ secrets.LLM_PROVIDER_2_API_KEY }}
       LLM_PROVIDER_3_API_KEY: ${{ secrets.LLM_PROVIDER_3_API_KEY }}
-      LLM_MODEL: ${{ vars.LLM_MODEL }}
-      BASE_URL: ${{ vars.BASE_URL }}
 
     steps:
       - name: Checkout repository
