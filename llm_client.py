@@ -7,13 +7,17 @@ without triggering unrelated integrations during module import.
 
 import os
 import time
+from types import SimpleNamespace
 
 from openai import OpenAI
 
 
 DEFAULT_FALLBACK_MODELS = [
     "Tencent-Hunyuan/Hy3",
+    "inclusionAI/Ring-2.6-1T",
+    "MiniMax/MiniMax-M1-80k",
     "ZhipuAI/GLM-5.1",
+    "meituan-longcat/LongCat-Flash-Lite",
     "Qwen/Qwen3-8B",
     "moonshotai/Kimi-K2.5",
     "MiniMax/MiniMax-M2.7",
@@ -76,6 +80,33 @@ def is_rate_limit_error(exc):
     return "429" in msg or "rate limit" in msg or "too many requests" in msg
 
 
+def is_daily_quota_error(exc):
+    """Return whether a model cannot be retried until the next quota window."""
+    msg = str(exc).lower()
+    return "exceeded today's quota" in msg or "try again tomorrow" in msg
+
+
+def is_modelscope_client(client):
+    """Return whether an OpenAI-compatible client targets ModelScope."""
+    return "modelscope.cn" in str(getattr(client, "base_url", "")).lower()
+
+
+def collect_streamed_content(stream):
+    """Collect final assistant text from a ModelScope streaming response."""
+    content_parts = []
+    for chunk in stream:
+        for choice in getattr(chunk, "choices", None) or []:
+            delta = getattr(choice, "delta", None)
+            content = getattr(delta, "content", None)
+            if content:
+                content_parts.append(content)
+
+    content = "".join(content_parts).strip()
+    if not content:
+        raise ValueError("ModelScope returned no assistant content in its stream")
+    return content
+
+
 class MultiModelLLM:
     """Call equally-prioritized models with round-robin fallback."""
 
@@ -87,6 +118,7 @@ class MultiModelLLM:
         self.current_idx = 0
         self.next_start_idx = 0
         self._model_failures = {model: 0 for model in self.models}
+        self._disabled_models = set()
 
     @property
     def current_model(self):
@@ -100,6 +132,8 @@ class MultiModelLLM:
 
         for round_idx in range(max_rounds):
             if round_idx > 0:
+                if len(self._disabled_models) == total_models:
+                    break
                 print(
                     "All LLM models failed in previous round; "
                     f"waiting 60s before round {round_idx + 1}..."
@@ -109,15 +143,32 @@ class MultiModelLLM:
             for offset in range(total_models):
                 idx = (start_idx + offset) % total_models
                 model = self.models[idx]
+                if model in self._disabled_models:
+                    continue
                 attempt_started = time.monotonic()
                 print(f"LLM attempt started: model={model}", flush=True)
                 try:
                     kwargs = {"model": model, "messages": messages}
-                    if response_format:
-                        kwargs["response_format"] = response_format
-
-                    response = self.client.chat.completions.create(**kwargs)
-                    content = response.choices[0].message.content if response.choices else None
+                    if is_modelscope_client(self.client):
+                        # The ModelScope examples for these models use streaming
+                        # responses. Rely on the JSON-only prompt because support
+                        # for response_format differs between hosted models.
+                        kwargs["stream"] = True
+                        if model == "Qwen/Qwen3-8B":
+                            kwargs["extra_body"] = {"enable_thinking": True}
+                        content = collect_streamed_content(
+                            self.client.chat.completions.create(**kwargs)
+                        )
+                        response = SimpleNamespace(
+                            choices=[SimpleNamespace(
+                                message=SimpleNamespace(content=content)
+                            )]
+                        )
+                    else:
+                        if response_format:
+                            kwargs["response_format"] = response_format
+                        response = self.client.chat.completions.create(**kwargs)
+                        content = response.choices[0].message.content if response.choices else None
                     if content is None:
                         raise ValueError(
                             f"Model {model} returned empty response "
@@ -136,6 +187,8 @@ class MultiModelLLM:
                 except Exception as exc:
                     last_exc = exc
                     self._model_failures[model] = self._model_failures.get(model, 0) + 1
+                    if is_daily_quota_error(exc):
+                        self._disabled_models.add(model)
                     if is_rate_limit_error(exc):
                         reason = "rate limited"
                     elif is_auth_error(exc):
@@ -147,6 +200,9 @@ class MultiModelLLM:
                         f"elapsed_seconds={time.monotonic() - attempt_started:.1f}",
                         flush=True,
                     )
+
+            if len(self._disabled_models) == total_models:
+                break
 
         raise RuntimeError(
             f"All LLM models failed after {max_rounds} rounds. Last error: {last_exc}"
