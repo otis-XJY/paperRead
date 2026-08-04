@@ -1176,6 +1176,7 @@ async def _main_impl():
         for cat_name, cat_info in CONFIG["categories"].items():
             print(f"\n--- 正在处理分类: {cat_name} ---")
             stats["categories"][cat_name] = 0
+            allowed_recommendations = set(cat_info.get("allowed_recommendations", []))
 
             # 分类级别的首次运行判断：未在 initialized_categories 中的分类走首次运行流程
             cat_is_first_run = cat_name not in initialized_categories
@@ -1221,6 +1222,18 @@ async def _main_impl():
                     if not first_run_analysis:
                         stats["llm_failures"] += 1
                         print(f"⏭️ 首次运行 LLM 分析失败，下次重试: {p['title'][:30]}...")
+                        continue
+
+                    recommendation = first_run_analysis.get("recommendation")
+                    if (
+                        allowed_recommendations
+                        and recommendation not in allowed_recommendations
+                    ):
+                        print(
+                            f"⏭️ 推荐为 {recommendation or '未指定'}，不保存或推送: "
+                            f"{p['title'][:50]}..."
+                        )
+                        mark_paper_handled(p)
                         continue
 
                     if DRY_RUN:
@@ -1369,6 +1382,17 @@ async def _main_impl():
                 print(f"📖 阶段二深读分析: {p['title'][:50]}...")
                 analysis = deep_analyze_phase_two(p, cat_name, matched_full_notes)
                 if not analysis:
+                    continue
+                recommendation = analysis.get("recommendation")
+                if (
+                    allowed_recommendations
+                    and recommendation not in allowed_recommendations
+                ):
+                    print(
+                        f"⏭️ 推荐为 {recommendation or '未指定'}，不保存或推送: "
+                        f"{p['title'][:50]}..."
+                    )
+                    mark_paper_handled(p)
                     continue
                 if analysis.get("recommendation") == "可跳过":
                     mark_paper_handled(p)

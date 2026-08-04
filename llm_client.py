@@ -12,11 +12,16 @@ from openai import OpenAI
 
 
 DEFAULT_FALLBACK_MODELS = [
-    "Qwen/Qwen3.5-35B-A3B",
-    "Qwen/Qwen3-Coder-30B-A3B-Instruct",
-    "deepseek-ai/DeepSeek-V4-Flash",
+    "Tencent-Hunyuan/Hy3",
     "ZhipuAI/GLM-5.1",
+    "Qwen/Qwen3-8B",
+    "moonshotai/Kimi-K2.5",
+    "MiniMax/MiniMax-M2.7",
+    "XiaomiMiMo/MiMo-V2-Flash:xiaomi",
+    "stepfun-ai/Step-3.7-Flash",
+    "deepseek-ai/DeepSeek-V3.2",
     "ZhipuAI/GLM-5",
+    "deepseek-ai/DeepSeek-V4-Flash",
 ]
 
 
