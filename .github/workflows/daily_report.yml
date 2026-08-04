@@ -46,7 +46,11 @@ jobs:
       # ignored/untracked files before each run.
       DAILY_REPORT_FEISHU_EVENT_DB: ${{ vars.DAILY_REPORT_FEISHU_EVENT_DB || 'D:\\paperRead-runtime\\feishu_document_events.sqlite3' }}
       MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
+      ZHIPUAI_API_KEY: ${{ secrets.ZHIPUAI_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      LLM_PROVIDER_1_API_KEY: ${{ secrets.LLM_PROVIDER_1_API_KEY }}
+      LLM_PROVIDER_2_API_KEY: ${{ secrets.LLM_PROVIDER_2_API_KEY }}
+      LLM_PROVIDER_3_API_KEY: ${{ secrets.LLM_PROVIDER_3_API_KEY }}
       LLM_MODEL: ${{ vars.LLM_MODEL }}
       BASE_URL: ${{ vars.BASE_URL }}
 

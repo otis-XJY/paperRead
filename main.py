@@ -91,7 +91,15 @@ if os.getenv("LLM_MODEL"):
         [os.environ["LLM_MODEL"]] + CONFIG["fallback_models"]
     ))
 
-LLM_API_KEY = os.getenv("MODELSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
+LLM_API_KEY = (
+    os.getenv("MODELSCOPE_API_KEY")
+    or os.getenv("ZHIPUAI_API_KEY")
+    or os.getenv("ZAI_API_KEY")
+    or os.getenv("OPENAI_API_KEY")
+    or os.getenv("LLM_PROVIDER_1_API_KEY")
+    or os.getenv("LLM_PROVIDER_2_API_KEY")
+    or os.getenv("LLM_PROVIDER_3_API_KEY")
+)
 if not LLM_API_KEY:
     raise ValueError("缺少 LLM API Key，请设置 MODELSCOPE_API_KEY（推荐）或 OPENAI_API_KEY")
 
@@ -327,17 +335,59 @@ async def fetch_text_with_retry(session, url, retries=RETRY_TIMES, base_delay=RE
                 print(f"⚠️ 抓取失败（第 {attempt + 1}/{retries} 次）: {e}，{delay:.1f}s 后重试")
             await asyncio.sleep(delay)
 
+def _escape_control_characters_in_json_strings(text):
+    """Escape literal control characters only when they occur inside JSON strings."""
+    result = []
+    in_string = False
+    escaped = False
+
+    for char in text:
+        if in_string:
+            if escaped:
+                result.append(char)
+                escaped = False
+                continue
+            if char == "\\":
+                result.append(char)
+                escaped = True
+                continue
+            if char == '"':
+                in_string = False
+                result.append(char)
+                continue
+            if ord(char) < 0x20:
+                result.append(f"\\u{ord(char):04x}")
+                continue
+        elif char == '"':
+            in_string = True
+
+        result.append(char)
+
+    return "".join(result)
+
+
 def safe_json_parse(text):
+    """Parse a model JSON object without letting malformed output crash a paper run."""
     if not text or not isinstance(text, str):
         return {}
+
+    cleaned = _escape_control_characters_in_json_strings(text)
     try:
-        result = json.loads(text)
+        result = json.loads(cleaned)
+        return result if isinstance(result, dict) else {}
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", cleaned):
+        try:
+            result, _ = decoder.raw_decode(cleaned, match.start())
+        except json.JSONDecodeError:
+            continue
         if isinstance(result, dict):
             return result
-        return {}
-    except:
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        return json.loads(match.group(0)) if match else {}
+
+    return {}
 
 
 def extract_authors_from_entry(entry):
