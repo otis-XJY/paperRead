@@ -12,6 +12,7 @@ import os
 from urllib.parse import urlsplit
 
 from feishu_sdk import FeishuOpenAPIClient, FeishuSDKError
+from paper_dedup import TITLE_SIMILARITY_THRESHOLD, find_duplicate_groups, title_similarity
 
 CACHE_FILE = "feishu_wiki_node_cache.json"
 FEISHU_BASE = "https://open.feishu.cn/open-apis"
@@ -69,8 +70,15 @@ class FeishuWikiClient:
     # ── Wiki 节点操作 ───────────────────────────────────────────
 
     def list_child_nodes(self, parent_node_token):
+        return {
+            record["title"]: record["node_token"]
+            for record in self.list_child_node_records(parent_node_token)
+        }
+
+    def list_child_node_records(self, parent_node_token):
+        """List child-node records without collapsing identically titled nodes."""
         space_id = self._discover_space_id()
-        children = {}
+        children = []
         page_token = None
         while True:
             params = {"parent_node_token": parent_node_token, "page_size": 50}
@@ -85,11 +93,103 @@ class FeishuWikiClient:
                 title = node.get("title", "")
                 token = node.get("node_token", "")
                 if title and token:
-                    children[title] = token
+                    children.append({
+                        "title": title,
+                        "node_token": token,
+                        "obj_token": node.get("obj_token", ""),
+                        "obj_type": node.get("obj_type", "docx"),
+                        "created_at": node.get("create_time", ""),
+                    })
             if not data.get("has_more"):
                 break
             page_token = data.get("page_token")
         return children
+
+    def _remove_node_from_cache(self, node_token):
+        """Drop stale cache entries that point to a removed Wiki node."""
+        stale_keys = [key for key, value in self._cache.items() if value == node_token]
+        for key in stale_keys:
+            del self._cache[key]
+
+    def _delete_paper_node(self, record):
+        """Move a duplicate Wiki node and its underlying document to recycle bins."""
+        node_token = record["node_token"]
+        space_id = self._discover_space_id()
+        try:
+            self._api_request(
+                "DELETE",
+                f"{FEISHU_BASE}/wiki/v2/spaces/{space_id}/nodes/{node_token}",
+            )
+        except RuntimeError as exc:
+            print(f"[Feishu] failed to remove duplicate Wiki node {node_token}: {exc}")
+            return False
+
+        self._remove_node_from_cache(node_token)
+        document_token = record.get("obj_token")
+        document_type = record.get("obj_type") or "docx"
+        if document_token:
+            try:
+                self._api_request(
+                    "DELETE",
+                    f"{FEISHU_BASE}/drive/v1/files/{document_token}",
+                    params={"type": document_type},
+                )
+            except RuntimeError as exc:
+                print(
+                    f"[Feishu] Wiki node removed but underlying document could not "
+                    f"be moved to recycle bin ({document_token}): {exc}"
+                )
+        return True
+
+    def deduplicate_papers(
+        self,
+        categories,
+        threshold=TITLE_SIMILARITY_THRESHOLD,
+        dry_run=False,
+    ):
+        """Keep one matching paper per DailyPapers Wiki subtree without LLM calls."""
+        daily_nodes = self.list_child_node_records(self.root_node_token)
+        daily_node = next(
+            (node for node in daily_nodes if node["title"] == self._daily_folder_name),
+            None,
+        )
+        if not daily_node:
+            print("[Feishu] DailyPapers node not found; no Wiki duplicates to clean")
+            return 0
+
+        category_titles = set(categories)
+        paper_records = []
+        for category_node in self.list_child_node_records(daily_node["node_token"]):
+            category = category_node["title"]
+            if category not in category_titles:
+                continue
+            for child in self.list_child_node_records(category_node["node_token"]):
+                if child["title"] in self.RECOMMENDATION_LEVELS:
+                    descendants = self.list_child_node_records(child["node_token"])
+                else:
+                    descendants = [child]
+                for paper in descendants:
+                    paper_records.append({
+                        **paper,
+                        "id": paper["node_token"],
+                        "category": category,
+                    })
+
+        removed = 0
+        for group in find_duplicate_groups(paper_records, threshold):
+            kept = group[0]
+            for duplicate in group[1:]:
+                similarity = title_similarity(kept["title"], duplicate["title"])
+                action = "would remove" if dry_run else "removed"
+                print(
+                    f"[Feishu] duplicate paper {action}: {duplicate['title'][:60]} "
+                    f"(kept: {kept['title'][:60]}, similarity={similarity:.3f})"
+                )
+                if not dry_run and self._delete_paper_node(duplicate):
+                    removed += 1
+        if removed and not dry_run:
+            self._save_node_cache(self._cache)
+        return removed
 
     def get_or_create_child_node(self, parent_node_token, title):
         cache_key = f"{parent_node_token}/{title}"

@@ -15,6 +15,7 @@ import json
 import os
 import sys
 import re
+import subprocess
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -53,6 +54,7 @@ from time_utils import (
     parse_utc_timestamp,
 )
 from paper_progress import advance_contiguous_cursor
+from paper_dedup import TITLE_SIMILARITY_THRESHOLD, find_duplicate_groups, title_similarity
 
 __version__ = "1.0.0"
 
@@ -494,6 +496,116 @@ def get_or_create_collection(name, parent_key=None):
         raise RuntimeError(f"创建Zotero集合失败，API返回: {resp.get('failed')}")
         
     return resp['successful']['0']['key']
+
+
+def get_daily_zotero_paper_records():
+    """Return distinct paper items currently stored under DailyPapers."""
+    collections = retry_sync(
+        lambda: zot.everything(zot.collections()),
+        "read Zotero collections for paper checkpoint",
+    )
+    root_keys = {
+        collection["key"]
+        for collection in collections
+        if collection.get("data", {}).get("name") == "DailyPapers"
+        and normalize_parent_collection(collection.get("data", {}).get("parentCollection")) is None
+    }
+    if not root_keys:
+        return []
+
+    scoped_collection_keys = set(root_keys)
+    expanded = True
+    while expanded:
+        expanded = False
+        for collection in collections:
+            parent_key = normalize_parent_collection(
+                collection.get("data", {}).get("parentCollection")
+            )
+            if parent_key in scoped_collection_keys and collection["key"] not in scoped_collection_keys:
+                scoped_collection_keys.add(collection["key"])
+                expanded = True
+
+    papers_by_key = {}
+    for collection_key in scoped_collection_keys:
+        items = retry_sync(
+            lambda key=collection_key: zot.collection_items(key),
+            f"read Zotero papers for duplicate check ({collection_key})",
+        )
+        for item in items:
+            data = item.get("data", {})
+            if data.get("itemType") not in {"preprint", "journalArticle"}:
+                continue
+            title = str(data.get("title") or "").strip()
+            item_key = item.get("key")
+            if title and item_key:
+                papers_by_key[item_key] = {
+                    "id": item_key,
+                    "title": title,
+                    "created_at": data.get("dateAdded", ""),
+                    "item": item,
+                    "arxiv_id": extract_arxiv_id_from_url(data.get("url", "")),
+                }
+    return list(papers_by_key.values())
+
+
+def extract_arxiv_id_from_url(url):
+    """Extract an arXiv identifier from one stored Zotero URL when present."""
+    match = re.search(r"arxiv\.org/(?:abs|pdf)/([^/?#]+)", str(url or ""), re.I)
+    if not match:
+        return ""
+    return re.sub(r"\.pdf$", "", match.group(1), flags=re.I)
+
+
+def find_existing_zotero_paper(paper, records):
+    """Find a stored DailyPapers item matching arXiv ID or title similarity."""
+    paper_id = str(paper.get("id") or "")
+    paper_id_base = re.sub(r"v\d+$", "", paper_id)
+    for record in records:
+        stored_id = str(record.get("arxiv_id") or "")
+        if stored_id and re.sub(r"v\d+$", "", stored_id) == paper_id_base:
+            return record
+    title = str(paper.get("title") or "")
+    for record in records:
+        if title_similarity(title, record.get("title", "")) >= TITLE_SIMILARITY_THRESHOLD:
+            return record
+    return None
+
+
+def deduplicate_zotero_papers(dry_run=False):
+    """Remove duplicate paper items within the DailyPapers collection tree."""
+    papers_by_key = {
+        record["id"]: record for record in get_daily_zotero_paper_records()
+    }
+    if not papers_by_key:
+        print("[Zotero] DailyPapers collection not found or contains no papers")
+        return 0
+
+    removed = 0
+    for group in find_duplicate_groups(
+        list(papers_by_key.values()), TITLE_SIMILARITY_THRESHOLD
+    ):
+        kept = group[0]
+        for duplicate in group[1:]:
+            similarity = title_similarity(kept["title"], duplicate["title"])
+            action = "would remove" if dry_run else "removing"
+            print(
+                f"[Zotero] duplicate paper {action}: {duplicate['title'][:60]} "
+                f"(kept: {kept['title'][:60]}, similarity={similarity:.3f})"
+            )
+            if dry_run:
+                continue
+            try:
+                retry_sync(
+                    lambda item=duplicate["item"]: zot.delete_item(item),
+                    f"remove duplicate Zotero paper ({duplicate['id']})",
+                )
+                removed += 1
+            except Exception as exc:
+                log_error(
+                    f"[Zotero] failed to remove duplicate {duplicate['title'][:40]}: {exc}",
+                    error_type="zotero_dedup",
+                )
+    return removed
 # ================= 2. 状态管理 =================
 def load_state():
     default_state = {"is_first_run": True, "last_date": DEFAULT_LAST_DATE, "initialized_categories": []}
@@ -521,12 +633,66 @@ def save_state(last_date, initialized_categories=None):
         json.dump(data, f, ensure_ascii=False)
 
 
-def save_history_checkpoint(history):
-    """Persist per-paper progress immediately and atomically."""
+def push_history_checkpoint_to_github():
+    """Push one durable history checkpoint when running in GitHub Actions."""
+    if os.getenv("GITHUB_ACTIONS") != "true":
+        return
+    try:
+        subprocess.run(
+            ["git", "config", "user.name", "github-actions[bot]"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "add", "--", HISTORY_FILE],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet", "--", HISTORY_FILE],
+            capture_output=True,
+            text=True,
+        )
+        if diff_result.returncode == 0:
+            return
+        if diff_result.returncode != 1:
+            raise RuntimeError(diff_result.stderr.strip() or "unable to inspect history checkpoint")
+        subprocess.run(
+            ["git", "commit", "-m", "chore: checkpoint processed paper"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "push"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        print("[Checkpoint] history.json pushed to GitHub", flush=True)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log_error(
+            f"[Checkpoint] failed to push history.json: {exc}",
+            error_type="history_checkpoint",
+        )
+
+
+def save_history_checkpoint(history, push_to_github=False):
+    """Persist per-paper progress immediately and optionally push it to GitHub."""
     temp_path = f"{HISTORY_FILE}.tmp"
     with open(temp_path, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False)
     os.replace(temp_path, HISTORY_FILE)
+    if push_to_github:
+        push_history_checkpoint_to_github()
 
 
 
@@ -1166,6 +1332,46 @@ async def _main_impl():
     print("🚀 开始执行 main.py")
     if DRY_RUN:
         print("🧪 DRY_RUN=1，本次仅本地演练：不会写入 Zotero，也不会更新 history/state 文件")
+
+    # Run deterministic duplicate cleanup before reading the knowledge base or
+    # discovering new papers. This keeps an interrupted earlier run from
+    # producing duplicate Zotero items or mirrored Feishu documents.
+    zotero_duplicates_removed = 0
+    try:
+        print("[Dedup] checking DailyPapers in Zotero by title similarity...")
+        zotero_duplicates_removed = deduplicate_zotero_papers(dry_run=DRY_RUN)
+    except Exception as exc:
+        log_error(f"[Zotero] duplicate check failed: {exc}", error_type="zotero_dedup")
+
+    if feishu_wiki_client:
+        try:
+            print("[Dedup] checking DailyPapers in Feishu by title similarity...")
+            removed = feishu_wiki_client.deduplicate_papers(
+                CONFIG["categories"].keys(),
+                dry_run=DRY_RUN,
+            )
+            if removed:
+                print(f"[Dedup] removed {removed} duplicate Feishu paper(s)")
+        except Exception as exc:
+            log_error(f"[Feishu] duplicate check failed: {exc}", error_type="feishu_dedup")
+
+    if zotero_duplicates_removed:
+        print("[Dedup] rebuilding Zotero knowledge base after duplicate cleanup...")
+        try:
+            build_knowledge_base()
+        except Exception as exc:
+            log_error(
+                f"[KB] rebuild after duplicate cleanup failed: {exc}",
+                error_type="knowledge_base_build",
+            )
+
+    try:
+        zotero_paper_records = get_daily_zotero_paper_records()
+        print(f"[Checkpoint] indexed {len(zotero_paper_records)} stored Zotero paper(s)")
+    except Exception as exc:
+        zotero_paper_records = []
+        log_error(f"[Zotero] paper checkpoint scan failed: {exc}", error_type="zotero_checkpoint")
+
     kb = ensure_knowledge_base()
     if not kb:
         print("⚠️ 未能获得可用知识库，将以空知识库继续运行")
@@ -1239,7 +1445,7 @@ async def _main_impl():
     all_failed_keywords = []  # 追踪所有抓取失败的关键词
     candidate_papers = []
 
-    def mark_paper_handled(paper):
+    def mark_paper_handled(paper, push_to_github=False):
         """Record one completed decision without maintaining a second status DB."""
         if DRY_RUN:
             return
@@ -1249,7 +1455,7 @@ async def _main_impl():
         history.append(paper_id)
         history_set.add(paper_id)
         history_base_set.add(re.sub(r"v\d+$", "", paper_id))
-        save_history_checkpoint(history)
+        save_history_checkpoint(history, push_to_github=push_to_github)
 
     async with aiohttp.ClientSession() as session:
         for cat_name, cat_info in CONFIG["categories"].items():
@@ -1286,6 +1492,14 @@ async def _main_impl():
                 paper_id = p['id']
                 paper_id_base = re.sub(r'v\d+$', '', paper_id)  # 去掉版本号
                 if paper_id in history_set or paper_id_base in history_base_set:
+                    continue
+                stored_paper = find_existing_zotero_paper(p, zotero_paper_records)
+                if stored_paper:
+                    print(
+                        f"[Checkpoint] paper already exists in Zotero; restoring history: "
+                        f"{p['title'][:50]}..."
+                    )
+                    mark_paper_handled(p, push_to_github=True)
                     continue
 
                 stats["total_attempted_analysis"] += 1
@@ -1343,6 +1557,16 @@ async def _main_impl():
                         continue
                     if resp['successful']:
                         item_key, web_item_link = extract_created_item_meta(resp)
+                        # The Zotero item now exists remotely. Persist this before
+                        # optional notes/Wiki work so an interrupted Action cannot
+                        # create the same paper again on the next run.
+                        mark_paper_handled(p, push_to_github=True)
+                        zotero_paper_records.append({
+                            "id": item_key,
+                            "title": p["title"],
+                            "created_at": "",
+                            "arxiv_id": p["id"],
+                        })
                         ensure_item_in_collection(item_key, cat_keys[cat_name], f"首次-{cat_name}")
                         note_template = get_zotero_item_template("note", cat_name)
                         badge_color = "#d9534f" if first_run_analysis.get("recommendation") == "必读" else "#f0ad4e"
@@ -1499,6 +1723,16 @@ async def _main_impl():
                     continue
                 if resp['successful']:
                     item_key, web_item_link = extract_created_item_meta(resp)
+                    # The Zotero item now exists remotely. Persist this before
+                    # optional notes/Wiki work so an interrupted Action cannot
+                    # create the same paper again on the next run.
+                    mark_paper_handled(p, push_to_github=True)
+                    zotero_paper_records.append({
+                        "id": item_key,
+                        "title": p["title"],
+                        "created_at": "",
+                        "arxiv_id": p["id"],
+                    })
                     ensure_item_in_collection(item_key, cat_keys[cat_name], f"增量-{cat_name}")
                     badge_color = "#d9534f" if analysis.get('recommendation') == "必读" else "#f0ad4e"
                     authors_str = ", ".join(p.get("authors", [])) if p.get("authors") else "未知"
