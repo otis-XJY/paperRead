@@ -39,7 +39,7 @@ jobs:
         run: python -u zotero_indexer.py
 
       - name: Run AI Analysis & Push
-        timeout-minutes: 100
+        timeout-minutes: 360
         env:
           MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
           ZHIPUAI_API_KEY: ${{ secrets.ZHIPUAI_API_KEY }}
