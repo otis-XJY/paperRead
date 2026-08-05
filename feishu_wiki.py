@@ -98,7 +98,8 @@ class FeishuWikiClient:
                         "node_token": token,
                         "obj_token": node.get("obj_token", ""),
                         "obj_type": node.get("obj_type", "docx"),
-                        "created_at": node.get("create_time", ""),
+                        "parent_node_token": node.get("parent_node_token", parent_node_token),
+                        "created_at": node.get("node_create_time", ""),
                     })
             if not data.get("has_more"):
                 break
@@ -111,34 +112,54 @@ class FeishuWikiClient:
         for key in stale_keys:
             del self._cache[key]
 
+    def get_node_info(self, node_token):
+        """Return the current Wiki node metadata, including its real resource token."""
+        data = self._api_request(
+            "GET",
+            f"{FEISHU_BASE}/wiki/v2/spaces/get_node",
+            params={"token": node_token},
+        )
+        return data.get("node", data)
+
     def _delete_paper_node(self, record):
-        """Move a duplicate Wiki node and its underlying document to recycle bins."""
+        """Move a duplicate paper document to the Feishu recycle bin.
+
+        Wiki nodes are mounts of underlying documents; the public Wiki API does
+        not expose a node-delete operation.  Resolve the Wiki node immediately
+        before deletion, then delete the underlying cloud document by its real
+        ``obj_token``.  A Wiki URL's ``node_token`` is not a document token.
+        """
         node_token = record["node_token"]
-        space_id = self._discover_space_id()
+        try:
+            node = self.get_node_info(node_token)
+        except RuntimeError as exc:
+            print(
+                f"[Feishu] cannot resolve duplicate Wiki node {node_token}: {exc}"
+            )
+            return False
+
+        document_token = node.get("obj_token")
+        document_type = node.get("obj_type") or "docx"
+        if not document_token:
+            print(
+                f"[Feishu] cannot remove duplicate Wiki node {node_token}: "
+                "the underlying document token is missing"
+            )
+            return False
         try:
             self._api_request(
                 "DELETE",
-                f"{FEISHU_BASE}/wiki/v2/spaces/{space_id}/nodes/{node_token}",
+                f"{FEISHU_BASE}/drive/v1/files/{document_token}",
+                params={"type": document_type},
             )
         except RuntimeError as exc:
-            print(f"[Feishu] failed to remove duplicate Wiki node {node_token}: {exc}")
+            print(
+                f"[Feishu] failed to move duplicate document {document_token} "
+                f"to recycle bin: {exc}"
+            )
             return False
 
         self._remove_node_from_cache(node_token)
-        document_token = record.get("obj_token")
-        document_type = record.get("obj_type") or "docx"
-        if document_token:
-            try:
-                self._api_request(
-                    "DELETE",
-                    f"{FEISHU_BASE}/drive/v1/files/{document_token}",
-                    params={"type": document_type},
-                )
-            except RuntimeError as exc:
-                print(
-                    f"[Feishu] Wiki node removed but underlying document could not "
-                    f"be moved to recycle bin ({document_token}): {exc}"
-                )
         return True
 
     def deduplicate_papers(
@@ -180,13 +201,14 @@ class FeishuWikiClient:
             kept = group[0]
             for duplicate in group[1:]:
                 similarity = title_similarity(kept["title"], duplicate["title"])
-                action = "would remove" if dry_run else "removed"
+                action = "would remove" if dry_run else "removing"
                 print(
                     f"[Feishu] duplicate paper {action}: {duplicate['title'][:60]} "
                     f"(kept: {kept['title'][:60]}, similarity={similarity:.3f})"
                 )
                 if not dry_run and self._delete_paper_node(duplicate):
                     removed += 1
+                    print(f"[Feishu] duplicate paper removed: {duplicate['title'][:60]}")
         if removed and not dry_run:
             self._save_node_cache(self._cache)
         return removed
