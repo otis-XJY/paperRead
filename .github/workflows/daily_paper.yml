@@ -8,7 +8,7 @@ on:
 jobs:
   run-auto-paper:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 3600
     permissions:
       contents: write
     concurrency:
@@ -39,7 +39,7 @@ jobs:
         run: python -u zotero_indexer.py
 
       - name: Run AI Analysis & Push
-        timeout-minutes: 360
+        timeout-minutes: 3600
         env:
           MODELSCOPE_API_KEY: ${{ secrets.MODELSCOPE_API_KEY }}
           ZHIPUAI_API_KEY: ${{ secrets.ZHIPUAI_API_KEY }}
