@@ -732,6 +732,11 @@ def check_relevance_phase_one(paper, kb_entries, category_name=""):
     short_context = [{"title": kb["title"], "review": kb["short_review"]} for kb in kb_entries]
     
     prompt = f"""
+    Language policy:
+    - Write concise explanatory prose in Chinese, but preserve academic terminology in its conventional English form.
+    - Never mechanically translate paper titles, method/model names, benchmarks, datasets, metrics, code frameworks, or technical terms such as "self-evolution", "episodic memory", and "communication topology".
+    - Keep every item in matched_titles exactly as provided. In reason, retain the relevant English technical terms.
+
     判断待分析论文与已读库的关联度（0-10分）。
     【已读库简述】：{json.dumps(short_context, ensure_ascii=False)}
     【待分析论文】：{paper['title']} | 摘要：{paper['summary']}
@@ -768,6 +773,11 @@ def check_relevance_phase_one(paper, kb_entries, category_name=""):
 
 def deep_analyze_phase_two(paper, category_name, matched_full_notes):
     prompt = f"""
+    Language policy:
+    - Write explanatory prose in Chinese while retaining academic terminology in its conventional English form.
+    - Do not translate paper titles, method/model names, benchmarks, datasets, metrics, code frameworks, or established technical terms into ad-hoc Chinese equivalents.
+    - core_concepts must contain the original English academic terms only (for example, "self-evolution", "episodic memory", "communication topology").
+
     你是{category_name}专家学者，了解这个领域的经典方法和前沿进展。
     【你过去写下的核心笔记】（仅针对强相关论文）：{json.dumps(matched_full_notes, ensure_ascii=False)}
     
@@ -793,6 +803,11 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
 
 def analyze_first_run_paper(paper, category_name):
     prompt = f"""
+    Language policy:
+    - Write explanatory prose in Chinese while retaining academic terminology in its conventional English form.
+    - Do not translate paper titles, method/model names, benchmarks, datasets, metrics, code frameworks, or established technical terms into ad-hoc Chinese equivalents.
+    - core_concepts must contain the original English academic terms only (for example, "self-evolution", "skill library", "long-horizon planning").
+
     你是{category_name}专家学者，了解这个领域的经典方法和前沿进展。
     当前为冷启动阶段，没有历史论文可对比。
 
