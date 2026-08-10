@@ -2,6 +2,8 @@ import asyncio
 import unittest
 from unittest.mock import patch
 
+from bs4 import BeautifulSoup
+
 from paper_sources import (
     FINAL_CANDIDATE_LIMIT,
     PUBLIC_SOURCE_CONFIG,
@@ -9,6 +11,8 @@ from paper_sources import (
     fetch_public_sources,
     merge_candidates,
     normalize_candidate,
+    _page_entries,
+    _get_text,
     rank_candidates,
 )
 
@@ -85,6 +89,69 @@ class PaperSourceTests(unittest.TestCase):
         finally:
             PUBLIC_SOURCE_CONFIG.clear()
             PUBLIC_SOURCE_CONFIG.update(original)
+
+    def test_cvf_ecva_entry_uses_the_official_eccv_landing_page(self):
+        soup = BeautifulSoup(
+            '<dt class="ptitle"><a href="papers/eccv_2024/papers_ECCV/html/6_ECCV_2024_paper.php">'
+            'Octopus: Embodied Vision-Language Programmer</a></dt>',
+            "html.parser",
+        )
+        papers = _page_entries(soup, "https://www.ecva.net/papers.php", "cvf", "ECCV2024")
+        self.assertEqual(len(papers), 1)
+        self.assertIn("eccv_2024", papers[0]["url"])
+
+    def test_http_403_source_is_circuit_broken_for_the_current_run(self):
+        original = {key: dict(value) for key, value in PUBLIC_SOURCE_CONFIG.items()}
+        try:
+            for key in PUBLIC_SOURCE_CONFIG:
+                PUBLIC_SOURCE_CONFIG[key]["enabled"] = key == "openreview"
+            calls = []
+
+            async def blocked(*args, **kwargs):
+                calls.append(1)
+                raise RuntimeError("HTTP 403 for fixture")
+
+            class Session:
+                pass
+
+            session = Session()
+            with patch("paper_sources.fetch_openreview", blocked):
+                first = asyncio.run(fetch_public_sources(session, {}, {}, "one", False))
+                second = asyncio.run(fetch_public_sources(session, {}, {}, "two", False))
+            self.assertEqual(first[2], ["openreview"])
+            self.assertEqual(second[2], [])
+            self.assertEqual(len(calls), 1)
+        finally:
+            PUBLIC_SOURCE_CONFIG.clear()
+            PUBLIC_SOURCE_CONFIG.update(original)
+
+    def test_openreview_403_is_retried_before_circuit_breaking(self):
+        class Response:
+            status = 403
+            url = "https://api2.openreview.net/notes"
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return False
+
+        class Session:
+            def __init__(self):
+                self.calls = 0
+
+            def get(self, *args, **kwargs):
+                self.calls += 1
+                return Response()
+
+        async def no_sleep(*args, **kwargs):
+            return None
+
+        session = Session()
+        with patch("paper_sources.asyncio.sleep", no_sleep):
+            with self.assertRaisesRegex(RuntimeError, "after 3 attempts"):
+                asyncio.run(_get_text(session, "https://api2.openreview.net/notes"))
+        self.assertEqual(session.calls, 3)
 
 
 if __name__ == "__main__":

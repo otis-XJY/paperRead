@@ -12,6 +12,7 @@ import re
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
+import aiohttp
 from bs4 import BeautifulSoup
 
 from paper_dedup import TITLE_SIMILARITY_THRESHOLD, title_similarity
@@ -21,6 +22,9 @@ from time_utils import format_utc_timestamp, newer_timestamp, parse_utc_timestam
 RAW_CANDIDATE_LIMIT = 20
 FINAL_CANDIDATE_LIMIT = 20
 BOOTSTRAP_DAYS = 365
+SOURCE_HTTP_MAX_ATTEMPTS = 3
+SOURCE_HTTP_RETRY_BASE_DELAY_SECONDS = 6
+SOURCE_HTTP_RATE_LIMIT_DELAY_SECONDS = 60
 
 PUBLIC_SOURCE_CONFIG = {
     "openreview": {
@@ -35,7 +39,8 @@ PUBLIC_SOURCE_CONFIG = {
     "pmlr": {"enabled": True, "venues": ["ICML", "AISTATS", "CoRL", "UAI"]},
     "cvf": {
         "enabled": True,
-        "events": ["CVPR2025", "ICCV2025", "ECCV2024", "WACV2025"],
+        "events": ["CVPR2025", "ICCV2025", "WACV2025"],
+        "ecva_events": ["ECCV2024"],
     },
     "europe_pmc": {"enabled": True},
 }
@@ -259,15 +264,64 @@ def rank_candidates(candidates, category, known_titles=None, limit=FINAL_CANDIDA
 
 
 async def _get_text(session, url, params=None):
+    """Fetch one public-source page using the same retry policy as arXiv.
+
+    This is intentionally Action-safe: bounded retries, exponential backoff,
+    and a longer wait for 429 rather than immediately amplifying rate limits.
+    """
     cache = getattr(session, "_paperread_text_cache", None)
     cache_key = url if not params else ""
     if cache_key and cache is not None and cache_key in cache:
         return cache[cache_key]
     timeout = getattr(session, "_paperread_timeout", None)
-    async with session.get(url, params=params, timeout=timeout) as response:
-        if response.status != 200:
-            raise RuntimeError("HTTP %s for %s" % (response.status, response.url))
-        text = await response.text()
+    last_error = None
+    for attempt in range(SOURCE_HTTP_MAX_ATTEMPTS):
+        if attempt > 0:
+            delay = SOURCE_HTTP_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+            print("[Source] retrying in %ss (%s/%s): %s" % (
+                delay, attempt + 1, SOURCE_HTTP_MAX_ATTEMPTS, last_error,
+            ))
+            await asyncio.sleep(delay)
+        try:
+            async with session.get(url, params=params, timeout=timeout) as response:
+                if response.status == 200:
+                    text = await response.text()
+                    break
+                if response.status == 429:
+                    last_error = RuntimeError("HTTP 429 for %s" % response.url)
+                    print("[Source] rate limited; waiting %ss: %s" % (
+                        SOURCE_HTTP_RATE_LIMIT_DELAY_SECONDS, last_error,
+                    ))
+                    await asyncio.sleep(SOURCE_HTTP_RATE_LIMIT_DELAY_SECONDS)
+                    if attempt >= SOURCE_HTTP_MAX_ATTEMPTS - 1:
+                        raise RuntimeError(
+                            "%s after %s attempts" % (last_error, SOURCE_HTTP_MAX_ATTEMPTS)
+                        )
+                    continue
+                error = RuntimeError("HTTP %s for %s" % (response.status, response.url))
+                # A 404 is a deterministic configuration/URL error.  The
+                # OpenReview 403 challenge may be transient, so it receives
+                # the same bounded retry budget as timeouts and rate limits.
+                retryable = (
+                    response.status in {408, 425, 429}
+                    or response.status >= 500
+                    or (response.status == 403 and "openreview" in url.lower())
+                )
+                if not retryable:
+                    raise error
+                last_error = error
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            last_error = exc
+        except RuntimeError as exc:
+            if "HTTP 403" not in str(exc) or "openreview" not in url.lower():
+                raise
+            last_error = exc
+        if attempt >= SOURCE_HTTP_MAX_ATTEMPTS - 1:
+            raise RuntimeError(
+                "%s after %s attempts" % (last_error, SOURCE_HTTP_MAX_ATTEMPTS)
+            )
+    else:  # pragma: no cover - loop either breaks or raises
+        raise RuntimeError("source request exhausted without a response")
     if cache_key and cache is not None:
         cache[cache_key] = text
     return text
@@ -364,7 +418,7 @@ def _page_entries(soup, base_url, source, venue):
     entries = []
     seen_urls = set()
     links = []
-    for heading in soup.select("p.title, .title, dt.title"):
+    for heading in soup.select("p.title, .title, dt.title, dt.ptitle"):
         link = heading.find("a", href=True)
         if link:
             links.append(link)
@@ -495,6 +549,20 @@ async def fetch_cvf(session, category, state, category_name, is_first_run):
                 candidates.extend(_page_entries(BeautifulSoup(text, "html.parser"), url, "cvf", event))
             except Exception as exc:
                 print("[Source] CVF event %s failed: %s" % (event, exc))
+        ecva_events = PUBLIC_SOURCE_CONFIG["cvf"].get("ecva_events", [])
+        if ecva_events:
+            try:
+                ecva_url = "https://www.ecva.net/papers.php"
+                ecva_soup = BeautifulSoup(await _get_text(session, ecva_url), "html.parser")
+                ecva_papers = _page_entries(ecva_soup, ecva_url, "cvf", "ECCV")
+                for event in ecva_events:
+                    event_path = event[:4].lower() + "_" + event[4:]
+                    candidates.extend([
+                        paper for paper in ecva_papers
+                        if event_path in paper.get("url", "").lower()
+                    ])
+            except Exception as exc:
+                print("[Source] ECVA catalogue failed: %s" % exc)
         cache["cvf"] = candidates
         session._paperread_catalog_cache = cache
     candidates = [paper for paper in candidates if locally_matches_category(paper, category)][:RAW_CANDIDATE_LIMIT]
@@ -517,8 +585,14 @@ async def fetch_public_sources(session, category, state, category_name, is_first
         "europe_pmc": fetch_europe_pmc,
     }
     papers, cursors, failures = [], {}, []
+    unavailable_sources = getattr(session, "_paperread_unavailable_sources", set())
     for source, adapter in adapters.items():
         if not PUBLIC_SOURCE_CONFIG[source].get("enabled", False):
+            continue
+        if source in unavailable_sources:
+            # OpenReview currently challenge-protects anonymous Notes API
+            # requests.  Do not repeat the same blocked request for every
+            # category in one Action run.
             continue
         try:
             source_papers, cursor = await adapter(session, category, state, category_name, is_first_run)
@@ -528,5 +602,9 @@ async def fetch_public_sources(session, category, state, category_name, is_first
             print("[Source] %s returned %s candidate(s) for %s" % (source, len(source_papers), category_name))
         except Exception as exc:
             failures.append(source)
+            if "HTTP 403" in str(exc):
+                unavailable_sources.add(source)
+                session._paperread_unavailable_sources = unavailable_sources
+                print("[Source] %s is challenge-protected (HTTP 403); disabled for this run" % source)
             print("[Source] %s failed for %s: %s" % (source, category_name, exc))
     return papers, cursors, failures

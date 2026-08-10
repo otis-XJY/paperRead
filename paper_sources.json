@@ -10,7 +10,8 @@
   "pmlr": {"enabled": true, "venues": ["ICML", "AISTATS", "CoRL", "UAI"]},
   "cvf": {
     "enabled": true,
-    "events": ["CVPR2025", "ICCV2025", "ECCV2024", "WACV2025"]
+    "events": ["CVPR2025", "ICCV2025", "WACV2025"],
+    "ecva_events": ["ECCV2024"]
   },
   "europe_pmc": {"enabled": true}
 }
