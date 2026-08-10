@@ -2215,8 +2215,6 @@ def generate_report_payload(
     paperread_status=None,
 ):
     """Generate the structured data used by both card and Wiki renderers."""
-    from llm_client import llm
-
     paperread_messages = paperread_messages or []
     knowledge_documents = knowledge_documents or []
     document_activity = document_activity or []
@@ -2308,14 +2306,56 @@ JSON 格式：
         document_events=len(document_activity),
     )
     llm_started = time_module.monotonic()
-    response = llm.call(
-        [{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-        response_validator=parse_report_payload,
-    )
-    _progress("LLM：结构化日报生成完成", elapsed_seconds=round(time_module.monotonic() - llm_started, 1))
+    try:
+        from llm_client import llm
+
+        response = llm.call(
+            [{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            response_validator=parse_report_payload,
+        )
+        generated_payload = parse_report_payload(response)
+        _progress(
+            "LLM：结构化日报生成完成",
+            elapsed_seconds=round(time_module.monotonic() - llm_started, 1),
+        )
+    except Exception as exc:
+        # A daily report still has value when a remote model is unavailable:
+        # retain measured activity and document-event facts, and explicitly
+        # avoid turning window telemetry into claimed work outcomes.
+        report_date = str((activity_summary.get("period") or {}).get("start") or "")[:10]
+        generated_payload = {
+            "date": report_date,
+            "summary": {
+                "headline": "LLM 服务不可用，以下为基于已采集证据的降级日报",
+                "main_progress": "未生成模型总结；仅保留可观测活动和文档事件。",
+            },
+            "themes": [],
+            "today_completed": [],
+            "time_investment": [],
+            "rhythm": dict(activity_summary.get("rhythm") or {}),
+            "concentration": {},
+            "tomorrow_plan": {"tasks": [], "idea_suggestions": []},
+            "idea_suggestions": [],
+            "risks": [{
+                "title": "LLM 服务不可用",
+                "detail": "未能生成语义总结；请在 LLM 服务恢复后重试生成完整日报。",
+            }],
+            "papers": {
+                "summary": "未生成模型分析；PaperRead 原始记录未被推断为研究结论。",
+                "suggestions": [],
+            },
+            "documents": {"collaboration_summary": "", "related_work": []},
+            "questions": [],
+            "generation_status": "fallback",
+        }
+        _progress(
+            "LLM：生成失败，使用事实降级日报",
+            elapsed_seconds=round(time_module.monotonic() - llm_started, 1),
+            error_type=type(exc).__name__,
+        )
     enriched = enrich_report_payload(
-        parse_report_payload(response),
+        generated_payload,
         activity_summary=activity_summary,
         document_activity=document_activity,
     )

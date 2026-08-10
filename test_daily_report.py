@@ -14,6 +14,7 @@ from daily_report import (
     enrich_report_payload,
     extract_question_messages,
     generate_report,
+    generate_report_payload,
     is_question_message,
     is_paperread_message,
     message_text,
@@ -475,6 +476,25 @@ class DailyReportHelpersTest(unittest.TestCase):
         )
         self.assertIs(fake_llm.call.call_args.kwargs["response_validator"], parse_report_payload)
 
+    def test_generate_report_payload_falls_back_when_llm_is_unavailable(self):
+        fake_llm = type("FakeLLM", (), {})()
+        fake_llm.call = Mock(side_effect=RuntimeError("Request timed out"))
+        fake_module = type("FakeLLMModule", (), {"llm": fake_llm})()
+        activity = {
+            "period": {
+                "start": "2026-07-20T01:00:00+08:00",
+                "end": "2026-07-20T23:00:00+08:00",
+            },
+            "active_hours": 0,
+            "away_hours": 0,
+            "rhythm": {},
+        }
+        with patch.dict(sys.modules, {"llm_client": fake_module}):
+            payload = generate_report_payload([], activity)
+        self.assertEqual(payload["date"], "2026-07-20")
+        self.assertEqual(payload["generation_status"], "fallback")
+        self.assertEqual(payload["risks"][0]["title"], "LLM 服务不可用")
+
     def test_llm_client_falls_back_after_invalid_structured_output(self):
         fake_openai = SimpleNamespace(OpenAI=lambda **kwargs: object())
         with patch.dict(
@@ -509,6 +529,33 @@ class DailyReportHelpersTest(unittest.TestCase):
             response_validator=parse_report_payload,
         )
         self.assertIs(result, good_response)
+        self.assertEqual(completions.create.call_count, 2)
+
+    def test_llm_client_honors_endpoint_attempt_limit(self):
+        fake_openai = SimpleNamespace(OpenAI=lambda **kwargs: object())
+        with patch.dict(
+            os.environ,
+            {"MODELSCOPE_API_KEY": "test-key", "HTTPS_PROXY": "", "ALL_PROXY": ""},
+            clear=False,
+        ), patch.dict(sys.modules, {"openai": fake_openai}):
+            llm_client = importlib.import_module("llm_client")
+        completions = Mock()
+        completions.create.side_effect = RuntimeError("Request timed out")
+        fake_client = type(
+            "Client",
+            (),
+            {"chat": type("Chat", (), {"completions": completions})()},
+        )()
+        model_pool = llm_client.MultiModelLLM(
+            fake_client,
+            ["first-model", "second-model", "third-model"],
+        )
+        with patch.dict(
+            os.environ,
+            {"LLM_MAX_ENDPOINT_ATTEMPTS": "2", "LLM_MAX_ROUNDS": "1"},
+            clear=False,
+        ), self.assertRaises(RuntimeError):
+            model_pool.call([{"role": "user", "content": "hello"}])
         self.assertEqual(completions.create.call_count, 2)
 
     def test_paperread_messages_are_separated(self):

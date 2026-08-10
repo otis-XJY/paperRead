@@ -191,9 +191,20 @@ def create_openai_endpoints(
     ]
 
 
+def _interleave_endpoints(provider_groups):
+    """Interleave providers so an outage does not block configured backups."""
+    endpoints = []
+    widest_group = max((len(group) for group in provider_groups), default=0)
+    for index in range(widest_group):
+        for group in provider_groups:
+            if index < len(group):
+                endpoints.append(group[index])
+    return endpoints
+
+
 def build_llm_endpoints():
     """Build the ordered cross-provider pool using code-defined model lists."""
-    endpoints = []
+    provider_groups = []
 
     modelscope_key = os.getenv("MODELSCOPE_API_KEY")
     if modelscope_key:
@@ -208,7 +219,7 @@ def build_llm_endpoints():
             timeout=float(os.getenv("LLM_TIMEOUT_SECONDS", "90")),
             max_retries=int(os.getenv("LLM_MAX_RETRIES", "2")),
         )
-        endpoints.extend(create_openai_endpoints(
+        provider_groups.append(create_openai_endpoints(
             "modelscope",
             modelscope_key,
             modelscope_base_url,
@@ -218,7 +229,7 @@ def build_llm_endpoints():
 
     zhipu_key = os.getenv("ZHIPUAI_API_KEY") or os.getenv("ZAI_API_KEY")
     if zhipu_key:
-        endpoints.extend(create_openai_endpoints(
+        provider_groups.append(create_openai_endpoints(
             "zhipu",
             zhipu_key,
             "https://open.bigmodel.cn/api/paas/v4/",
@@ -227,7 +238,7 @@ def build_llm_endpoints():
 
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
-        endpoints.extend(create_openai_endpoints(
+        provider_groups.append(create_openai_endpoints(
             "openai",
             openai_key,
             "https://api.openai.com/v1/",
@@ -241,7 +252,7 @@ def build_llm_endpoints():
         if not api_key:
             print(f"LLM provider skipped because {api_key_env} is not set: {config['provider']}")
             continue
-        endpoints.extend(create_openai_endpoints(
+        provider_groups.append(create_openai_endpoints(
             config["provider"],
             api_key,
             config["base_url"],
@@ -249,7 +260,7 @@ def build_llm_endpoints():
             stream=config.get("stream", False),
             supports_response_format=config.get("supports_response_format", False),
         ))
-    return endpoints
+    return _interleave_endpoints(provider_groups)
 
 
 class MultiModelLLM:
@@ -276,11 +287,18 @@ class MultiModelLLM:
 
     def call(self, messages, response_format=None, max_rounds=2, response_validator=None):
         max_rounds = max(int(os.getenv("LLM_MAX_ROUNDS", str(max_rounds))), 1)
+        max_attempts = max(int(os.getenv("LLM_MAX_ENDPOINT_ATTEMPTS", "0")), 0)
+        timeout_seconds = max(float(os.getenv("LLM_CALL_TIMEOUT_SECONDS", "0")), 0.0)
+        deadline = time.monotonic() + timeout_seconds if timeout_seconds else None
+        attempts = 0
         total_endpoints = len(self.endpoints)
         last_exc = None
         start_idx = self.next_start_idx % total_endpoints
 
         for round_idx in range(max_rounds):
+            if deadline is not None and time.monotonic() >= deadline:
+                print("LLM call deadline reached before starting another round.", flush=True)
+                break
             if round_idx > 0:
                 if len(self._disabled_endpoints) == total_endpoints:
                     break
@@ -291,10 +309,17 @@ class MultiModelLLM:
                 time.sleep(60)
 
             for offset in range(total_endpoints):
+                if max_attempts and attempts >= max_attempts:
+                    print(f"LLM endpoint attempt limit reached: {max_attempts}.", flush=True)
+                    break
+                if deadline is not None and time.monotonic() >= deadline:
+                    print("LLM call deadline reached before starting another endpoint.", flush=True)
+                    break
                 idx = (start_idx + offset) % total_endpoints
                 endpoint = self.endpoints[idx]
                 if endpoint.key in self._disabled_endpoints:
                     continue
+                attempts += 1
                 attempt_started = time.monotonic()
                 print(
                     f"LLM attempt started: provider={endpoint.provider} "
@@ -303,6 +328,11 @@ class MultiModelLLM:
                 )
                 try:
                     kwargs = {"model": endpoint.model, "messages": messages}
+                    if deadline is not None:
+                        remaining_seconds = deadline - time.monotonic()
+                        if remaining_seconds <= 0:
+                            raise TimeoutError("LLM call deadline reached")
+                        kwargs["timeout"] = remaining_seconds
                     if endpoint.stream:
                         kwargs["stream"] = True
                         if (
@@ -359,6 +389,11 @@ class MultiModelLLM:
                         f"elapsed_seconds={time.monotonic() - attempt_started:.1f}",
                         flush=True,
                     )
+
+            if (max_attempts and attempts >= max_attempts) or (
+                deadline is not None and time.monotonic() >= deadline
+            ):
+                break
 
             if len(self._disabled_endpoints) == total_endpoints:
                 break

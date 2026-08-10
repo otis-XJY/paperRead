@@ -22,9 +22,15 @@ jobs:
       ACTIVITYWATCH_URL: "http://127.0.0.1:5600"
       DAILY_REPORT_PROGRESS: "1"
       DAILY_REPORT_ACTIVITY_CLEAR_MAX_SECONDS: "30"
-      LLM_TIMEOUT_SECONDS: "60"
+      # A ModelScope outage previously consumed 13 x 60-second model attempts
+      # and prevented the report from reaching its send step.  Keep the LLM
+      # budget below the job deadline; daily_report.py sends a fact-only
+      # fallback report if this budget is exhausted.
+      LLM_TIMEOUT_SECONDS: "20"
       LLM_MAX_RETRIES: "0"
       LLM_MAX_ROUNDS: "1"
+      LLM_MAX_ENDPOINT_ATTEMPTS: "3"
+      LLM_CALL_TIMEOUT_SECONDS: "60"
       DAILY_REPORT_FEISHU_APP_ID: ${{ secrets.DAILY_REPORT_FEISHU_APP_ID || secrets.FEISHU_APP_ID }}
       DAILY_REPORT_FEISHU_APP_SECRET: ${{ secrets.DAILY_REPORT_FEISHU_APP_SECRET || secrets.FEISHU_APP_SECRET }}
       DAILY_REPORT_FEISHU_CHAT_ID: ${{ secrets.DAILY_REPORT_FEISHU_CHAT_ID }}
