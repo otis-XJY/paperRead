@@ -562,19 +562,27 @@ class FeishuWikiClient:
                 text_el(", ".join(authors)),
             ]))
 
-        # arXiv 时间 + 链接
+        # Publication time and source landing-page link.
         published = paper_info.get("published", "")
-        arxiv_id = paper_info.get("arxiv_id", "")
+        paper_url = paper_info.get("url", "")
+        source = paper_info.get("source", "")
+        venue = paper_info.get("venue", "")
         if published:
             blocks.append(paragraph_block([
-                text_el("arXiv 上传时间：", bold=True),
+                text_el("发布时间：", bold=True),
                 text_el(published),
             ]))
-        if arxiv_id:
-            arxiv_url = f"https://arxiv.org/abs/{arxiv_id}"
+        if source or venue:
+            blocks.append(paragraph_block([
+                text_el("来源：", bold=True),
+                text_el(" ".join(value for value in (source, venue) if value)),
+            ]))
+        if not paper_url and paper_info.get("arxiv_id"):
+            paper_url = f"https://arxiv.org/abs/{paper_info['arxiv_id']}"
+        if paper_url:
             blocks.append(paragraph_block([
                 text_el("原文链接：", bold=True),
-                text_el(arxiv_url, link=arxiv_url),
+                text_el(paper_url, link=paper_url),
             ]))
 
         blocks.append(divider_block())

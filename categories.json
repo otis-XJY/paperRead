@@ -1,5 +1,6 @@
 {
   "UAV_VLN": {
+    "discovery_queries": ["vision language navigation", "UAV navigation", "aerial robot navigation"],
     "keywords": [
       "ti:\"Vision-Language Navigation\"",
       "(abs:UAV AND abs:Navigation)"
@@ -9,6 +10,7 @@
     "allowed_recommendations": ["必读"]
   },
   "multi_VLN": {
+    "discovery_queries": ["multi-agent vision language navigation", "collaborative navigation", "multi-robot navigation"],
     "keywords": [
       "(abs:multi AND abs:Navigation)",
       "(all:collaborative AND all:VLN)",
@@ -22,6 +24,7 @@
     "allowed_recommendations": ["必读"]
   },
   "MultiAgent_Game_Theory": {
+    "discovery_queries": ["multi-agent game theory", "multi-agent decision making", "dynamic game"],
     "keywords": [
       "ti:\"Game Theory\" AND abs:Multi-agent",
       "ti:\"Decision Making\" AND abs:Multi-agent"
@@ -31,6 +34,7 @@
     "allowed_recommendations": ["必读"]
   },
   "MARL": {
+    "discovery_queries": ["multi-agent reinforcement learning", "value decomposition", "centralized training decentralized execution"],
     "keywords": [
       "ti:\"Multi-Agent Reinforcement Learning\" AND (abs:algorithm OR abs:policy OR abs:value OR abs:framework OR abs:method)",
       "abs:\"value decomposition\" AND abs:\"multi-agent\"",
@@ -44,6 +48,7 @@
   },
 
   "LLM_Agent_Memory_Tool_Skill": {
+    "discovery_queries": ["LLM agent memory", "language agent tool use", "agent skill learning", "agent experience learning"],
     "keywords": [
       "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:memory OR abs:\"episodic memory\" OR abs:\"semantic memory\" OR abs:\"procedural memory\" OR abs:\"memory consolidation\")",
       "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:experience OR abs:trajectory OR abs:reflection OR abs:\"self-reflection\" OR abs:\"experience learning\" OR abs:\"trajectory abstraction\")",
@@ -59,6 +64,7 @@
   },
 
   "LLM_Agent_Self_Evolution": {
+    "discovery_queries": ["self-evolving LLM agent", "self-improving language agent", "agent meta-evolution", "agent continual learning"],
     "keywords": [
       "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"self-evolving\" OR abs:\"self-improving\" OR abs:\"self evolution\" OR abs:\"self improvement\" OR abs:\"self-modification\")",
       "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:\"meta-evolving\" OR abs:coevolution OR abs:\"co-evolution\" OR abs:\"evolutionary optimization\")",
@@ -73,6 +79,7 @@
   },
 
   "LLM_Agent_Workflow_Long_Horizon": {
+    "discovery_queries": ["LLM agent workflow", "long-horizon language agent", "agent orchestration", "agent planning"],
     "keywords": [
       "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:workflow OR abs:orchestration OR abs:architecture OR abs:framework OR abs:\"agent graph\")",
       "(abs:LLM OR abs:\"large language model\") AND (abs:agent OR abs:agentic) AND (abs:planning OR abs:planner OR abs:routing OR abs:\"control flow\" OR abs:\"task decomposition\" OR abs:subgoal)",
@@ -91,6 +98,7 @@
   },
 
   "Multi_LLM_Agent_Memory_Tool_Skill": {
+    "discovery_queries": ["multi-LLM agent memory", "multi-agent tool use", "multi-agent skill learning", "shared agent memory"],
     "keywords": [
       "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\" OR abs:agents) AND (abs:\"shared memory\" OR abs:\"collective memory\" OR abs:blackboard OR abs:\"shared context\" OR abs:\"memory synchronization\")",
       "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\" OR abs:agents) AND (abs:memory OR abs:experience OR abs:trajectory OR abs:\"experience sharing\" OR abs:\"knowledge sharing\")",
@@ -104,6 +112,7 @@
   },
 
   "Multi_LLM_Agent_Collaboration_Communication": {
+    "discovery_queries": ["LLM multi-agent collaboration", "multi-agent communication topology", "multi-agent coordination", "collaboration network"],
     "keywords": [
       "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"multiple agents\" OR abs:\"agent team\" OR abs:\"agent society\" OR abs:\"society of agents\" OR abs:\"agent population\" OR abs:\"LLM-based multi-agent\" OR abs:\"multi-LLM agent\" OR abs:\"language model agents\" OR abs:\"collaborative agents\" OR abs:\"cooperative agents\" OR abs:\"collective agents\")",
       "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:collaboration OR abs:cooperation OR abs:coordination OR abs:orchestration)",
@@ -121,6 +130,7 @@
   },
 
   "Multi_LLM_Agent_Evolution": {
+    "discovery_queries": ["self-evolving multi-agent system", "multi-agent co-evolution", "adaptive communication topology", "multi-agent collaboration scaling"],
     "keywords": [
       "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:\"self-evolving\" OR abs:\"self-improving\" OR abs:evolution OR abs:coevolution OR abs:\"self-organization\")",
       "(abs:LLM OR abs:\"large language model\") AND (abs:\"multi-agent\" OR abs:\"agent team\") AND (abs:\"dynamic topology\" OR abs:\"adaptive topology\" OR abs:\"topology optimization\" OR abs:\"dynamic roles\" OR abs:\"role evolution\")",

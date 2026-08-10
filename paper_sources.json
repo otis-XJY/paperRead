@@ -1,0 +1,16 @@
+{
+  "openreview": {
+    "enabled": true,
+    "venues": ["ICLR", "NeurIPS", "TMLR", "COLM", "AISTATS", "CoRL", "UAI"]
+  },
+  "acl_anthology": {
+    "enabled": true,
+    "events": ["acl-2025", "emnlp-2025", "naacl-2025", "eacl-2026", "findings-2025"]
+  },
+  "pmlr": {"enabled": true, "venues": ["ICML", "AISTATS", "CoRL", "UAI"]},
+  "cvf": {
+    "enabled": true,
+    "events": ["CVPR2025", "ICCV2025", "ECCV2024", "WACV2025"]
+  },
+  "europe_pmc": {"enabled": true}
+}

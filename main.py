@@ -55,6 +55,12 @@ from time_utils import (
 )
 from paper_progress import advance_contiguous_cursor
 from paper_dedup import TITLE_SIMILARITY_THRESHOLD, find_duplicate_groups, title_similarity
+from paper_sources import (
+    candidate_history_keys,
+    fetch_public_sources,
+    normalize_candidate,
+    rank_candidates,
+)
 
 __version__ = "1.0.0"
 
@@ -212,6 +218,16 @@ HISTORY_FILE = "history.json"
 HTTP_TIMEOUT_SECONDS = 25
 RETRY_TIMES = 3
 RETRY_BASE_DELAY_SECONDS = 1.0
+
+# The prose may be Chinese for readability, but technical vocabulary must be
+# preserved in English in every field that is later archived in Zotero/Feishu.
+ACADEMIC_LANGUAGE_POLICY = """
+Language policy for every generated field:
+- Chinese explanatory prose is allowed, but every academic and technical term must remain in conventional English.
+- Never translate or transliterate methods, model names, task names, datasets, benchmarks, metrics, architectures, algorithms, protocols, skills, tools, or research concepts into Chinese.
+- Apply this rule to summary, comparison, methodology, sharp_review, reason, and core_concepts; do not provide a Chinese technical synonym in parentheses.
+- Keep paper titles and matched_titles exactly as supplied. core_concepts must be English terms only.
+"""
 
 # 运行时错误收集器，所有错误汇总后发送到飞书
 _errors: list[dict] = []
@@ -544,6 +560,9 @@ def get_daily_zotero_paper_records():
                     "created_at": data.get("dateAdded", ""),
                     "item": item,
                     "arxiv_id": extract_arxiv_id_from_url(data.get("url", "")),
+                    "doi": str(data.get("DOI") or "").strip().lower(),
+                    "url": str(data.get("url") or "").strip(),
+                    "extra": str(data.get("extra") or ""),
                 }
     return list(papers_by_key.values())
 
@@ -557,12 +576,19 @@ def extract_arxiv_id_from_url(url):
 
 
 def find_existing_zotero_paper(paper, records):
-    """Find a stored DailyPapers item matching arXiv ID or title similarity."""
-    paper_id = str(paper.get("id") or "")
+    """Find a stored DailyPapers item by DOI, arXiv, source URL, or title."""
+    paper = normalize_candidate(paper)
+    paper_id = str(paper.get("external_ids", {}).get("arxiv") or "")
     paper_id_base = re.sub(r"v\d+$", "", paper_id)
+    paper_doi = str(paper.get("doi") or "").lower()
+    paper_url = str(paper.get("url") or "")
     for record in records:
+        if paper_doi and paper_doi == str(record.get("doi") or "").lower():
+            return record
         stored_id = str(record.get("arxiv_id") or "")
-        if stored_id and re.sub(r"v\d+$", "", stored_id) == paper_id_base:
+        if paper_id_base and stored_id and re.sub(r"v\d+$", "", stored_id) == paper_id_base:
+            return record
+        if paper_url and paper_url == str(record.get("url") or ""):
             return record
     title = str(paper.get("title") or "")
     for record in records:
@@ -608,7 +634,7 @@ def deduplicate_zotero_papers(dry_run=False):
     return removed
 # ================= 2. 状态管理 =================
 def load_state():
-    default_state = {"is_first_run": True, "last_date": DEFAULT_LAST_DATE, "initialized_categories": []}
+    default_state = {"is_first_run": True, "last_date": DEFAULT_LAST_DATE, "initialized_categories": [], "source_cursors": {}}
     state = load_json_file(STATE_FILE, default_state)
     if not isinstance(state, dict):
         return default_state
@@ -622,13 +648,17 @@ def load_state():
     # 向后兼容：旧格式没有 initialized_categories，视为全局首次运行已完成
     if "initialized_categories" not in state:
         state["initialized_categories"] = list(CONFIG["categories"].keys()) if not state["is_first_run"] else []
+    if not isinstance(state.get("source_cursors"), dict):
+        state["source_cursors"] = {}
     return state
 
-def save_state(last_date, initialized_categories=None):
+def save_state(last_date, initialized_categories=None, source_cursors=None):
     canonical_last_date = format_utc_timestamp(last_date) or DEFAULT_LAST_DATE
     data = {"is_first_run": False, "last_date": canonical_last_date}
     if initialized_categories is not None:
         data["initialized_categories"] = initialized_categories
+    if source_cursors is not None:
+        data["source_cursors"] = source_cursors
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
 
@@ -732,10 +762,7 @@ def check_relevance_phase_one(paper, kb_entries, category_name=""):
     short_context = [{"title": kb["title"], "review": kb["short_review"]} for kb in kb_entries]
     
     prompt = f"""
-    Language policy:
-    - Write concise explanatory prose in Chinese, but preserve academic terminology in its conventional English form.
-    - Never mechanically translate paper titles, method/model names, benchmarks, datasets, metrics, code frameworks, or technical terms such as "self-evolution", "episodic memory", and "communication topology".
-    - Keep every item in matched_titles exactly as provided. In reason, retain the relevant English technical terms.
+    {ACADEMIC_LANGUAGE_POLICY}
 
     判断待分析论文与已读库的关联度（0-10分）。
     【已读库简述】：{json.dumps(short_context, ensure_ascii=False)}
@@ -773,10 +800,7 @@ def check_relevance_phase_one(paper, kb_entries, category_name=""):
 
 def deep_analyze_phase_two(paper, category_name, matched_full_notes):
     prompt = f"""
-    Language policy:
-    - Write explanatory prose in Chinese while retaining academic terminology in its conventional English form.
-    - Do not translate paper titles, method/model names, benchmarks, datasets, metrics, code frameworks, or established technical terms into ad-hoc Chinese equivalents.
-    - core_concepts must contain the original English academic terms only (for example, "self-evolution", "episodic memory", "communication topology").
+    {ACADEMIC_LANGUAGE_POLICY}
 
     你是{category_name}专家学者，了解这个领域的经典方法和前沿进展。
     【你过去写下的核心笔记】（仅针对强相关论文）：{json.dumps(matched_full_notes, ensure_ascii=False)}
@@ -803,10 +827,7 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
 
 def analyze_first_run_paper(paper, category_name):
     prompt = f"""
-    Language policy:
-    - Write explanatory prose in Chinese while retaining academic terminology in its conventional English form.
-    - Do not translate paper titles, method/model names, benchmarks, datasets, metrics, code frameworks, or established technical terms into ad-hoc Chinese equivalents.
-    - core_concepts must contain the original English academic terms only (for example, "self-evolution", "skill library", "long-horizon planning").
+    {ACADEMIC_LANGUAGE_POLICY}
 
     你是{category_name}专家学者，了解这个领域的经典方法和前沿进展。
     当前为冷启动阶段，没有历史论文可对比。
@@ -1459,20 +1480,25 @@ async def _main_impl():
 
     all_failed_keywords = []  # 追踪所有抓取失败的关键词
     candidate_papers = []
+    pending_source_cursors = {}
 
     def mark_paper_handled(paper, push_to_github=False):
         """Record one completed decision without maintaining a second status DB."""
         if DRY_RUN:
             return
-        paper_id = paper.get("id", "")
-        if not paper_id or paper_id in history_set:
+        keys = candidate_history_keys(paper)
+        if not keys or keys.intersection(history_set):
             return
+        paper_id = normalize_candidate(paper).get("id", "")
         history.append(paper_id)
         history_set.add(paper_id)
         history_base_set.add(re.sub(r"v\d+$", "", paper_id))
         save_history_checkpoint(history, push_to_github=push_to_github)
 
     async with aiohttp.ClientSession() as session:
+        session._paperread_text_cache = {}
+        session._paperread_catalog_cache = {}
+        session._paperread_timeout = aiohttp.ClientTimeout(total=45, connect=10)
         for cat_name, cat_info in CONFIG["categories"].items():
             print(f"\n--- 正在处理分类: {cat_name} ---")
             stats["categories"][cat_name] = 0
@@ -1490,6 +1516,25 @@ async def _main_impl():
                 cat_is_first_run=cat_is_first_run,
                 cat_name=cat_name
             )
+            papers = [normalize_candidate(paper, "arxiv") for paper in papers]
+            public_papers, source_cursors, failed_sources = await fetch_public_sources(
+                session, cat_info, state, cat_name, cat_is_first_run
+            )
+            for source in failed_sources:
+                log_error(
+                    f"[{source}] public-source fetch failed; cursor will not advance",
+                    category=cat_name,
+                    error_type="source_fetch",
+                )
+            papers.extend(public_papers)
+            papers = rank_candidates(
+                papers,
+                cat_info,
+                [entry.get("title", "") for entry in kb.get(cat_name, [])],
+            )
+            for paper in papers:
+                paper.setdefault("source_meta", {}).setdefault("categories", []).append(cat_name)
+            pending_source_cursors[cat_name] = source_cursors
             candidate_papers.extend(papers)
             papers.sort(
                 key=lambda item: (
@@ -1505,8 +1550,11 @@ async def _main_impl():
             for p in papers:
                 # 标准化 ID 格式：OAI-PMH 返回的 ID 可能不带版本号，history.json 中的带版本号
                 paper_id = p['id']
-                paper_id_base = re.sub(r'v\d+$', '', paper_id)  # 去掉版本号
-                if paper_id in history_set or paper_id_base in history_base_set:
+                paper_id_base = re.sub(r'v\d+$', '', paper_id)
+                if candidate_history_keys(p).intersection(history_set) or paper_id_base in history_base_set:
+                    continue
+                if not p.get("summary"):
+                    print(f"[Source] skipped candidate without abstract: {p['title'][:50]}...")
                     continue
                 stored_paper = find_existing_zotero_paper(p, zotero_paper_records)
                 if stored_paper:
@@ -1555,12 +1603,15 @@ async def _main_impl():
                     item = get_zotero_item_template("preprint", cat_name)
                     item['title'] = p['title']
                     item['abstractNote'] = p['summary']
-                    item['url'] = f"https://arxiv.org/abs/{p['id']}"
+                    item['url'] = p.get('url', '')
                     item['date'] = p.get('published', '')
                     item['creators'] = authors_to_zotero_creators(p.get('authors', []))
+                    item['DOI'] = p.get('doi', '')
+                    item['extra'] = f"PaperRead-ID: {p.get('id', '')}\nSource: {p.get('source', '')}\nVenue: {p.get('venue', '')}"
                     item['collections'] = [cat_keys[cat_name]]
                     item['tags'] = [
                         {"tag": cat_name},
+                        {"tag": f"source:{p.get('source', 'unknown')}"},
                         {"tag": "首次运行"},
                         {"tag": first_run_analysis.get("recommendation", "值得看")},
                     ]
@@ -1580,7 +1631,9 @@ async def _main_impl():
                             "id": item_key,
                             "title": p["title"],
                             "created_at": "",
-                            "arxiv_id": p["id"],
+                            "arxiv_id": p.get("external_ids", {}).get("arxiv", ""),
+                            "doi": p.get("doi", ""),
+                            "url": p.get("url", ""),
                         })
                         ensure_item_in_collection(item_key, cat_keys[cat_name], f"首次-{cat_name}")
                         note_template = get_zotero_item_template("note", cat_name)
@@ -1597,8 +1650,9 @@ async def _main_impl():
                             f"<p><strong>🔥 推荐指数：</strong> <span style=\"background:{badge_color}; color:white; padding:2px 8px; border-radius:4px;\">{first_run_analysis.get('recommendation', '值得看')}</span></p>"
                             f"<p><strong>📂 分类：</strong>{cat_name}</p>"
                             f"<p><strong>👤 作者：</strong>{authors_str}</p>"
-                            f"<p><strong>🕒 arXiv上传时间：</strong>{published_str}</p>"
-                            f"<p><strong>🔗 原文：</strong><a href=\"https://arxiv.org/abs/{p['id']}\">https://arxiv.org/abs/{p['id']}</a></p>"
+                            f"<p><strong>🕒 发布时间：</strong>{published_str}</p>"
+                            f"<p><strong>📚 来源：</strong>{p.get('source', '')} {p.get('venue', '')}</p>"
+                            f"<p><strong>🔗 原文：</strong><a href=\"{p.get('url', '')}\">{p.get('url', '')}</a></p>"
                             f"<div style=\"background:#f9f9f9;border-left:5px solid #28a745;padding:10px;margin:10px 0;\">"
                             f"<strong>🧾 一句话总结：</strong><br/>{first_run_analysis.get('summary', '')}"
                             f"</div>"
@@ -1626,7 +1680,10 @@ async def _main_impl():
                                     "title": p['title'],
                                     "authors": p.get('authors', []),
                                     "published": p.get('published', ''),
-                                    "arxiv_id": p['id'],
+                                    "arxiv_id": p.get('external_ids', {}).get('arxiv', ''),
+                                    "url": p.get('url', ''),
+                                    "source": p.get('source', ''),
+                                    "venue": p.get('venue', ''),
                                     "recommendation": first_run_analysis.get('recommendation', '值得看'),
                                     "methodology": first_run_analysis.get('methodology', ''),
                                     "core_concepts": first_run_analysis.get('core_concepts', []),
@@ -1647,7 +1704,9 @@ async def _main_impl():
                             stats["papers"][cat_name] = []
                         stats["papers"][cat_name].append({
                             "title": p['title'],
-                            "arxiv_id": p['id'],
+                            "arxiv_id": p.get('external_ids', {}).get('arxiv', ''),
+                            "url": p.get('url', ''),
+                            "source": p.get('source', ''),
                             "authors": p.get('authors', []),
                             "published": p.get('published', ''),
                             "recommendation": first_run_analysis.get('recommendation', '值得看'),
@@ -1725,11 +1784,17 @@ async def _main_impl():
                 item = get_zotero_item_template("preprint", cat_name)
                 item['title'] = p['title']
                 item['abstractNote'] = p['summary']
-                item['url'] = f"https://arxiv.org/abs/{p['id']}"
+                item['url'] = p.get('url', '')
                 item['date'] = p.get('published', '')
                 item['creators'] = authors_to_zotero_creators(p.get('authors', []))
+                item['DOI'] = p.get('doi', '')
+                item['extra'] = f"PaperRead-ID: {p.get('id', '')}\nSource: {p.get('source', '')}\nVenue: {p.get('venue', '')}"
                 item['collections'] = [cat_keys[cat_name]]
-                item['tags'] =[{"tag": cat_name}, {"tag": analysis.get("recommendation", "值得看")}]
+                item['tags'] =[
+                    {"tag": cat_name},
+                    {"tag": f"source:{p.get('source', 'unknown')}"},
+                    {"tag": analysis.get("recommendation", "值得看")},
+                ]
 
                 try:
                     resp = retry_sync(lambda: zot.create_items([item]), "创建 Zotero 论文条目")
@@ -1746,7 +1811,9 @@ async def _main_impl():
                         "id": item_key,
                         "title": p["title"],
                         "created_at": "",
-                        "arxiv_id": p["id"],
+                        "arxiv_id": p.get("external_ids", {}).get("arxiv", ""),
+                        "doi": p.get("doi", ""),
+                        "url": p.get("url", ""),
                     })
                     ensure_item_in_collection(item_key, cat_keys[cat_name], f"增量-{cat_name}")
                     badge_color = "#d9534f" if analysis.get('recommendation') == "必读" else "#f0ad4e"
@@ -1761,7 +1828,9 @@ async def _main_impl():
                     <h2 style="color: #2c3e50; border-bottom: 2px solid #eee;">{p['title']}</h2>
                     <p><strong>🔥 推荐指数：</strong> <span style="background:{badge_color}; color:white; padding:2px 8px; border-radius:4px;">{analysis.get('recommendation')}</span></p>
                     <p><strong>👤 作者：</strong>{authors_str}</p>
-                    <p><strong>🕒 arXiv上传时间：</strong>{published_str}</p>
+                    <p><strong>🕒 发布时间：</strong>{published_str}</p>
+                    <p><strong>📚 来源：</strong>{p.get('source', '')} {p.get('venue', '')}</p>
+                    <p><strong>🔗 原文：</strong><a href="{p.get('url', '')}">{p.get('url', '')}</a></p>
                     {matched_html}
                     <div style="background:#f9f9f9; border-left:5px solid #007bff; padding:10px; margin:10px 0;">
                         <strong>🔄 深度差量对比：</strong><br/>{analysis.get('comparison', '')}
@@ -1788,7 +1857,10 @@ async def _main_impl():
                                 "title": p['title'],
                                 "authors": p.get('authors', []),
                                 "published": p.get('published', ''),
-                                "arxiv_id": p['id'],
+                                "arxiv_id": p.get('external_ids', {}).get('arxiv', ''),
+                                "url": p.get('url', ''),
+                                "source": p.get('source', ''),
+                                "venue": p.get('venue', ''),
                                 "recommendation": analysis.get('recommendation', '值得看'),
                                 "methodology": analysis.get('methodology', ''),
                                 "core_concepts": analysis.get('core_concepts', []),
@@ -1809,7 +1881,9 @@ async def _main_impl():
                         stats["papers"][cat_name] = []
                     stats["papers"][cat_name].append({
                         "title": p['title'],
-                        "arxiv_id": p['id'],
+                        "arxiv_id": p.get('external_ids', {}).get('arxiv', ''),
+                        "url": p.get('url', ''),
+                        "source": p.get('source', ''),
                         "authors": p.get('authors', []),
                         "published": p.get('published', ''),
                         "recommendation": analysis.get('recommendation', '值得看'),
@@ -1835,6 +1909,25 @@ async def _main_impl():
             if cat_is_first_run and cat_name not in initialized_categories:
                 initialized_categories.add(cat_name)
                 print(f"✅ 分类 {cat_name} 首次运行完成，已标记为已初始化")
+
+    # Advance an individual public-source cursor only when every selected
+    # candidate from that source/category has a durable history decision.
+    updated_source_cursors = {
+        category: dict(cursors)
+        for category, cursors in state.get("source_cursors", {}).items()
+        if isinstance(cursors, dict)
+    }
+    for category, source_cursors in pending_source_cursors.items():
+        for source, cursor in source_cursors.items():
+            selected = [
+                paper for paper in candidate_papers
+                if category in paper.get("source_meta", {}).get("categories", [])
+                and paper.get("source") == source
+            ]
+            if all(candidate_history_keys(paper).intersection(history_set) for paper in selected):
+                updated_source_cursors.setdefault(category, {})[source] = cursor
+            else:
+                print(f"[Source] cursor retained for {category}/{source}: selected paper still pending")
 
     # 抓取失败汇总
     has_failures = bool(all_failed_keywords) or bool(_errors)
@@ -1869,11 +1962,16 @@ async def _main_impl():
                 candidate_papers,
                 history,
             )
-            save_state(global_max_date, list(initialized_categories))
+            save_state(
+                global_max_date,
+                list(initialized_categories),
+                updated_source_cursors,
+            )
             print(f"\n🎉 任务完成！记录的连续成功论文时间戳为：{global_max_date}")
         else:
             _state = load_state()
             _state["initialized_categories"] = list(initialized_categories)
+            _state["source_cursors"] = updated_source_cursors
             with open(STATE_FILE, "w", encoding="utf-8") as f:
                 json.dump(_state, f, ensure_ascii=False)
             print(f"\n⚠️ 存在抓取失败，不推进 last_date（当前: {state['last_date']}）")

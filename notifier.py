@@ -140,7 +140,9 @@ class WxWorkNotifier:
                     authors += " 等"
                 lines.append(f"**作者**: {authors}")
             
-            if paper.get('arxiv_id'):
+            if paper.get('url'):
+                lines.append(f"**Source**: [{paper.get('source', 'paper')}]({paper['url']})")
+            elif paper.get('arxiv_id'):
                 lines.append(f"**arXiv**: [{paper['arxiv_id']}](https://arxiv.org/abs/{paper['arxiv_id']})")
             
             # 方法论
@@ -295,7 +297,17 @@ class FeishuNotifier:
                     "text": f"作者: {authors}\n"
                 }])
             
-            if paper.get('arxiv_id'):
+            if paper.get('url'):
+                paper_section.append([{
+                    "tag": "a",
+                    "text": paper.get('source', 'Paper'),
+                    "href": paper['url']
+                }])
+                paper_section.append([{
+                    "tag": "text",
+                    "text": "\n"
+                }])
+            elif paper.get('arxiv_id'):
                 paper_section.append([{
                     "tag": "a",
                     "text": f"arXiv: {paper['arxiv_id']}",
@@ -461,12 +473,13 @@ class NotificationManager:
         
         # 链接区域
         arxiv_id = paper.get('arxiv_id')
-        if arxiv_id:
+        paper_url = paper.get('url') or (f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else "")
+        if paper_url:
             link_row = [
                 {
                     "tag": "a",
-                    "text": "📄 arXiv 论文",
-                    "href": f"https://arxiv.org/abs/{arxiv_id}"
+                    "text": f"📄 {paper.get('source', 'arXiv')} 论文",
+                    "href": paper_url
                 },
                 {
                     "tag": "text",
