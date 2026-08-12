@@ -66,10 +66,30 @@ class PaperSourceTests(unittest.TestCase):
         paper = candidate("openreview", "forum-id", source_meta={"decision": ""})
         self.assertEqual(len(rank_candidates([paper], category)), 1)
 
+    def test_security_and_attack_topics_are_filtered_before_llm_ranking(self):
+        category = {"discovery_queries": ["language agent memory"]}
+        papers = [
+            candidate("arxiv", "wanted", "Language Agent Memory", summary="An agent uses episodic memory."),
+            candidate("arxiv", "attack", "Adversarial Attack on Language Agents"),
+            candidate("arxiv", "safety", "Safety Guardrails for Tool-Using Agents"),
+            candidate("arxiv", "jailbreak", "Jailbreak Evaluation for LLM Agents"),
+        ]
+        ranked = rank_candidates(papers, category)
+        self.assertEqual([paper["source_id"] for paper in ranked], ["wanted"])
+
+    def test_security_word_is_retained_when_title_has_a_core_focus_method(self):
+        category = {"discovery_queries": ["multi-agent communication topology"]}
+        paper = candidate(
+            "arxiv", "keep", "Multi-Agent Communication Topology under Adversarial Interference",
+            summary="The method learns a communication topology and evaluates adversarial interference.",
+        )
+        ranked = rank_candidates([paper], category)
+        self.assertEqual([item["source_id"] for item in ranked], ["keep"])
+
     def test_failed_source_has_no_cursor_and_does_not_block_other_source(self):
         original = {key: dict(value) for key, value in PUBLIC_SOURCE_CONFIG.items()}
         try:
-            for key in PUBLIC_SOURCE_CONFIG:
+            for key in ("openreview", "acl_anthology", "pmlr", "cvf", "europe_pmc"):
                 PUBLIC_SOURCE_CONFIG[key]["enabled"] = key in {"openreview", "europe_pmc"}
 
             async def failed(*args, **kwargs):
@@ -103,7 +123,7 @@ class PaperSourceTests(unittest.TestCase):
     def test_http_403_source_is_circuit_broken_for_the_current_run(self):
         original = {key: dict(value) for key, value in PUBLIC_SOURCE_CONFIG.items()}
         try:
-            for key in PUBLIC_SOURCE_CONFIG:
+            for key in ("openreview", "acl_anthology", "pmlr", "cvf", "europe_pmc"):
                 PUBLIC_SOURCE_CONFIG[key]["enabled"] = key == "openreview"
             calls = []
 

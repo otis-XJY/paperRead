@@ -1,4 +1,24 @@
 {
+  "filters": {
+    "excluded_topics": [
+      "attack",
+      "adversarial",
+      "security",
+      "cybersecurity",
+      "vulnerability",
+      "jailbreak",
+      "prompt injection",
+      "red team",
+      "backdoor",
+      "data poisoning",
+      "privacy",
+      "safety",
+      "guardrail",
+      "harmfulness",
+      "toxicity",
+      "malware"
+    ]
+  },
   "openreview": {
     "enabled": true,
     "venues": ["ICLR", "NeurIPS", "TMLR", "COLM", "AISTATS", "CoRL", "UAI"]

@@ -27,6 +27,14 @@ SOURCE_HTTP_RETRY_BASE_DELAY_SECONDS = 6
 SOURCE_HTTP_RATE_LIMIT_DELAY_SECONDS = 60
 
 PUBLIC_SOURCE_CONFIG = {
+    "filters": {
+        "excluded_topics": [
+            "attack", "adversarial", "security", "cybersecurity",
+            "vulnerability", "jailbreak", "prompt injection", "red team",
+            "backdoor", "data poisoning", "privacy", "safety", "guardrail",
+            "harmfulness", "toxicity", "malware",
+        ],
+    },
     "openreview": {
         "enabled": True,
         "venues": ["ICLR", "NeurIPS", "TMLR", "COLM", "AISTATS", "CoRL", "UAI"],
@@ -207,7 +215,53 @@ def _query_terms(category):
     return set(terms)
 
 
+GENERIC_DISCOVERY_TERMS = {
+    "large", "language", "model", "models", "llm", "agent", "agents",
+    "multi", "based", "using", "use", "new", "learning",
+}
+
+
+def _title_focus_score(paper, category):
+    """Score evidence that the title's method belongs to the selected topic."""
+    title = paper.get("title", "").lower()
+    score = 0
+    for query in category.get("discovery_queries") or []:
+        normalized_query = clean_text(query).lower()
+        if normalized_query and normalized_query in title:
+            score += 4
+    for term in _query_terms(category):
+        if term not in GENERIC_DISCOVERY_TERMS and re.search(
+            r"(?<!\w)" + re.escape(term) + r"(?!\w)", title, flags=re.IGNORECASE
+        ):
+            score += 1
+    return score
+
+
+def excluded_topic_reason(paper, category):
+    """Filter only papers whose title is primarily about a blocked topic.
+
+    Mentioning safety/attacks in an abstract is often an evaluation setting,
+    not the contribution.  Similarly, a title such as ``Communication
+    Topology ... under Adversarial Interference`` remains relevant because it
+    has strong explicit evidence for the configured research topic.
+    """
+    paper = normalize_candidate(paper)
+    title = paper.get("title", "").lower()
+    excluded_topics = PUBLIC_SOURCE_CONFIG.get("filters", {}).get("excluded_topics", [])
+    for topic in excluded_topics:
+        normalized_topic = clean_text(topic).lower()
+        if not normalized_topic:
+            continue
+        pattern = r"(?<!\w)" + re.escape(normalized_topic) + r"(?!\w)"
+        if re.search(pattern, title, flags=re.IGNORECASE):
+            if _title_focus_score(paper, category) < 2:
+                return normalized_topic
+    return ""
+
+
 def locally_matches_category(paper, category):
+    if excluded_topic_reason(paper, category):
+        return False
     terms = _query_terms(category)
     if not terms:
         return True
@@ -249,6 +303,23 @@ def score_candidate(paper, category, known_titles=None):
 
 def rank_candidates(candidates, category, known_titles=None, limit=FINAL_CANDIDATE_LIMIT):
     papers = merge_candidates(candidates)
+    filtered_papers = []
+    excluded_counts = {}
+    for paper in papers:
+        reason = excluded_topic_reason(paper, category)
+        if reason:
+            excluded_counts[reason] = excluded_counts.get(reason, 0) + 1
+            continue
+        filtered_papers.append(paper)
+    if excluded_counts:
+        details = ", ".join(
+            "%s=%s" % (topic, count)
+            for topic, count in sorted(excluded_counts.items())
+        )
+        print("[Filter] skipped %s security/attack paper(s): %s" % (
+            sum(excluded_counts.values()), details,
+        ))
+    papers = filtered_papers
     for paper in papers:
         paper["source_meta"]["discovery_score"] = score_candidate(paper, category, known_titles)
     papers.sort(

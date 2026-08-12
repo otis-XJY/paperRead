@@ -5,6 +5,7 @@
 - `enabled`：关闭某一来源时设为 `false`；不会影响其他来源。
 - `venues` / `events`：限制对应来源扫描的会议或论文集。可按年度更新，例如将 `CVPR2025` 替换为 `CVPR2026`。
 - `cvf.ecva_events`：ECCV 论文由 ECVA 官方页面提供，不在 CVF Open Access 域名下；例如保留 `ECCV2024`。
+- `filters.excluded_topics`：全局低关注主题词。仅当这类词出现在标题、且标题没有至少两个明确的分类核心方法信号时才过滤；摘要中仅提及安全/攻击不会过滤。例如 `Communication Topology ... under Adversarial Interference` 会保留，而以 attack/security/safety 为主要标题主题的论文会跳过。默认词包括 security、attack、adversarial、jailbreak、safety、privacy；如有需要可直接增删英文词组。
 - `categories.json` 的 `discovery_queries` 用于非 arXiv 来源的本地匹配；原来的 `keywords` 仍只服务 arXiv 查询，二者不应混用。
 
 每个来源和分类都有独立游标，首次成功获取回溯 12 个月。来源调用失败不会推进它的游标，因此下次运行会自动重试该来源的回溯数据。每来源每分类最多采集 20 个原始候选，跨来源去重和质量/兴趣排序后，最多 20 篇进入原有 LLM 分析。
