@@ -577,6 +577,12 @@ class FeishuWikiClient:
                 text_el("来源：", bold=True),
                 text_el(" ".join(value for value in (source, venue) if value)),
             ]))
+        primary_topic = paper_info.get("primary_topic", "")
+        if primary_topic:
+            blocks.append(paragraph_block([
+                text_el("论文主题 / Primary Topic：", bold=True),
+                text_el(primary_topic),
+            ]))
         if not paper_url and paper_info.get("arxiv_id"):
             paper_url = f"https://arxiv.org/abs/{paper_info['arxiv_id']}"
         if paper_url:

@@ -61,6 +61,7 @@ from paper_sources import (
     normalize_candidate,
     rank_candidates,
 )
+from paper_topics import normalize_primary_topic, topic_options_for_category
 
 __version__ = "1.0.0"
 
@@ -226,7 +227,7 @@ Language policy for every generated field:
 - Chinese explanatory prose is allowed, but every academic and technical term must remain in conventional English.
 - Never translate or transliterate methods, model names, task names, datasets, benchmarks, metrics, architectures, algorithms, protocols, skills, tools, or research concepts into Chinese.
 - Apply this rule to summary, comparison, methodology, sharp_review, reason, and core_concepts; do not provide a Chinese technical synonym in parentheses.
-- Keep paper titles and matched_titles exactly as supplied. core_concepts must be English terms only.
+- Keep paper titles and matched_titles exactly as supplied. core_concepts and primary_topic must be English only.
 """
 
 # 运行时错误收集器，所有错误汇总后发送到飞书
@@ -799,6 +800,7 @@ def check_relevance_phase_one(paper, kb_entries, category_name=""):
         return {"is_relevant": False, "score": None, "matched_titles": [], "reason": "LLM analysis failed; skipped without relevance judgment", "error": True}
 
 def deep_analyze_phase_two(paper, category_name, matched_full_notes):
+    topic_options = topic_options_for_category(category_name)
     prompt = f"""
     {ACADEMIC_LANGUAGE_POLICY}
 
@@ -807,15 +809,21 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
     
     【今日新论文】：标题：{paper['title']} | 摘要：{paper['summary']}
     
+    论文主题规则：primary_topic 必须且只能从下列 taxonomy Topic ID 中选择 1 个。选择作者主要改变/优化的对象，而不是 application、evaluation setting 或附带问题：{json.dumps(topic_options, ensure_ascii=False)}
+
     任务：深入对比新老论文，严格输出 JSON 格式：
-    {{"recommendation": "必读/值得看/可跳过", "comparison": "一句话说明与你过去笔记中论文的具体异同", "methodology": "核心方法简述", "core_concepts": ["术语1"], "sharp_review": "批判性分析"}}
+    {{"recommendation": "必读/值得看/可跳过", "primary_topic": "从候选 Topic ID 精确选择一个", "comparison": "一句话说明与你过去笔记中论文的具体异同", "methodology": "核心方法简述", "core_concepts": ["术语1"], "sharp_review": "批判性分析"}}
     """
     try:
         res = llm.call(
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
         )
-        return safe_json_parse(res.choices[0].message.content)
+        parsed = safe_json_parse(res.choices[0].message.content)
+        parsed["primary_topic"] = normalize_primary_topic(
+            parsed.get("primary_topic"), category_name
+        )
+        return parsed
     except Exception as e:
         if is_auth_error(e):
             raise RuntimeError(
@@ -826,6 +834,7 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
 
 
 def analyze_first_run_paper(paper, category_name):
+    topic_options = topic_options_for_category(category_name)
     prompt = f"""
     {ACADEMIC_LANGUAGE_POLICY}
 
@@ -834,8 +843,10 @@ def analyze_first_run_paper(paper, category_name):
 
     【论文】：标题：{paper['title']} | 摘要：{paper['summary']}
 
+    论文主题规则：primary_topic 必须且只能从下列 taxonomy Topic ID 中选择 1 个。选择作者主要改变/优化的对象，而不是 application、evaluation setting 或附带问题：{json.dumps(topic_options, ensure_ascii=False)}
+
     任务：仅基于该论文内容输出结构化笔记，严格输出 JSON：
-    {{"recommendation": "必读/值得看/可跳过", "methodology": "核心方法简述", "core_concepts": ["术语1"], "sharp_review": "批判性锐评", "summary": "一句话价值总结"}}
+    {{"recommendation": "必读/值得看/可跳过", "primary_topic": "从候选 Topic ID 精确选择一个", "methodology": "核心方法简述", "core_concepts": ["术语1"], "sharp_review": "批判性锐评", "summary": "一句话价值总结"}}
     """
     try:
         res = llm.call(
@@ -853,6 +864,9 @@ def analyze_first_run_paper(paper, category_name):
             parsed["sharp_review"] = "模型未返回锐评"
         if "summary" not in parsed:
             parsed["summary"] = "模型未返回总结"
+        parsed["primary_topic"] = normalize_primary_topic(
+            parsed.get("primary_topic"), category_name
+        )
         return parsed
     except Exception as e:
         if is_auth_error(e):
@@ -1607,11 +1621,17 @@ async def _main_impl():
                     item['date'] = p.get('published', '')
                     item['creators'] = authors_to_zotero_creators(p.get('authors', []))
                     item['DOI'] = p.get('doi', '')
-                    item['extra'] = f"PaperRead-ID: {p.get('id', '')}\nSource: {p.get('source', '')}\nVenue: {p.get('venue', '')}"
+                    item['extra'] = (
+                        f"PaperRead-ID: {p.get('id', '')}\n"
+                        f"Source: {p.get('source', '')}\n"
+                        f"Venue: {p.get('venue', '')}\n"
+                        f"Primary-Topic: {first_run_analysis.get('primary_topic', 'Unclassified')}"
+                    )
                     item['collections'] = [cat_keys[cat_name]]
                     item['tags'] = [
                         {"tag": cat_name},
                         {"tag": f"source:{p.get('source', 'unknown')}"},
+                        {"tag": f"topic:{first_run_analysis.get('primary_topic', 'Unclassified')}"},
                         {"tag": "首次运行"},
                         {"tag": first_run_analysis.get("recommendation", "值得看")},
                     ]
@@ -1649,6 +1669,7 @@ async def _main_impl():
                             f"<p><strong>🆕 入库阶段：</strong>首次运行（冷启动）</p>"
                             f"<p><strong>🔥 推荐指数：</strong> <span style=\"background:{badge_color}; color:white; padding:2px 8px; border-radius:4px;\">{first_run_analysis.get('recommendation', '值得看')}</span></p>"
                             f"<p><strong>📂 分类：</strong>{cat_name}</p>"
+                            f"<p><strong>🏷️ 论文主题 / Primary Topic：</strong>{first_run_analysis.get('primary_topic', 'Unclassified')}</p>"
                             f"<p><strong>👤 作者：</strong>{authors_str}</p>"
                             f"<p><strong>🕒 发布时间：</strong>{published_str}</p>"
                             f"<p><strong>📚 来源：</strong>{p.get('source', '')} {p.get('venue', '')}</p>"
@@ -1684,6 +1705,7 @@ async def _main_impl():
                                     "url": p.get('url', ''),
                                     "source": p.get('source', ''),
                                     "venue": p.get('venue', ''),
+                                    "primary_topic": first_run_analysis.get('primary_topic', 'Unclassified'),
                                     "recommendation": first_run_analysis.get('recommendation', '值得看'),
                                     "methodology": first_run_analysis.get('methodology', ''),
                                     "core_concepts": first_run_analysis.get('core_concepts', []),
@@ -1707,6 +1729,7 @@ async def _main_impl():
                             "arxiv_id": p.get('external_ids', {}).get('arxiv', ''),
                             "url": p.get('url', ''),
                             "source": p.get('source', ''),
+                            "primary_topic": first_run_analysis.get('primary_topic', 'Unclassified'),
                             "authors": p.get('authors', []),
                             "published": p.get('published', ''),
                             "recommendation": first_run_analysis.get('recommendation', '值得看'),
@@ -1788,11 +1811,17 @@ async def _main_impl():
                 item['date'] = p.get('published', '')
                 item['creators'] = authors_to_zotero_creators(p.get('authors', []))
                 item['DOI'] = p.get('doi', '')
-                item['extra'] = f"PaperRead-ID: {p.get('id', '')}\nSource: {p.get('source', '')}\nVenue: {p.get('venue', '')}"
+                item['extra'] = (
+                    f"PaperRead-ID: {p.get('id', '')}\n"
+                    f"Source: {p.get('source', '')}\n"
+                    f"Venue: {p.get('venue', '')}\n"
+                    f"Primary-Topic: {analysis.get('primary_topic', 'Unclassified')}"
+                )
                 item['collections'] = [cat_keys[cat_name]]
                 item['tags'] =[
                     {"tag": cat_name},
                     {"tag": f"source:{p.get('source', 'unknown')}"},
+                    {"tag": f"topic:{analysis.get('primary_topic', 'Unclassified')}"},
                     {"tag": analysis.get("recommendation", "值得看")},
                 ]
 
@@ -1828,6 +1857,7 @@ async def _main_impl():
                     <h2 style="color: #2c3e50; border-bottom: 2px solid #eee;">{p['title']}</h2>
                     <p><strong>🔥 推荐指数：</strong> <span style="background:{badge_color}; color:white; padding:2px 8px; border-radius:4px;">{analysis.get('recommendation')}</span></p>
                     <p><strong>👤 作者：</strong>{authors_str}</p>
+                    <p><strong>🏷️ 论文主题 / Primary Topic：</strong>{analysis.get('primary_topic', 'Unclassified')}</p>
                     <p><strong>🕒 发布时间：</strong>{published_str}</p>
                     <p><strong>📚 来源：</strong>{p.get('source', '')} {p.get('venue', '')}</p>
                     <p><strong>🔗 原文：</strong><a href="{p.get('url', '')}">{p.get('url', '')}</a></p>
@@ -1861,6 +1891,7 @@ async def _main_impl():
                                 "url": p.get('url', ''),
                                 "source": p.get('source', ''),
                                 "venue": p.get('venue', ''),
+                                "primary_topic": analysis.get('primary_topic', 'Unclassified'),
                                 "recommendation": analysis.get('recommendation', '值得看'),
                                 "methodology": analysis.get('methodology', ''),
                                 "core_concepts": analysis.get('core_concepts', []),
@@ -1884,6 +1915,7 @@ async def _main_impl():
                         "arxiv_id": p.get('external_ids', {}).get('arxiv', ''),
                         "url": p.get('url', ''),
                         "source": p.get('source', ''),
+                        "primary_topic": analysis.get('primary_topic', 'Unclassified'),
                         "authors": p.get('authors', []),
                         "published": p.get('published', ''),
                         "recommendation": analysis.get('recommendation', '值得看'),

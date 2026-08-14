@@ -11,11 +11,13 @@ class FeishuPaperLinkTests(unittest.TestCase):
             "published": "2026-01-01",
             "source": "pmlr",
             "venue": "ICML",
+            "primary_topic": "LLM_Agent.Workflow.SearchOptimization",
             "url": "https://proceedings.mlr.press/example.html",
         })
         serialized = str(blocks)
         self.assertIn("https://proceedings.mlr.press/example.html", serialized)
         self.assertIn("pmlr ICML", serialized)
+        self.assertIn("LLM_Agent.Workflow.SearchOptimization", serialized)
         self.assertNotIn("arxiv.org/abs", serialized)
 
 
