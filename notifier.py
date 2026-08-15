@@ -19,6 +19,23 @@ except ImportError:  # Python 3.8 on environments without zoneinfo support
 
 DEFAULT_REPORT_TIMEZONE = "Asia/Shanghai"
 
+SOURCE_LABELS = {
+    "arxiv": "arXiv",
+    "openreview": "OpenReview",
+    "acl_anthology": "ACL Anthology",
+    "pmlr": "PMLR",
+    "cvf": "CVF Open Access",
+    "europe_pmc": "Europe PMC",
+}
+
+
+def format_paper_source(paper: Dict[str, Any]) -> str:
+    """Return a human-readable source label without assuming arXiv."""
+    source = str(paper.get("source") or "").strip()
+    source_label = SOURCE_LABELS.get(source.lower(), source or "Unknown source")
+    venue = str(paper.get("venue") or "").strip()
+    return f"{source_label} | {venue}" if venue else source_label
+
 
 def get_report_timezone():
     """Return the configured display timezone for notifications."""
@@ -145,7 +162,10 @@ class WxWorkNotifier:
                 lines.append(f"**作者**: {authors}")
             
             if paper.get('url'):
-                lines.append(f"**Source**: [{paper.get('source', 'paper')}]({paper['url']})")
+                lines.append(
+                    f"**Source / Venue**: "
+                    f"[{format_paper_source(paper)}]({paper['url']})"
+                )
             elif paper.get('arxiv_id'):
                 lines.append(f"**arXiv**: [{paper['arxiv_id']}](https://arxiv.org/abs/{paper['arxiv_id']})")
             
@@ -312,7 +332,7 @@ class FeishuNotifier:
             if paper.get('url'):
                 paper_section.append([{
                     "tag": "a",
-                    "text": paper.get('source', 'Paper'),
+                    "text": f"Source / Venue: {format_paper_source(paper)}",
                     "href": paper['url']
                 }])
                 paper_section.append([{
@@ -477,6 +497,13 @@ class NotificationManager:
                     "text": f"🏷️ 论文主题 / Primary Topic: {primary_topic}\n"
                 }
             ])
+
+        sections.append([
+            {
+                "tag": "text",
+                "text": f"📚 Source / Venue: {format_paper_source(paper)}\n"
+            }
+        ])
         
         # 作者
         authors = paper.get('authors', [])
@@ -498,7 +525,7 @@ class NotificationManager:
             link_row = [
                 {
                     "tag": "a",
-                    "text": f"📄 {paper.get('source', 'arXiv')} 论文",
+                    "text": f"📄 {format_paper_source(paper)} paper",
                     "href": paper_url
                 },
                 {
