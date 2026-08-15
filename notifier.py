@@ -133,6 +133,10 @@ class WxWorkNotifier:
             recommendation = paper.get('recommendation', '值得看')
             emoji = "🔥" if recommendation == "必读" else "📖"
             lines.append(f"**推荐指数**: {emoji} {recommendation}")
+            if paper.get('primary_topic'):
+                lines.append(
+                    f"**论文主题 / Primary Topic**: `{paper['primary_topic']}`"
+                )
             
             if paper.get('authors'):
                 authors = ", ".join(paper['authors'][:3])  # 只显示前3个作者
@@ -289,6 +293,14 @@ class FeishuNotifier:
                 "tag": "text",
                 "text": f"推荐: {emoji} {recommendation}\n"
             }])
+            if paper.get('primary_topic'):
+                paper_section.append([{
+                    "tag": "text",
+                    "text": (
+                        "论文主题 / Primary Topic: "
+                        f"{paper['primary_topic']}\n"
+                    )
+                }])
             
             if paper.get('authors'):
                 authors = ", ".join(paper['authors'][:3])
@@ -457,6 +469,14 @@ class NotificationManager:
                 "text": f"{emoji} 推荐: {recommendation} | 📂 {category}\n"
             }
         ])
+        primary_topic = paper.get('primary_topic', '')
+        if primary_topic:
+            sections.append([
+                {
+                    "tag": "text",
+                    "text": f"🏷️ 论文主题 / Primary Topic: {primary_topic}\n"
+                }
+            ])
         
         # 作者
         authors = paper.get('authors', [])
