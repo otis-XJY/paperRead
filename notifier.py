@@ -18,6 +18,7 @@ except ImportError:  # Python 3.8 on environments without zoneinfo support
 
 
 DEFAULT_REPORT_TIMEZONE = "Asia/Shanghai"
+FEISHU_CARD_TEXT_LIMIT = 29000
 
 SOURCE_LABELS = {
     "arxiv": "arXiv",
@@ -35,6 +36,25 @@ def format_paper_source(paper: Dict[str, Any]) -> str:
     source_label = SOURCE_LABELS.get(source.lower(), source or "Unknown source")
     venue = str(paper.get("venue") or "").strip()
     return f"{source_label} | {venue}" if venue else source_label
+
+
+def split_feishu_card_text(content: str, limit: int = FEISHU_CARD_TEXT_LIMIT) -> List[str]:
+    """Split long card content at line boundaries instead of truncating it."""
+    content = str(content or "")
+    if len(content) <= limit:
+        return [content]
+
+    chunks = []
+    start = 0
+    while start < len(content):
+        end = min(start + limit, len(content))
+        if end < len(content):
+            line_break = content.rfind("\n", start, end)
+            if line_break > start:
+                end = line_break + 1
+        chunks.append(content[start:end])
+        start = end
+    return chunks
 
 
 def get_report_timezone():
@@ -156,9 +176,7 @@ class WxWorkNotifier:
                 )
             
             if paper.get('authors'):
-                authors = ", ".join(paper['authors'][:3])  # 只显示前3个作者
-                if len(paper['authors']) > 3:
-                    authors += " 等"
+                authors = ", ".join(paper['authors'])
                 lines.append(f"**作者**: {authors}")
             
             if paper.get('url'):
@@ -171,16 +189,16 @@ class WxWorkNotifier:
             
             # 方法论
             if paper.get('methodology'):
-                lines.append(f"**方法论**: {paper['methodology'][:100]}...")
+                lines.append(f"**方法论**: {paper['methodology']}")
             
             # 核心概念
             if paper.get('core_concepts'):
-                concepts = " ".join([f"`{c}`" for c in paper['core_concepts'][:5]])
+                concepts = " ".join([f"`{c}`" for c in paper['core_concepts']])
                 lines.append(f"**核心概念**: {concepts}")
             
             # 锐评
             if paper.get('sharp_review'):
-                lines.append(f"**锐评**: {paper['sharp_review'][:150]}...")
+                lines.append(f"**锐评**: {paper['sharp_review']}")
             
             lines.append("")  # 空行
         
@@ -236,38 +254,43 @@ class FeishuNotifier:
         return self.send_card("Zotero AI Daily Papers", content)
 
     def send_card(self, title: str, markdown: str, template: str = "blue") -> bool:
-        """Send an interactive Feishu card through SDK or webhook fallback."""
-        card = {
-            "config": {"wide_screen_mode": True},
-            "header": {
-                "template": template,
-                "title": {"tag": "plain_text", "content": str(title)[:100]},
-            },
-            "elements": [
-                {
-                    "tag": "div",
-                    "text": {"tag": "lark_md", "content": str(markdown)[:30000]},
-                }
-            ],
-        }
-        if self._send_sdk("interactive", card):
-            return True
-        if not self.webhook_url:
-            return False
-        
-        try:
-            data = {"msg_type": "interactive", "card": card}
-            response = requests.post(self.webhook_url, json=data, timeout=10)
-            result = response.json()
-            if result.get("StatusCode") == 0 or result.get("code") == 0:
-                print("✅ 飞书推送成功")
-                return True
-            else:
-                print(f"❌ 飞书推送失败: {result}")
-                return False
-        except Exception as e:
-            print(f"❌ 飞书推送异常: {e}")
-            return False
+        """Send complete interactive-card content, splitting only for API limits."""
+        chunks = split_feishu_card_text(markdown)
+        all_succeeded = True
+        for index, chunk in enumerate(chunks, 1):
+            suffix = "" if len(chunks) == 1 else f" ({index}/{len(chunks)})"
+            card = {
+                "config": {"wide_screen_mode": True},
+                "header": {
+                    "template": template,
+                    "title": {"tag": "plain_text", "content": (str(title) + suffix)[:100]},
+                },
+                "elements": [
+                    {
+                        "tag": "div",
+                        "text": {"tag": "lark_md", "content": chunk},
+                    }
+                ],
+            }
+            if self._send_sdk("interactive", card):
+                continue
+            if not self.webhook_url:
+                all_succeeded = False
+                continue
+
+            try:
+                data = {"msg_type": "interactive", "card": card}
+                response = requests.post(self.webhook_url, json=data, timeout=10)
+                result = response.json()
+                if result.get("StatusCode") == 0 or result.get("code") == 0:
+                    print("✅ 飞书推送成功")
+                else:
+                    print(f"❌ 飞书推送失败: {result}")
+                    all_succeeded = False
+            except Exception as e:
+                print(f"❌ 飞书推送异常: {e}")
+                all_succeeded = False
+        return all_succeeded
     
     def send_post(self, title: str, content: List[List[Dict]]) -> bool:
         """兼容旧富文本调用，将内容转换为交互式卡片。"""
@@ -323,7 +346,7 @@ class FeishuNotifier:
                 }])
             
             if paper.get('authors'):
-                authors = ", ".join(paper['authors'][:3])
+                authors = ", ".join(paper['authors'])
                 paper_section.append([{
                     "tag": "text",
                     "text": f"作者: {authors}\n"
@@ -354,7 +377,7 @@ class FeishuNotifier:
             if paper.get('methodology'):
                 paper_section.append([{
                     "tag": "text",
-                    "text": f"方法论: {paper['methodology'][:80]}...\n\n"
+                    "text": f"方法论: {paper['methodology']}\n\n"
                 }])
             
             post_content.append(paper_section)
@@ -508,9 +531,7 @@ class NotificationManager:
         # 作者
         authors = paper.get('authors', [])
         if authors:
-            authors_str = ", ".join(authors[:3])
-            if len(authors) > 3:
-                authors_str += f" 等 {len(authors)} 人"
+            authors_str = ", ".join(authors)
             sections.append([
                 {
                     "tag": "text",
@@ -551,26 +572,14 @@ class NotificationManager:
             sections.append([
                 {
                     "tag": "text",
-                    "text": f"🔬 方法论:\n{methodology[:200]}"
+                    "text": f"🔬 方法论:\n{methodology}\n\n"
                 }
             ])
-            if len(methodology) > 200:
-                sections.append([
-                    {
-                        "tag": "text",
-                        "text": "...\n\n"
-                    }
-                ])
-            else:
-                sections[-1].append({
-                    "tag": "text",
-                    "text": "\n\n"
-                })
         
         # 核心概念
         concepts = paper.get('core_concepts', [])
         if concepts:
-            concepts_text = " ".join([f"#{c}" for c in concepts[:5]])
+            concepts_text = " ".join([f"#{c}" for c in concepts])
             sections.append([
                 {
                     "tag": "text",
@@ -583,19 +592,9 @@ class NotificationManager:
             sections.append([
                 {
                     "tag": "text",
-                    "text": f"🔄 深度对比:\n{paper['comparison'][:150]}"
+                    "text": f"🔄 深度对比:\n{paper['comparison']}\n\n"
                 }
             ])
-            if len(paper['comparison']) > 150:
-                sections[-1].append({
-                    "tag": "text",
-                    "text": "...\n\n"
-                })
-            else:
-                sections[-1].append({
-                    "tag": "text",
-                    "text": "\n\n"
-                })
         
         # 锐评
         sharp_review = paper.get('sharp_review', '')
@@ -603,14 +602,9 @@ class NotificationManager:
             sections.append([
                 {
                     "tag": "text",
-                    "text": f"💬 锐评:\n{sharp_review[:200]}"
+                    "text": f"💬 锐评:\n{sharp_review}\n"
                 }
             ])
-            if len(sharp_review) > 200:
-                sections[-1].append({
-                    "tag": "text",
-                    "text": "...\n"
-                })
         
         return sections
 
@@ -693,10 +687,8 @@ class NotificationManager:
             if errs:
                 label = type_labels.get(err_type, err_type)
                 lines.append(f"⚠️ {label} ({len(errs)} 次):")
-                for err in errs[:5]:
-                    lines.append(f"  {err['message'][:100]}")
-                if len(errs) > 5:
-                    lines.append(f"  ... 还有 {len(errs) - 5} 条")
+                for err in errs:
+                    lines.append(f"  {err['message']}")
                 lines.append("")
 
         lines.append(f"发生时间: {self._get_current_time()}")

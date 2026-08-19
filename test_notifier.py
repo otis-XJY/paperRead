@@ -1,6 +1,11 @@
 import unittest
 
-from notifier import NotificationManager, format_paper_source
+from notifier import (
+    FEISHU_CARD_TEXT_LIMIT,
+    NotificationManager,
+    format_paper_source,
+    split_feishu_card_text,
+)
 
 
 class NotificationTopicTests(unittest.TestCase):
@@ -32,6 +37,31 @@ class NotificationTopicTests(unittest.TestCase):
             format_paper_source({"source": "europe_pmc"}),
             "Europe PMC",
         )
+
+    def test_paper_detail_card_preserves_full_analysis_text(self):
+        manager = NotificationManager.__new__(NotificationManager)
+        methodology = "method-" + ("a" * 500)
+        comparison = "comparison-" + ("b" * 500)
+        review = "review-" + ("c" * 500)
+        sections = manager._build_paper_section({
+            "title": "Long Analysis",
+            "methodology": methodology,
+            "comparison": comparison,
+            "sharp_review": review,
+        }, "LLM_Agent", 1, 1)
+
+        serialized = str(sections)
+        self.assertIn(methodology, serialized)
+        self.assertIn(comparison, serialized)
+        self.assertIn(review, serialized)
+
+    def test_long_card_text_is_split_without_content_loss(self):
+        content = ("A" * (FEISHU_CARD_TEXT_LIMIT - 1)) + "\n" + ("B" * 100)
+        chunks = split_feishu_card_text(content)
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(chunk) <= FEISHU_CARD_TEXT_LIMIT for chunk in chunks))
+        self.assertEqual("".join(chunks), content)
 
 
 if __name__ == "__main__":
