@@ -38,6 +38,11 @@ def format_paper_source(paper: Dict[str, Any]) -> str:
     return f"{source_label} | {venue}" if venue else source_label
 
 
+def get_paper_method(paper: Dict[str, Any]) -> str:
+    """Read the current Method field while keeping legacy notifications valid."""
+    return str(paper.get("method") or paper.get("methodology") or "").strip()
+
+
 def split_feishu_card_text(content: str, limit: int = FEISHU_CARD_TEXT_LIMIT) -> List[str]:
     """Split long card content at line boundaries instead of truncating it."""
     content = str(content or "")
@@ -187,18 +192,21 @@ class WxWorkNotifier:
             elif paper.get('arxiv_id'):
                 lines.append(f"**arXiv**: [{paper['arxiv_id']}](https://arxiv.org/abs/{paper['arxiv_id']})")
             
-            # 方法论
-            if paper.get('methodology'):
-                lines.append(f"**方法论**: {paper['methodology']}")
+            motivation_core_idea = paper.get('motivation_core_idea', '')
+            if motivation_core_idea:
+                lines.append(f"**Motivation & Core Idea**: {motivation_core_idea}")
+
+            method = get_paper_method(paper)
+            if method:
+                lines.append(f"**Method**: {method}")
             
             # 核心概念
             if paper.get('core_concepts'):
                 concepts = " ".join([f"`{c}`" for c in paper['core_concepts']])
                 lines.append(f"**核心概念**: {concepts}")
-            
-            # 锐评
+
             if paper.get('sharp_review'):
-                lines.append(f"**锐评**: {paper['sharp_review']}")
+                lines.append(f"**锐评 / Critical Review**: {paper['sharp_review']}")
             
             lines.append("")  # 空行
         
@@ -373,11 +381,18 @@ class FeishuNotifier:
                     "text": "\n"
                 }])
             
-            # 方法论
-            if paper.get('methodology'):
+            motivation_core_idea = paper.get('motivation_core_idea', '')
+            if motivation_core_idea:
                 paper_section.append([{
                     "tag": "text",
-                    "text": f"方法论: {paper['methodology']}\n\n"
+                    "text": f"Motivation & Core Idea: {motivation_core_idea}\n\n"
+                }])
+
+            method = get_paper_method(paper)
+            if method:
+                paper_section.append([{
+                    "tag": "text",
+                    "text": f"Method: {method}\n\n"
                 }])
             
             post_content.append(paper_section)
@@ -566,13 +581,24 @@ class NotificationManager:
             link_row.append({"tag": "text", "text": "\n\n"})
             sections.append(link_row)
         
-        # 方法论
-        methodology = paper.get('methodology', '')
-        if methodology:
+        motivation_core_idea = paper.get('motivation_core_idea', '')
+        if motivation_core_idea:
             sections.append([
                 {
                     "tag": "text",
-                    "text": f"🔬 方法论:\n{methodology}\n\n"
+                    "text": (
+                        "🧭 Motivation & Core Idea:\n"
+                        f"{motivation_core_idea}\n\n"
+                    )
+                }
+            ])
+
+        method = get_paper_method(paper)
+        if method:
+            sections.append([
+                {
+                    "tag": "text",
+                    "text": f"🔬 Method:\n{method}\n\n"
                 }
             ])
         
@@ -595,14 +621,13 @@ class NotificationManager:
                     "text": f"🔄 深度对比:\n{paper['comparison']}\n\n"
                 }
             ])
-        
-        # 锐评
+
         sharp_review = paper.get('sharp_review', '')
         if sharp_review:
             sections.append([
                 {
                     "tag": "text",
-                    "text": f"💬 锐评:\n{sharp_review}\n"
+                    "text": f"💬 锐评 / Critical Review:\n{sharp_review}\n"
                 }
             ])
         

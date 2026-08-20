@@ -613,16 +613,24 @@ class FeishuWikiClient:
             blocks.append(paragraph_block([text_el("核心术语库", bold=True)], heading_level=3))
             blocks.append(paragraph_block([text_el(" | ".join(concepts))]))
 
-        # 方法论
-        methodology = paper_info.get("methodology", "")
-        if methodology:
-            blocks.append(paragraph_block([text_el("核心方法简述", bold=True)], heading_level=3))
-            blocks.append(paragraph_block([text_el(methodology)]))
+        motivation_core_idea = paper_info.get("motivation_core_idea", "")
+        if motivation_core_idea:
+            blocks.append(paragraph_block([
+                text_el("Motivation & Core Idea", bold=True)
+            ], heading_level=3))
+            blocks.append(paragraph_block([text_el(motivation_core_idea)]))
 
-        # 锐评
+        # ``methodology`` is retained as a read-only fallback for old records.
+        method = paper_info.get("method", "") or paper_info.get("methodology", "")
+        if method:
+            blocks.append(paragraph_block([text_el("Method", bold=True)], heading_level=3))
+            blocks.append(paragraph_block([text_el(method)]))
+
         sharp_review = paper_info.get("sharp_review", "")
         if sharp_review:
-            blocks.append(paragraph_block([text_el("锐评", bold=True)], heading_level=3))
+            blocks.append(paragraph_block([
+                text_el("锐评 / Critical Review", bold=True)
+            ], heading_level=3))
             blocks.append(paragraph_block([text_el(sharp_review, italic=True)]))
 
         return blocks

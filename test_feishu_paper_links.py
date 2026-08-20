@@ -12,12 +12,21 @@ class FeishuPaperLinkTests(unittest.TestCase):
             "source": "pmlr",
             "venue": "ICML",
             "primary_topic": "LLM_Agent.Workflow.SearchOptimization",
+            "motivation_core_idea": "It addresses costly agent planning.",
+            "method": "It introduces a reusable planning module.",
+            "sharp_review": "The evaluation lacks long-horizon tasks.",
             "url": "https://proceedings.mlr.press/example.html",
         })
         serialized = str(blocks)
         self.assertIn("https://proceedings.mlr.press/example.html", serialized)
         self.assertIn("pmlr ICML", serialized)
         self.assertIn("LLM_Agent.Workflow.SearchOptimization", serialized)
+        self.assertIn("Motivation & Core Idea", serialized)
+        self.assertIn("It addresses costly agent planning.", serialized)
+        self.assertIn("Method", serialized)
+        self.assertIn("It introduces a reusable planning module.", serialized)
+        self.assertIn("Critical Review", serialized)
+        self.assertIn("The evaluation lacks long-horizon tasks.", serialized)
         self.assertNotIn("arxiv.org/abs", serialized)
 
 

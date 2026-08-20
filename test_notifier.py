@@ -40,20 +40,26 @@ class NotificationTopicTests(unittest.TestCase):
 
     def test_paper_detail_card_preserves_full_analysis_text(self):
         manager = NotificationManager.__new__(NotificationManager)
-        methodology = "method-" + ("a" * 500)
+        method = "method-" + ("a" * 500)
+        motivation_core_idea = "motivation-" + ("m" * 500)
         comparison = "comparison-" + ("b" * 500)
-        review = "review-" + ("c" * 500)
+        sharp_review = "review-" + ("c" * 500)
         sections = manager._build_paper_section({
             "title": "Long Analysis",
-            "methodology": methodology,
+            "method": method,
+            "motivation_core_idea": motivation_core_idea,
             "comparison": comparison,
-            "sharp_review": review,
+            "sharp_review": sharp_review,
         }, "LLM_Agent", 1, 1)
 
         serialized = str(sections)
-        self.assertIn(methodology, serialized)
+        self.assertIn(method, serialized)
+        self.assertIn(motivation_core_idea, serialized)
         self.assertIn(comparison, serialized)
-        self.assertIn(review, serialized)
+        self.assertIn(sharp_review, serialized)
+        self.assertIn("Motivation & Core Idea", serialized)
+        self.assertIn("Method", serialized)
+        self.assertIn("Critical Review", serialized)
 
     def test_long_card_text_is_split_without_content_loss(self):
         content = ("A" * (FEISHU_CARD_TEXT_LIMIT - 1)) + "\n" + ("B" * 100)

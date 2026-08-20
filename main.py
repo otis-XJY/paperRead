@@ -226,7 +226,7 @@ ACADEMIC_LANGUAGE_POLICY = """
 Language policy for every generated field:
 - Chinese explanatory prose is allowed, but every academic and technical term must remain in conventional English.
 - Never translate or transliterate methods, model names, task names, datasets, benchmarks, metrics, architectures, algorithms, protocols, skills, tools, or research concepts into Chinese.
-- Apply this rule to summary, comparison, methodology, sharp_review, reason, and core_concepts; do not provide a Chinese technical synonym in parentheses.
+- Apply this rule to summary, motivation_core_idea, method, comparison, sharp_review, reason, and core_concepts; do not provide a Chinese technical synonym in parentheses.
 - Keep paper titles and matched_titles exactly as supplied. core_concepts and primary_topic must be English only.
 """
 
@@ -758,6 +758,17 @@ def simple_first_run_filter(paper):
     return bool(title) and bool(summary)
 
 # ================= 3. 两阶段 AI 分析 =================
+def normalize_analysis_fields(parsed):
+    """Keep new analysis fields stable while reading legacy LLM responses."""
+    parsed["method"] = str(
+        parsed.get("method") or parsed.get("methodology") or "Model did not return a method."
+    ).strip()
+    parsed["motivation_core_idea"] = str(
+        parsed.get("motivation_core_idea") or "Model did not return a motivation and core idea."
+    ).strip()
+    return parsed
+
+
 def check_relevance_phase_one(paper, kb_entries, category_name=""):
     # 提取短评作为上下文，极致省 Token
     short_context = [{"title": kb["title"], "review": kb["short_review"]} for kb in kb_entries]
@@ -811,8 +822,8 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
     
     论文主题规则：primary_topic 必须且只能从下列 taxonomy Topic ID 中选择 1 个。选择作者主要改变/优化的对象，而不是 application、evaluation setting 或附带问题：{json.dumps(topic_options, ensure_ascii=False)}
 
-    任务：深入对比新老论文，严格输出 JSON 格式：
-    {{"recommendation": "必读/值得看/可跳过", "primary_topic": "从候选 Topic ID 精确选择一个", "comparison": "一句话说明与你过去笔记中论文的具体异同", "methodology": "核心方法简述", "core_concepts": ["术语1"], "sharp_review": "批判性分析"}}
+    任务：简洁输出核心内容。重点先解释论文要解决的具体问题、研究动机和核心思想，再说明 Method，并给出简洁的锐评；暂不分析 agent/multi-agent 视角、evolution object/evolution mechanism 或不足。严格输出 JSON 格式：
+    {{"recommendation": "必读/值得看/可跳过", "primary_topic": "从候选 Topic ID 精确选择一个", "motivation_core_idea": "2–4 句：论文解决的问题、为何重要，以及核心思想", "method": "3–6 句：关键设计、训练/推理流程和技术机制", "comparison": "一句话说明与你过去笔记中论文的具体异同", "core_concepts": ["English term 1"], "sharp_review": "1–2 句：有依据的简洁锐评"}}
     """
     try:
         res = llm.call(
@@ -820,6 +831,7 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
             response_format={"type": "json_object"},
         )
         parsed = safe_json_parse(res.choices[0].message.content)
+        parsed = normalize_analysis_fields(parsed)
         parsed["primary_topic"] = normalize_primary_topic(
             parsed.get("primary_topic"), category_name
         )
@@ -845,8 +857,8 @@ def analyze_first_run_paper(paper, category_name):
 
     论文主题规则：primary_topic 必须且只能从下列 taxonomy Topic ID 中选择 1 个。选择作者主要改变/优化的对象，而不是 application、evaluation setting 或附带问题：{json.dumps(topic_options, ensure_ascii=False)}
 
-    任务：仅基于该论文内容输出结构化笔记，严格输出 JSON：
-    {{"recommendation": "必读/值得看/可跳过", "primary_topic": "从候选 Topic ID 精确选择一个", "methodology": "核心方法简述", "core_concepts": ["术语1"], "sharp_review": "批判性锐评", "summary": "一句话价值总结"}}
+    任务：简洁输出核心内容。重点先解释论文要解决的具体问题、研究动机和核心思想，再说明 Method，并给出简洁的锐评；暂不分析 agent/multi-agent 视角、evolution object/evolution mechanism 或不足。严格输出 JSON：
+    {{"recommendation": "必读/值得看/可跳过", "primary_topic": "从候选 Topic ID 精确选择一个", "motivation_core_idea": "2–4 句：论文解决的问题、为何重要，以及核心思想", "method": "3–6 句：关键设计、训练/推理流程和技术机制", "core_concepts": ["English term 1"], "sharp_review": "1–2 句：有依据的简洁锐评", "summary": "一句话价值总结"}}
     """
     try:
         res = llm.call(
@@ -856,12 +868,11 @@ def analyze_first_run_paper(paper, category_name):
         parsed = safe_json_parse(res.choices[0].message.content)
         if "recommendation" not in parsed:
             parsed["recommendation"] = "值得看"
-        if "methodology" not in parsed:
-            parsed["methodology"] = "模型未返回方法论"
+        parsed = normalize_analysis_fields(parsed)
         if "core_concepts" not in parsed or not isinstance(parsed["core_concepts"], list):
             parsed["core_concepts"] = []
         if "sharp_review" not in parsed:
-            parsed["sharp_review"] = "模型未返回锐评"
+            parsed["sharp_review"] = "Model did not return a critical review."
         if "summary" not in parsed:
             parsed["summary"] = "模型未返回总结"
         parsed["primary_topic"] = normalize_primary_topic(
@@ -1681,8 +1692,9 @@ async def _main_impl():
                             f"<strong>📄 摘要：</strong><br/>{p['summary']}"
                             f"</div>"
                             f"<h3 style=\"color:#2980b9;\">🧠 核心术语库</h3><p>{concepts_html}</p>"
-                            f"<h3 style=\"color:#2980b9;\">🔬 核心方法简述</h3><p>{first_run_analysis.get('methodology', '')}</p>"
-                            f"<h3 style=\"color:#2980b9;\">💬 锐评</h3><p><i>{first_run_analysis.get('sharp_review', '')}</i></p>"
+                            f"<h3 style=\"color:#2980b9;\">🧭 Motivation &amp; Core Idea</h3><p>{first_run_analysis.get('motivation_core_idea', '')}</p>"
+                            f"<h3 style=\"color:#2980b9;\">🔬 Method</h3><p>{first_run_analysis.get('method', '')}</p>"
+                            f"<h3 style=\"color:#2980b9;\">💬 锐评 / Critical Review</h3><p><i>{first_run_analysis.get('sharp_review', '')}</i></p>"
                             f"<p><strong>📝 说明：</strong>该条目在冷启动阶段按关键词检索后完成单篇深读分析，"
                             f"后续增量任务将继续进行相关性对比与深度比较。</p>"
                         )
@@ -1707,7 +1719,8 @@ async def _main_impl():
                                     "venue": p.get('venue', ''),
                                     "primary_topic": first_run_analysis.get('primary_topic', 'Unclassified'),
                                     "recommendation": first_run_analysis.get('recommendation', '值得看'),
-                                    "methodology": first_run_analysis.get('methodology', ''),
+                                    "motivation_core_idea": first_run_analysis.get('motivation_core_idea', ''),
+                                    "method": first_run_analysis.get('method', ''),
                                     "core_concepts": first_run_analysis.get('core_concepts', []),
                                     "sharp_review": first_run_analysis.get('sharp_review', ''),
                                     "summary": first_run_analysis.get('summary', ''),
@@ -1734,7 +1747,8 @@ async def _main_impl():
                             "authors": p.get('authors', []),
                             "published": p.get('published', ''),
                             "recommendation": first_run_analysis.get('recommendation', '值得看'),
-                            "methodology": first_run_analysis.get('methodology', ''),
+                            "motivation_core_idea": first_run_analysis.get('motivation_core_idea', ''),
+                            "method": first_run_analysis.get('method', ''),
                             "core_concepts": first_run_analysis.get('core_concepts', []),
                             "sharp_review": first_run_analysis.get('sharp_review', ''),
                             "summary": first_run_analysis.get('summary', ''),
@@ -1867,8 +1881,9 @@ async def _main_impl():
                         <strong>🔄 深度差量对比：</strong><br/>{analysis.get('comparison', '')}
                     </div>
                     <h3 style="color: #2980b9;">🧠 核心术语库</h3><p>{concepts_html}</p>
-                    <h3 style="color: #2980b9;">🔬 方法论简析</h3><p>{analysis.get('methodology', '')}</p>
-                    <h3 style="color: #2980b9;">💬 锐评</h3><p><i>{analysis.get('sharp_review', '')}</i></p>
+                    <h3 style="color: #2980b9;">🧭 Motivation &amp; Core Idea</h3><p>{analysis.get('motivation_core_idea', '')}</p>
+                    <h3 style="color: #2980b9;">🔬 Method</h3><p>{analysis.get('method', '')}</p>
+                    <h3 style="color: #2980b9;">💬 锐评 / Critical Review</h3><p><i>{analysis.get('sharp_review', '')}</i></p>
                     """
                     
                     note_template = get_zotero_item_template("note", cat_name)
@@ -1894,7 +1909,8 @@ async def _main_impl():
                                 "venue": p.get('venue', ''),
                                 "primary_topic": analysis.get('primary_topic', 'Unclassified'),
                                 "recommendation": analysis.get('recommendation', '值得看'),
-                                "methodology": analysis.get('methodology', ''),
+                                "motivation_core_idea": analysis.get('motivation_core_idea', ''),
+                                "method": analysis.get('method', ''),
                                 "core_concepts": analysis.get('core_concepts', []),
                                 "sharp_review": analysis.get('sharp_review', ''),
                                 "comparison": analysis.get('comparison', ''),
@@ -1921,7 +1937,8 @@ async def _main_impl():
                         "authors": p.get('authors', []),
                         "published": p.get('published', ''),
                         "recommendation": analysis.get('recommendation', '值得看'),
-                        "methodology": analysis.get('methodology', ''),
+                        "motivation_core_idea": analysis.get('motivation_core_idea', ''),
+                        "method": analysis.get('method', ''),
                         "core_concepts": analysis.get('core_concepts', []),
                         "sharp_review": analysis.get('sharp_review', ''),
                         "comparison": analysis.get('comparison', ''),
