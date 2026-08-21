@@ -224,10 +224,10 @@ RETRY_BASE_DELAY_SECONDS = 1.0
 # preserved in English in every field that is later archived in Zotero/Feishu.
 ACADEMIC_LANGUAGE_POLICY = """
 Language policy for every generated field:
-- Chinese explanatory prose is allowed, but every academic and technical term must remain in conventional English.
-- Never translate or transliterate methods, model names, task names, datasets, benchmarks, metrics, architectures, algorithms, protocols, skills, tools, or research concepts into Chinese.
-- Apply this rule to summary, motivation_core_idea, method, comparison, sharp_review, reason, and core_concepts; do not provide a Chinese technical synonym in parentheses.
-- Keep paper titles and matched_titles exactly as supplied. core_concepts and primary_topic must be English only.
+- Every explanatory field MUST be written in Chinese. Do not produce an all-English sentence, paragraph, or answer.
+- Keep only established academic and technical terms in their conventional English form, including method/model/task/dataset/benchmark/metric/architecture/algorithm/protocol/skill/tool/research-concept names.
+- Do not translate or transliterate those English technical terms into Chinese, and do not append a Chinese synonym in parentheses.
+- Apply this rule to summary, motivation_core_idea, method, comparison, sharp_review, reason, and core_concepts. Keep paper titles and matched_titles exactly as supplied; core_concepts and primary_topic must be English only.
 """
 
 # 运行时错误收集器，所有错误汇总后发送到飞书
@@ -822,7 +822,7 @@ def deep_analyze_phase_two(paper, category_name, matched_full_notes):
     
     论文主题规则：primary_topic 必须且只能从下列 taxonomy Topic ID 中选择 1 个。选择作者主要改变/优化的对象，而不是 application、evaluation setting 或附带问题：{json.dumps(topic_options, ensure_ascii=False)}
 
-    任务：简洁输出核心内容。重点先解释论文要解决的具体问题、研究动机和核心思想，再说明 Method，并给出简洁的锐评；暂不分析 agent/multi-agent 视角、evolution object/evolution mechanism 或不足。严格输出 JSON 格式：
+    任务：简洁输出核心内容。重点先解释论文要解决的具体问题、研究动机和核心思想，再说明 Method，并给出简洁的锐评；暂不分析 agent/multi-agent 视角、evolution object/evolution mechanism 或不足。输出前进行语言自检：所有解释字段必须为中文句子，仅学术术语保留 English，不能输出整段 English。严格输出 JSON 格式：
     {{"recommendation": "必读/值得看/可跳过", "primary_topic": "从候选 Topic ID 精确选择一个", "motivation_core_idea": "2–4 句：论文解决的问题、为何重要，以及核心思想", "method": "3–6 句：关键设计、训练/推理流程和技术机制", "comparison": "一句话说明与你过去笔记中论文的具体异同", "core_concepts": ["English term 1"], "sharp_review": "1–2 句：有依据的简洁锐评"}}
     """
     try:
@@ -857,7 +857,7 @@ def analyze_first_run_paper(paper, category_name):
 
     论文主题规则：primary_topic 必须且只能从下列 taxonomy Topic ID 中选择 1 个。选择作者主要改变/优化的对象，而不是 application、evaluation setting 或附带问题：{json.dumps(topic_options, ensure_ascii=False)}
 
-    任务：简洁输出核心内容。重点先解释论文要解决的具体问题、研究动机和核心思想，再说明 Method，并给出简洁的锐评；暂不分析 agent/multi-agent 视角、evolution object/evolution mechanism 或不足。严格输出 JSON：
+    任务：简洁输出核心内容。重点先解释论文要解决的具体问题、研究动机和核心思想，再说明 Method，并给出简洁的锐评；暂不分析 agent/multi-agent 视角、evolution object/evolution mechanism 或不足。输出前进行语言自检：所有解释字段必须为中文句子，仅学术术语保留 English，不能输出整段 English。严格输出 JSON：
     {{"recommendation": "必读/值得看/可跳过", "primary_topic": "从候选 Topic ID 精确选择一个", "motivation_core_idea": "2–4 句：论文解决的问题、为何重要，以及核心思想", "method": "3–6 句：关键设计、训练/推理流程和技术机制", "core_concepts": ["English term 1"], "sharp_review": "1–2 句：有依据的简洁锐评", "summary": "一句话价值总结"}}
     """
     try:
